@@ -295,6 +295,9 @@ def get_llm_provider(
                     elif endpoint == "api.siliconflow.com/v1":
                         custom_llm_provider = "siliconflow"
                         dynamic_api_key = litellm.SiliconFlowConfig.get_api_key()
+                    elif endpoint == "api.siliconflow.cn/v1":
+                        custom_llm_provider = "siliconflow"
+                        dynamic_api_key = litellm.SiliconFlowConfig.get_api_key()
                     elif endpoint == "dashscope-intl.aliyuncs.com/compatible-mode/v1":
                         custom_llm_provider = "dashscope"
                         dynamic_api_key = get_secret_str("DASHSCOPE_API_KEY")
