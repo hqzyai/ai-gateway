@@ -1190,6 +1190,15 @@ class CostCalculatorUtils:
                 model=model,
                 image_response=completion_response,
             )
+        elif custom_llm_provider == litellm.LlmProviders.VOLCENGINE.value:
+            from litellm.llms.volcengine.image_generation.cost_calculator import (
+                cost_calculator as volcengine_image_cost_calculator,
+            )
+
+            return volcengine_image_cost_calculator(
+                model=model,
+                image_response=completion_response,
+            )
         elif custom_llm_provider == litellm.LlmProviders.OPENAI.value:
             # gpt-image models use token-based pricing.
             model_lower = model.lower()

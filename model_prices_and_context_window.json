@@ -44719,6 +44719,32 @@
         "supports_vision": true,
         "source": "https://aws.amazon.com/bedrock/pricing/"
     },
+    "volcengine/doubao-seedream-5-0-260128": {
+        "input_cost_per_image": 0.0,
+        "litellm_provider": "volcengine",
+        "metadata": {
+            "notes": "CN list price is CNY 0.22 per output image; converted at 7 CNY per USD"
+        },
+        "mode": "image_generation",
+        "output_cost_per_image": 0.03142857142857143,
+        "source": "https://console.volcengine.com/ark/region:cn-beijing/model?view=DEFAULT_VIEW&groupType=ModelGroups",
+        "supported_endpoints": [
+            "/v1/images/generations"
+        ]
+    },
+    "volcengine/doubao-seedream-5-0-pro-260628": {
+        "input_cost_per_image": 0.002857142857142857,
+        "litellm_provider": "volcengine",
+        "metadata": {
+            "notes": "CN list prices are CNY 0.02 per input image and CNY 0.30 per output image; converted at 7 CNY per USD"
+        },
+        "mode": "image_generation",
+        "output_cost_per_image": 0.04285714285714286,
+        "source": "https://console.volcengine.com/ark/region:cn-beijing/model?view=DEFAULT_VIEW&groupType=ModelGroups",
+        "supported_endpoints": [
+            "/v1/images/generations"
+        ]
+    },
     "volcengine/doubao-seed-2-0-pro-260215": {
         "litellm_provider": "volcengine",
         "max_input_tokens": 256000,

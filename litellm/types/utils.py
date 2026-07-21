@@ -2321,7 +2321,7 @@ from openai.types.images_response import ImagesResponse as OpenAIImageResponse
 
 
 class ImageResponse(OpenAIImageResponse, BaseLiteLLMOpenAIResponseObject):
-    _hidden_params: dict = {}
+    _hidden_params: dict[str, object] = {}
 
     usage: Optional[ImageUsage] = None  # type: ignore
     """
@@ -2392,6 +2392,9 @@ class ImageResponse(OpenAIImageResponse, BaseLiteLLMOpenAIResponseObject):
     def __setitem__(self, key, value):
         # Allow dictionary-style assignment of attributes
         setattr(self, key, value)
+
+    def get_hidden_param(self, key: str) -> object | None:
+        return self._hidden_params.get(key)
 
     def json(self, **kwargs):  # type: ignore
         try:

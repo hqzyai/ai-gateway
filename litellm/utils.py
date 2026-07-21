@@ -2987,6 +2987,11 @@ def get_optional_params_image_gen(
         "tools": None,
         "web_search_options": None,
     }
+    if provider_config is not None:
+        default_params = {
+            **default_params,
+            **{param: None for param in provider_config.get_supported_openai_params(model=model or "")},
+        }
 
     non_default_params = _get_non_default_params(
         passed_params=passed_params,
@@ -8659,6 +8664,12 @@ class ProviderConfigManager:
             )
 
             return get_modelscope_image_generation_config(model)
+        elif LlmProviders.VOLCENGINE == provider:
+            from litellm.llms.volcengine.image_generation import (
+                get_volcengine_image_generation_config,
+            )
+
+            return get_volcengine_image_generation_config(model)
         return None
 
     @staticmethod
@@ -8806,6 +8817,12 @@ class ProviderConfigManager:
             )
 
             return get_openrouter_image_edit_config(model)
+        elif LlmProviders.VOLCENGINE == provider:
+            from litellm.llms.volcengine.image_edit import (
+                get_volcengine_image_edit_config,
+            )
+
+            return get_volcengine_image_edit_config(model)
         return None
 
     @staticmethod

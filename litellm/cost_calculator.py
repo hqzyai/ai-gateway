@@ -763,6 +763,10 @@ def _select_model_name_for_cost_calc(
             if (
                 entry.get("input_cost_per_token") is not None
                 or entry.get("input_cost_per_second") is not None
+                or entry.get("input_cost_per_image") is not None
+                or entry.get("input_cost_per_pixel") is not None
+                or entry.get("output_cost_per_image") is not None
+                or entry.get("output_cost_per_image_token") is not None
                 or entry.get("tiered_pricing") is not None
             ):
                 return_model = router_model_id

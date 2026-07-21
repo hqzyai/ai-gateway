@@ -52,11 +52,11 @@ class BaseLLMException(Exception):
         self,
         status_code: int,
         message: str,
-        headers: Optional[Union[dict, httpx.Headers]] = None,
+        headers: Optional[Union[dict[str, str], httpx.Headers]] = None,
         request: Optional[httpx.Request] = None,
         response: Optional[httpx.Response] = None,
-        body: Optional[dict] = None,
-    ):
+        body: Optional[dict[str, object]] = None,
+    ) -> None:
         self.status_code = status_code
         self.message: str = message
         self.headers = headers
