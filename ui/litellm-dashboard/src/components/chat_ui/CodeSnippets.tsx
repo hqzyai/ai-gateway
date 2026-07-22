@@ -351,6 +351,41 @@ else:
       }
       break;
 
+    case EndpointType.VIDEO:
+      endpointSpecificCode = `
+import time
+import requests
+
+headers = {
+    "Authorization": "Bearer ${effectiveApiKey || "YOUR_LITELLM_API_KEY"}",
+    "Content-Type": "application/json",
+}
+
+video = requests.post(
+    "${apiBase}/v1/videos",
+    headers=headers,
+    json={"model": "${modelNameForCode}", "prompt": "${safePrompt}"},
+).json()
+
+while video["status"] not in {"completed", "failed", "cancelled", "expired"}:
+    time.sleep(3)
+    video = requests.get("${apiBase}/v1/videos/" + video["id"], headers=headers).json()
+
+if video["status"] != "completed":
+    raise RuntimeError(video)
+
+content = requests.get(
+    "${apiBase}/v1/videos/" + video["id"] + "/content",
+    headers=headers,
+)
+content.raise_for_status()
+with open("generated_video.mp4", "wb") as output_file:
+    output_file.write(content.content)
+
+print("Video saved to generated_video.mp4")
+`;
+      break;
+
     case EndpointType.IMAGE_EDITS:
       if (selectedSdk === "azure") {
         endpointSpecificCode = `

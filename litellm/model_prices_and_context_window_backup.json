@@ -44602,27 +44602,110 @@
         "input_cost_per_image": 0.0,
         "litellm_provider": "volcengine",
         "metadata": {
-            "notes": "CN list price is CNY 0.22 per output image; converted at 7 CNY per USD"
+            "notes": "CN list price is CNY 0.22 per output image; recorded 1:1 as USD"
         },
         "mode": "image_generation",
-        "output_cost_per_image": 0.03142857142857143,
+        "output_cost_per_image": 0.22,
         "source": "https://console.volcengine.com/ark/region:cn-beijing/model?view=DEFAULT_VIEW&groupType=ModelGroups",
         "supported_endpoints": [
             "/v1/images/generations"
         ]
     },
     "volcengine/doubao-seedream-5-0-pro-260628": {
-        "input_cost_per_image": 0.002857142857142857,
+        "input_cost_per_image": 0.02,
         "litellm_provider": "volcengine",
         "metadata": {
-            "notes": "CN list prices are CNY 0.02 per input image and CNY 0.30 per output image; converted at 7 CNY per USD"
+            "notes": "CN list prices are CNY 0.02 per input image, CNY 0.30 per standard output image, and CNY 0.60 per output image above 16384 output tokens; recorded 1:1 as USD"
         },
         "mode": "image_generation",
-        "output_cost_per_image": 0.04285714285714286,
+        "output_cost_per_image": 0.3,
+        "output_cost_per_image_above_16384_tokens": 0.6,
         "source": "https://console.volcengine.com/ark/region:cn-beijing/model?view=DEFAULT_VIEW&groupType=ModelGroups",
         "supported_endpoints": [
             "/v1/images/generations"
         ]
+    },
+    "volcengine/doubao-seedance-2-0-260128": {
+        "litellm_provider": "volcengine",
+        "metadata": {
+            "notes": "CN list prices recorded 1:1 as USD"
+        },
+        "mode": "video_generation",
+        "source": "https://www.volcengine.com/docs/82379/1544106",
+        "supported_endpoints": [
+            "/v1/videos"
+        ],
+        "supported_modalities": [
+            "text",
+            "image",
+            "video",
+            "audio"
+        ],
+        "supported_output_modalities": [
+            "video"
+        ],
+        "supports_audio_input": true,
+        "supports_audio_output": true,
+        "video_token_pricing": {
+            "no_video_input": 0.000046,
+            "no_video_input_1080p": 0.000051,
+            "no_video_input_4k": 0.000026,
+            "video_input": 0.000028,
+            "video_input_1080p": 0.000031,
+            "video_input_4k": 0.000016
+        }
+    },
+    "volcengine/doubao-seedance-2-0-fast-260128": {
+        "litellm_provider": "volcengine",
+        "metadata": {
+            "notes": "CN list prices recorded 1:1 as USD"
+        },
+        "mode": "video_generation",
+        "source": "https://www.volcengine.com/docs/82379/1544106",
+        "supported_endpoints": [
+            "/v1/videos"
+        ],
+        "supported_modalities": [
+            "text",
+            "image",
+            "video",
+            "audio"
+        ],
+        "supported_output_modalities": [
+            "video"
+        ],
+        "supports_audio_input": true,
+        "supports_audio_output": true,
+        "video_token_pricing": {
+            "no_video_input": 0.000037,
+            "video_input": 0.000022
+        }
+    },
+    "volcengine/doubao-seedance-2-0-mini-260615": {
+        "litellm_provider": "volcengine",
+        "metadata": {
+            "notes": "CN list prices recorded 1:1 as USD"
+        },
+        "mode": "video_generation",
+        "source": "https://www.volcengine.com/docs/82379/1544106",
+        "supported_endpoints": [
+            "/v1/videos"
+        ],
+        "supported_modalities": [
+            "text",
+            "image",
+            "video",
+            "audio"
+        ],
+        "supported_output_modalities": [
+            "video"
+        ],
+        "supports_audio_input": true,
+        "supports_audio_output": true,
+        "video_token_pricing": {
+            "no_video_input": 0.000023,
+            "video_input": 0.000014
+        }
     },
     "volcengine/doubao-seed-2-0-pro-260215": {
         "litellm_provider": "volcengine",

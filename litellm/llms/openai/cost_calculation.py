@@ -3,7 +3,7 @@ Helper util for handling openai-specific cost calculation
 - e.g.: prompt caching
 """
 
-from typing import Any, Literal, Mapping, Optional, Tuple
+from typing import Literal, Mapping, Optional, Tuple
 
 from litellm._logging import verbose_logger
 from litellm.litellm_core_utils.llm_cost_calc.utils import generic_cost_per_token
@@ -144,7 +144,7 @@ def _video_resolution_to_cost_field_suffix(resolution: str) -> Optional[str]:
 
 
 def _video_output_cost_per_second(
-    model_info: Mapping[str, Any],
+    model_info: Mapping[str, object],
     video_resolution: Optional[str],
 ) -> Optional[float]:
     """
@@ -160,12 +160,27 @@ def _video_output_cost_per_second(
         if suffix is not None:
             tier_key = f"output_cost_per_second_{suffix}"
             tier_rate = model_info.get(tier_key)
-            if tier_rate is not None:
+            if isinstance(tier_rate, (int, float)):
                 return float(tier_rate)
     out = model_info.get("output_cost_per_second")
-    if out is not None:
+    if isinstance(out, (int, float)):
         return float(out)
     return None
+
+
+def _video_output_cost_per_token(
+    model_info: Mapping[str, object],
+    video_resolution: str | None,
+    has_video_input: bool,
+) -> float | None:
+    pricing = model_info.get("video_token_pricing")
+    if not isinstance(pricing, Mapping):
+        return None
+    input_key = "video_input" if has_video_input else "no_video_input"
+    resolution = (video_resolution or "").strip().lower()
+    key = f"{input_key}_{resolution}" if resolution in {"1080p", "4k"} else input_key
+    rate = pricing.get(key)
+    return float(rate) if isinstance(rate, (int, float)) else None
 
 
 def video_generation_cost(
@@ -174,6 +189,8 @@ def video_generation_cost(
     custom_llm_provider: Optional[str] = None,
     model_info: Optional[ModelInfo] = None,
     video_resolution: Optional[str] = None,
+    completion_tokens: int | None = None,
+    has_video_input: bool = False,
 ) -> float:
     """
     Calculates the cost for video generation based on duration in seconds.
@@ -193,6 +210,10 @@ def video_generation_cost(
     ## GET MODEL INFO
     if model_info is None:
         model_info = get_model_info(model=model, custom_llm_provider=custom_llm_provider or "openai")
+
+    video_cost_per_token = _video_output_cost_per_token(model_info, video_resolution, has_video_input)
+    if video_cost_per_token is not None and completion_tokens is not None:
+        return video_cost_per_token * completion_tokens
 
     # Check for video-specific cost per second
     video_cost_per_second = model_info.get("output_cost_per_video_per_second")

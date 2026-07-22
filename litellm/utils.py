@@ -5493,8 +5493,12 @@ def _get_model_info_helper(
                 output_cost_per_second_1080p=_model_info.get("output_cost_per_second_1080p", None),
                 output_cost_per_video_per_second=_model_info.get("output_cost_per_video_per_second", None),
                 output_cost_per_image=_model_info.get("output_cost_per_image", None),
+                output_cost_per_image_above_16384_tokens=_model_info.get(
+                    "output_cost_per_image_above_16384_tokens", None
+                ),
                 output_cost_per_image_token=_model_info.get("output_cost_per_image_token", None),
                 output_cost_per_video_token=_model_info.get("output_cost_per_video_token", None),
+                video_token_pricing=_model_info.get("video_token_pricing", None),
                 output_vector_size=_model_info.get("output_vector_size", None),
                 citation_cost_per_token=_model_info.get("citation_cost_per_token", None),
                 tiered_pricing=_model_info.get("tiered_pricing", None),
@@ -8697,6 +8701,12 @@ class ProviderConfigManager:
             from litellm.llms.runwayml.videos.transformation import RunwayMLVideoConfig
 
             return RunwayMLVideoConfig()
+        elif LlmProviders.VOLCENGINE == provider:
+            from litellm.llms.volcengine.videos.transformation import (
+                VolcEngineVideoConfig,
+            )
+
+            return VolcEngineVideoConfig()
         return None
 
     @staticmethod

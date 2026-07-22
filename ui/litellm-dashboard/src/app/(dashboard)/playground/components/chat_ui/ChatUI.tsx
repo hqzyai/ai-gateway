@@ -48,6 +48,7 @@ import { Agent, fetchAvailableAgents } from "../../llm_calls/fetch_agents";
 import { fetchAvailableModels, ModelGroup } from "@/components/llm_calls/fetch_models";
 import { makeOpenAIImageEditsRequest } from "../../llm_calls/image_edits";
 import { makeOpenAIImageGenerationRequest } from "../../llm_calls/image_generation";
+import { makeOpenAIVideoGenerationRequest } from "../../llm_calls/video_generation";
 import { makeOpenAIResponsesRequest } from "@/components/llm_calls/responses_api";
 import { makeInteractionsRequest } from "../../llm_calls/interactions_api";
 import A2AMetrics from "./A2AMetrics";
@@ -107,6 +108,29 @@ const MCP_SUPPORTED_ENDPOINTS = new Set<EndpointType>([
 
 const CUSTOM_MODEL_DEBOUNCE_WAIT_MS = 500;
 
+const getInputPlaceholder = (endpointType: string): string => {
+  switch (endpointType) {
+    case EndpointType.CHAT:
+    case EndpointType.EMBEDDINGS:
+    case EndpointType.RESPONSES:
+    case EndpointType.ANTHROPIC_MESSAGES:
+    case EndpointType.INTERACTIONS:
+      return "Type your message... (Shift+Enter for new line)";
+    case EndpointType.A2A_AGENTS:
+      return "Send a message to the A2A agent...";
+    case EndpointType.IMAGE_EDITS:
+      return "Describe how you want to edit the image...";
+    case EndpointType.VIDEO:
+      return "Describe the video you want to generate...";
+    case EndpointType.SPEECH:
+      return "Enter text to convert to speech...";
+    case EndpointType.TRANSCRIPTION:
+      return "Optional: Add context or prompt for transcription...";
+    default:
+      return "Describe the image you want to generate...";
+  }
+};
+
 const ChatUI: React.FC<ChatUIProps> = ({
   accessToken,
   token,
@@ -165,6 +189,7 @@ const ChatUI: React.FC<ChatUIProps> = ({
     handleToggleSessionManagement,
     handleMCPEvent,
     updateImageUI,
+    updateVideoUI,
     updateEmbeddingsUI,
     updateAudioUI,
     updateChatImageUI,
@@ -632,6 +657,7 @@ const ChatUI: React.FC<ChatUIProps> = ({
     const modelRequiredEndpoints = [
       EndpointType.CHAT,
       EndpointType.IMAGE,
+      EndpointType.VIDEO,
       EndpointType.SPEECH,
       EndpointType.IMAGE_EDITS,
       EndpointType.RESPONSES,
@@ -783,6 +809,18 @@ const ChatUI: React.FC<ChatUIProps> = ({
             signal,
             customProxyBaseUrl || undefined,
           );
+        } else if (endpointType === EndpointType.VIDEO) {
+          await makeOpenAIVideoGenerationRequest({
+            prompt: inputMessage,
+            updateVideoUI,
+            updateTaskUI: (task) =>
+              updateTextUI("assistant", `Video task ${task.id} started with status ${task.status}.`, task.model),
+            selectedModel,
+            accessToken: effectiveApiKey,
+            tags: selectedTags,
+            signal,
+            customBaseUrl: customProxyBaseUrl || undefined,
+          });
         } else if (endpointType === EndpointType.SPEECH) {
           // For audio speech
           await makeOpenAIAudioSpeechRequest(
@@ -1743,7 +1781,7 @@ const ChatUI: React.FC<ChatUIProps> = ({
                   {chatHistory.length === 0 && (
                     <div className="h-full flex flex-col items-center justify-center text-gray-400">
                       <RobotOutlined style={{ fontSize: "48px", marginBottom: "16px" }} />
-                      <Text>Start a conversation, generate an image, or handle audio</Text>
+                      <Text>Start a conversation, generate an image or video, or handle audio</Text>
                     </div>
                   )}
 
@@ -2067,23 +2105,7 @@ const ChatUI: React.FC<ChatUIProps> = ({
                           value={inputMessage}
                           onChange={(e) => setInputMessage(e.target.value)}
                           onKeyDown={handleKeyDown}
-                          placeholder={
-                            endpointType === EndpointType.CHAT ||
-                            endpointType === EndpointType.EMBEDDINGS ||
-                            endpointType === EndpointType.RESPONSES ||
-                            endpointType === EndpointType.ANTHROPIC_MESSAGES ||
-                            endpointType === EndpointType.INTERACTIONS
-                              ? "Type your message... (Shift+Enter for new line)"
-                              : endpointType === EndpointType.A2A_AGENTS
-                                ? "Send a message to the A2A agent..."
-                                : endpointType === EndpointType.IMAGE_EDITS
-                                  ? "Describe how you want to edit the image..."
-                                  : endpointType === EndpointType.SPEECH
-                                    ? "Enter text to convert to speech..."
-                                    : endpointType === EndpointType.TRANSCRIPTION
-                                      ? "Optional: Add context or prompt for transcription..."
-                                      : "Describe the image you want to generate..."
-                          }
+                          placeholder={getInputPlaceholder(endpointType)}
                           disabled={isLoading}
                           className="flex-1"
                           autoSize={{ minRows: 1, maxRows: 4 }}

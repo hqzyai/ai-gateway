@@ -1,0 +1,505 @@
+from __future__ import annotations
+
+from math import gcd
+from typing import TYPE_CHECKING, TypeVar, cast
+
+import httpx
+from httpx._types import RequestFiles
+from pydantic import BaseModel, Field, ValidationError
+
+from litellm.litellm_core_utils.url_utils import encode_url_path_segment
+from litellm.llms.base_llm.chat.transformation import BaseLLMException
+from litellm.llms.base_llm.videos.transformation import BaseVideoConfig
+from litellm.secret_managers.main import get_secret_str
+from litellm.types.router import GenericLiteLLMParams
+from litellm.types.utils import LlmProviders
+from litellm.types.videos.main import VideoCreateOptionalRequestParams, VideoObject
+from litellm.types.videos.utils import (
+    decode_video_id_with_provider,
+    encode_video_id_with_provider,
+    extract_original_video_id,
+)
+
+from ..common_utils import (
+    VolcEngineError,
+    get_volcengine_api_base,
+    get_volcengine_headers,
+)
+
+if TYPE_CHECKING:
+    from litellm.litellm_core_utils.litellm_logging import Logging as LiteLLMLoggingObj
+
+
+ResponseModel = TypeVar("ResponseModel", bound=BaseModel)
+
+
+class _VolcEngineVideoContent(BaseModel):
+    video_url: str | None = None
+    last_frame_url: str | None = None
+
+
+class _VolcEngineVideoError(BaseModel):
+    message: str
+    code: str
+
+
+class _VolcEngineVideoUsage(BaseModel):
+    completion_tokens: int = 0
+    total_tokens: int = 0
+
+
+class _VolcEngineVideoTask(BaseModel):
+    id: str
+    model: str | None = None
+    status: str = "queued"
+    error: _VolcEngineVideoError | None = None
+    content: _VolcEngineVideoContent | None = None
+    usage: _VolcEngineVideoUsage = Field(default_factory=_VolcEngineVideoUsage)
+    created_at: int | None = None
+    updated_at: int | None = None
+    duration: int | None = None
+    ratio: str | None = None
+    resolution: str | None = None
+
+
+class _VolcEngineVideoTaskList(BaseModel):
+    total: int = 0
+    items: list[_VolcEngineVideoTask] = Field(default_factory=list)
+
+
+class _VolcEngineVideoTaskId(BaseModel):
+    id: str
+
+
+class VolcEngineVideoConfig(BaseVideoConfig):
+    _PROVIDER_PARAMS = frozenset(
+        {
+            "callback_url",
+            "camera_fixed",
+            "content",
+            "draft",
+            "duration",
+            "execution_expires_after",
+            "frames",
+            "generate_audio",
+            "priority",
+            "ratio",
+            "resolution",
+            "return_last_frame",
+            "safety_identifier",
+            "seed",
+            "service_tier",
+            "tools",
+            "watermark",
+        }
+    )
+
+    def __init__(
+        self,
+        sync_http_client: httpx.Client | None = None,
+        async_http_client: httpx.AsyncClient | None = None,
+    ) -> None:
+        super().__init__()
+        self._sync_http_client = sync_http_client
+        self._async_http_client = async_http_client
+
+    def get_supported_openai_params(self, model: str) -> list[str]:
+        return ["model", "prompt", "input_reference", "seconds", "size", "user", "extra_headers"]
+
+    def map_openai_params(
+        self,
+        video_create_optional_params: VideoCreateOptionalRequestParams,
+        model: str,
+        drop_params: bool,
+    ) -> dict[str, object]:
+        input_reference = video_create_optional_params.get("input_reference")
+        if input_reference is not None and not isinstance(input_reference, str):
+            raise ValueError("Volcengine input_reference must be an image URL or data URL.")
+
+        seconds = video_create_optional_params.get("seconds")
+        try:
+            duration = int(seconds) if seconds is not None else None
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Volcengine video seconds must be an integer.") from exc
+
+        size = video_create_optional_params.get("size")
+        size_mapping = self._map_size(size) if isinstance(size, str) else None
+        provider_params = {
+            key: value
+            for key, value in video_create_optional_params.items()
+            if key in self._PROVIDER_PARAMS and value is not None
+        }
+        user = video_create_optional_params.get("user")
+        safety_identifier = user if isinstance(user, str) and "safety_identifier" not in provider_params else None
+        derived_params: dict[str, object] = {
+            **({"input_reference": input_reference} if input_reference is not None else {}),
+            **({"duration": duration} if duration is not None else {}),
+            **({"ratio": size_mapping[0]} if size_mapping is not None else {}),
+            **({"resolution": size_mapping[1]} if size_mapping is not None and size_mapping[1] is not None else {}),
+            **({"safety_identifier": safety_identifier} if safety_identifier is not None else {}),
+        }
+        accepted_params = self._PROVIDER_PARAMS | {
+            "extra_body",
+            "extra_headers",
+            "input_reference",
+            "seconds",
+            "size",
+            "user",
+        }
+        unsupported_params = tuple(key for key in video_create_optional_params if key not in accepted_params)
+        if unsupported_params and not drop_params:
+            raise ValueError(f"Parameters {unsupported_params} are not supported for Volcengine video generation.")
+        return {**derived_params, **provider_params}
+
+    def _map_size(self, size: str) -> tuple[str, str | None]:
+        known_sizes: dict[str, tuple[str, str | None]] = {
+            "1280x720": ("16:9", "720p"),
+            "1920x1080": ("16:9", "1080p"),
+            "720x1280": ("9:16", "720p"),
+            "1080x1920": ("9:16", "1080p"),
+            "1024x1024": ("1:1", None),
+            "1280x960": ("4:3", None),
+            "960x1280": ("3:4", None),
+            "2560x1080": ("21:9", "1080p"),
+        }
+        if size.lower() in known_sizes:
+            return known_sizes[size.lower()]
+        try:
+            width_text, height_text = size.lower().split("x", 1)
+            width, height = int(width_text), int(height_text)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Volcengine video size must use WIDTHxHEIGHT format.") from exc
+        if width <= 0 or height <= 0:
+            raise ValueError("Volcengine video size dimensions must be positive.")
+        common_divisor = gcd(width, height)
+        ratio = f"{width // common_divisor}:{height // common_divisor}"
+        if ratio not in {"16:9", "4:3", "1:1", "3:4", "9:16", "21:9"}:
+            raise ValueError(f"Volcengine video size maps to unsupported ratio {ratio}.")
+        return ratio, None
+
+    def validate_environment(
+        self,
+        headers: dict[str, str],
+        model: str,
+        api_key: str | None = None,
+        litellm_params: GenericLiteLLMParams | None = None,
+    ) -> dict[str, str]:
+        params_api_key = litellm_params.api_key if litellm_params is not None else None
+        final_api_key = (
+            api_key or params_api_key or get_secret_str("VOLCENGINE_API_KEY") or get_secret_str("ARK_API_KEY")
+        )
+        if not final_api_key:
+            raise ValueError("Volcengine API key is required. Set VOLCENGINE_API_KEY or ARK_API_KEY.")
+        return get_volcengine_headers(api_key=final_api_key, extra_headers=headers)
+
+    def get_complete_url(
+        self,
+        model: str,
+        api_base: str | None,
+        litellm_params: dict[str, object],
+    ) -> str:
+        configured_base = api_base or get_secret_str("VOLCENGINE_API_BASE") or get_secret_str("ARK_API_BASE")
+        task_suffix = "/contents/generations/tasks"
+        normalized_base = configured_base.rstrip("/") if configured_base is not None else None
+        base_without_task = (
+            normalized_base[: -len(task_suffix)]
+            if normalized_base is not None and normalized_base.endswith(task_suffix)
+            else normalized_base
+        )
+        return get_volcengine_api_base(base_without_task)
+
+    def transform_video_create_request(
+        self,
+        model: str,
+        prompt: str,
+        api_base: str,
+        video_create_optional_request_params: dict[str, object],
+        litellm_params: GenericLiteLLMParams,
+        headers: dict[str, str],
+    ) -> tuple[dict[str, object], RequestFiles, str]:
+        input_reference = video_create_optional_request_params.get("input_reference")
+        content: list[dict[str, object]] = [
+            {"type": "text", "text": prompt},
+            *(
+                [
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": input_reference},
+                        "role": "first_frame",
+                    }
+                ]
+                if isinstance(input_reference, str)
+                else []
+            ),
+        ]
+        request_params = {
+            key: value
+            for key, value in video_create_optional_request_params.items()
+            if key not in {"extra_headers", "input_reference"}
+        }
+        return (
+            {"model": model, "content": content, **request_params},
+            [],
+            f"{api_base.rstrip('/')}/contents/generations/tasks",
+        )
+
+    def transform_video_create_response(
+        self,
+        model: str,
+        raw_response: httpx.Response,
+        logging_obj: LiteLLMLoggingObj,
+        custom_llm_provider: str | None = None,
+        request_data: dict[str, object] | None = None,
+    ) -> VideoObject:
+        response = self._parse_response(raw_response, _VolcEngineVideoTaskId)
+        provider = custom_llm_provider or LlmProviders.VOLCENGINE.value
+        duration = request_data.get("duration") if request_data is not None else None
+        resolution = request_data.get("resolution") if request_data is not None else None
+        has_video_input = self._request_has_video_input(request_data)
+        seconds = str(duration) if isinstance(duration, int) else None
+        usage = {
+            **({"duration_seconds": float(duration)} if isinstance(duration, int) else {}),
+            **({"video_resolution": resolution} if isinstance(resolution, str) else {}),
+            "has_video_input": has_video_input,
+        }
+        return VideoObject(
+            id=encode_video_id_with_provider(
+                response.id,
+                provider,
+                model,
+                has_video_input=has_video_input,
+            ),
+            object="video",
+            status="queued",
+            seconds=seconds,
+            model=model,
+            usage=usage,
+        )
+
+    def transform_video_status_retrieve_request(
+        self,
+        video_id: str,
+        api_base: str,
+        litellm_params: GenericLiteLLMParams,
+        headers: dict[str, str],
+    ) -> tuple[str, dict[str, object]]:
+        task_id = encode_url_path_segment(extract_original_video_id(video_id), field_name="video_id")
+        return f"{api_base.rstrip('/')}/contents/generations/tasks/{task_id}", {}
+
+    def transform_video_status_retrieve_response(
+        self,
+        raw_response: httpx.Response,
+        logging_obj: LiteLLMLoggingObj,
+        custom_llm_provider: str | None = None,
+    ) -> VideoObject:
+        task = self._parse_response(raw_response, _VolcEngineVideoTask)
+        return self._task_to_video(
+            task,
+            custom_llm_provider or LlmProviders.VOLCENGINE.value,
+            has_video_input=self._has_video_input_from_logging_obj(logging_obj),
+        )
+
+    def transform_video_content_request(
+        self,
+        video_id: str,
+        api_base: str,
+        litellm_params: GenericLiteLLMParams,
+        headers: dict[str, str],
+        variant: str | None = None,
+    ) -> tuple[str, dict[str, object]]:
+        if variant is not None:
+            raise ValueError("Volcengine video content variants are not supported.")
+        return self.transform_video_status_retrieve_request(video_id, api_base, litellm_params, headers)
+
+    def transform_video_content_response(
+        self,
+        raw_response: httpx.Response,
+        logging_obj: LiteLLMLoggingObj,
+    ) -> bytes:
+        video_url = self._extract_video_url(raw_response)
+        if self._sync_http_client is not None:
+            video_response = self._sync_http_client.get(video_url)
+            video_response.raise_for_status()
+            return video_response.content
+        with httpx.Client(follow_redirects=True) as client:
+            video_response = client.get(video_url)
+            video_response.raise_for_status()
+            return video_response.content
+
+    async def async_transform_video_content_response(
+        self,
+        raw_response: httpx.Response,
+        logging_obj: LiteLLMLoggingObj,
+    ) -> bytes:
+        video_url = self._extract_video_url(raw_response)
+        if self._async_http_client is not None:
+            video_response = await self._async_http_client.get(video_url)
+            video_response.raise_for_status()
+            return video_response.content
+        async with httpx.AsyncClient(follow_redirects=True) as client:
+            video_response = await client.get(video_url)
+            video_response.raise_for_status()
+            return video_response.content
+
+    def _extract_video_url(self, raw_response: httpx.Response) -> str:
+        task = self._parse_response(raw_response, _VolcEngineVideoTask)
+        if task.status.lower() != "succeeded":
+            raise ValueError(f"Volcengine video is not ready. Current status: {task.status}.")
+        video_url = task.content.video_url if task.content is not None else None
+        if not video_url:
+            raise ValueError("Volcengine video task completed without a video URL.")
+        return video_url
+
+    def transform_video_list_request(
+        self,
+        api_base: str,
+        litellm_params: GenericLiteLLMParams,
+        headers: dict[str, str],
+        after: str | None = None,
+        limit: int | None = None,
+        order: str | None = None,
+        extra_query: dict[str, object] | None = None,
+    ) -> tuple[str, dict[str, object]]:
+        if after is not None or order is not None:
+            raise ValueError("Volcengine video listing does not support after or order.")
+        params = {**({"page_size": limit} if limit is not None else {}), **(extra_query or {})}
+        return f"{api_base.rstrip('/')}/contents/generations/tasks", params
+
+    def transform_video_list_response(
+        self,
+        raw_response: httpx.Response,
+        logging_obj: LiteLLMLoggingObj,
+        custom_llm_provider: str | None = None,
+    ) -> dict[str, str]:
+        response = self._parse_response(raw_response, _VolcEngineVideoTaskList)
+        provider = custom_llm_provider or LlmProviders.VOLCENGINE.value
+        return cast(  # cast-ok: BaseVideoConfig incorrectly types structured list responses as string values
+            dict[str, str],
+            {
+                "object": "list",
+                "data": [self._task_to_video(task, provider).model_dump() for task in response.items],
+                "total": response.total,
+                "has_more": False,
+            },
+        )
+
+    def transform_video_delete_request(
+        self,
+        video_id: str,
+        api_base: str,
+        litellm_params: GenericLiteLLMParams,
+        headers: dict[str, str],
+    ) -> tuple[str, dict[str, object]]:
+        task_id = encode_url_path_segment(extract_original_video_id(video_id), field_name="video_id")
+        return f"{api_base.rstrip('/')}/contents/generations/tasks/{task_id}", {}
+
+    def transform_video_delete_response(
+        self,
+        raw_response: httpx.Response,
+        logging_obj: LiteLLMLoggingObj,
+    ) -> VideoObject:
+        if raw_response.status_code >= 400:
+            raise self.get_error_class(raw_response.text, raw_response.status_code, raw_response.headers)
+        return VideoObject(id="", object="video", status="cancelled")
+
+    def transform_video_remix_request(
+        self,
+        video_id: str,
+        prompt: str,
+        api_base: str,
+        litellm_params: GenericLiteLLMParams,
+        headers: dict[str, str],
+        extra_body: dict[str, object] | None = None,
+    ) -> tuple[str, dict[str, object]]:
+        raise NotImplementedError("Video remix is not supported by Volcengine.")
+
+    def transform_video_remix_response(
+        self,
+        raw_response: httpx.Response,
+        logging_obj: LiteLLMLoggingObj,
+        custom_llm_provider: str | None = None,
+    ) -> VideoObject:
+        raise NotImplementedError("Video remix is not supported by Volcengine.")
+
+    def _task_to_video(
+        self,
+        task: _VolcEngineVideoTask,
+        provider: str,
+        has_video_input: bool = False,
+    ) -> VideoObject:
+        return VideoObject(
+            id=encode_video_id_with_provider(
+                task.id,
+                provider,
+                task.model,
+                has_video_input=has_video_input,
+            ),
+            object="video",
+            status=self._map_status(task.status),
+            created_at=task.created_at,
+            completed_at=task.updated_at if task.status.lower() == "succeeded" else None,
+            error=task.error.model_dump() if task.error is not None else None,
+            seconds=str(task.duration) if task.duration is not None else None,
+            model=task.model,
+            usage={
+                "completion_tokens": task.usage.completion_tokens,
+                "total_tokens": task.usage.total_tokens,
+                **({"duration_seconds": float(task.duration)} if task.duration is not None else {}),
+                **({"video_resolution": task.resolution} if task.resolution is not None else {}),
+                "has_video_input": has_video_input,
+            },
+        )
+
+    @staticmethod
+    def _request_has_video_input(request_data: dict[str, object] | None) -> bool:
+        content = request_data.get("content") if request_data is not None else None
+        if not isinstance(content, list):
+            return False
+        return any(item.get("type") == "video_url" for item in content if isinstance(item, dict))
+
+    @staticmethod
+    def _has_video_input_from_logging_obj(logging_obj: LiteLLMLoggingObj) -> bool:
+        raw_litellm_params: object = getattr(logging_obj, "litellm_params", None)
+        litellm_params = raw_litellm_params if isinstance(raw_litellm_params, dict) else {}
+        video_id = litellm_params.get("video_id")
+        return (
+            decode_video_id_with_provider(video_id).get("has_video_input") is True
+            if isinstance(video_id, str)
+            else False
+        )
+
+    @staticmethod
+    def _map_status(status: str) -> str:
+        return {
+            "queued": "queued",
+            "running": "in_progress",
+            "succeeded": "completed",
+            "failed": "failed",
+            "cancelled": "failed",
+            "expired": "failed",
+        }.get(status.lower(), status.lower())
+
+    def _parse_response(
+        self,
+        raw_response: httpx.Response,
+        response_type: type[ResponseModel],
+    ) -> ResponseModel:
+        if raw_response.status_code >= 400:
+            raise self.get_error_class(raw_response.text, raw_response.status_code, raw_response.headers)
+        try:
+            return response_type.model_validate(raw_response.json())
+        except ValidationError as exc:
+            raise self.get_error_class(
+                f"Invalid Volcengine video response: {exc}",
+                raw_response.status_code,
+                raw_response.headers,
+            ) from exc
+
+    def get_error_class(
+        self,
+        error_message: str,
+        status_code: int,
+        headers: dict[str, str] | httpx.Headers,
+    ) -> BaseLLMException:
+        response_headers = headers if isinstance(headers, httpx.Headers) else httpx.Headers(headers)
+        return VolcEngineError(status_code=status_code, message=error_message, headers=response_headers)

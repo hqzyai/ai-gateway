@@ -100,6 +100,7 @@ class DecodedVideoId(TypedDict, total=False):
     custom_llm_provider: Optional[str]
     model_id: Optional[str]
     video_id: str
+    has_video_input: bool
 
 
 class CharacterObject(BaseModel):

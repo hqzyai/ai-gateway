@@ -25891,6 +25891,7 @@ export interface components {
             vertex_location?: string | null;
             /** Vertex Project */
             vertex_project?: string | null;
+            video_token_pricing?: components["schemas"]["VideoTokenPricing"] | null;
             /** Watsonx Region Name */
             watsonx_region_name?: string | null;
         } & {
@@ -33337,6 +33338,23 @@ export interface components {
             /** Vector Store Name */
             vector_store_name?: string | null;
         };
+        /** VideoTokenPricing */
+        VideoTokenPricing: {
+            /** No Video Input */
+            no_video_input?: number;
+            /** No Video Input 1080P */
+            no_video_input_1080p?: number;
+            /** No Video Input 4K */
+            no_video_input_4k?: number;
+            /** Video Input */
+            video_input?: number;
+            /** Video Input 1080P */
+            video_input_1080p?: number;
+            /** Video Input 4K */
+            video_input_4k?: number;
+        } & {
+            [key: string]: unknown;
+        };
         /** WorkerRegistryEntry */
         WorkerRegistryEntry: {
             /** Name */
@@ -33742,6 +33760,7 @@ export interface components {
             vertex_location?: string | null;
             /** Vertex Project */
             vertex_project?: string | null;
+            video_token_pricing?: components["schemas"]["VideoTokenPricing"] | null;
             /** Watsonx Region Name */
             watsonx_region_name?: string | null;
         } & {

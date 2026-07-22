@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="paper">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>火山引擎多模态 API 接口文档</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/lxgwwenkai-regular.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/lxgwwenkai-bold.css">
+<style>
+:root{--paper:#faf7f0;--paper-alt:#fffdf8;--ink:#35322b;--ink-soft:#6f6a5e;--ink-faint:#a8a191;--line:#cfc8b8;--blue:#3b6ec9;--teal:#0e9d84;--amber:#d9930d;--red:#d64550;--purple:#8958d8;--ease:cubic-bezier(.25,.1,.25,1);--font-hand:'LXGW WenKai','Xiaolai SC','KaiTi','STKaiti','AR PL UKai CN',cursive;--font-mono:ui-monospace,'SF Mono','Cascadia Mono',Consolas,monospace;--wobble-a:255px 15px 225px 15px/15px 225px 15px 255px;--wobble-b:15px 225px 15px 255px/255px 15px 225px 15px}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--font-hand);font-size:15px;line-height:1.68;background-image:radial-gradient(var(--line) .8px,transparent .8px);background-size:26px 26px}.container{max-width:1180px;margin:0 auto;padding:38px 24px 68px}h1{margin:0;font-size:30px;line-height:1.25}h2{margin:0 0 6px;font-size:21px}h3{margin:0 0 8px;font-size:16px}p{margin:0}.subtitle{margin-top:9px;color:var(--ink-soft);max-width:860px}.eyebrow{color:var(--blue);font-weight:700;letter-spacing:.08em;font-size:13px}section{margin-top:38px}.card,.diagram,.table-wrap,.notice,.endpoint,.code-box{background:var(--paper-alt);border:1.6px solid var(--ink);border-radius:var(--wobble-a);padding:16px}.card:nth-child(even),.endpoint:nth-child(even){border-radius:var(--wobble-b)}.quick{display:grid;grid-template-columns:1.1fr 1fr 1fr;gap:15px;margin-top:22px}.quick strong{display:block;font-size:14px}.quick code{display:block;margin-top:6px;font-family:var(--font-mono);font-size:12px;color:var(--blue);overflow-wrap:anywhere}.diagram{margin-top:16px;padding:10px}.diagram svg{display:block;width:100%;height:auto}.section-head{display:flex;justify-content:space-between;gap:16px;align-items:end;margin-bottom:14px}.section-note{color:var(--ink-soft);font-size:13px}.tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}.tab{padding:7px 14px;border:1.6px solid var(--ink);border-radius:var(--wobble-b);background:var(--paper-alt);font:inherit;color:var(--ink-soft);cursor:pointer;transition:color .2s var(--ease),background-color .2s var(--ease),transform .2s var(--ease)}.tab:hover{transform:translateY(-1px);color:var(--ink)}.tab.is-current{background:var(--ink);color:var(--paper-alt)}.tab-panel{display:none}.tab-panel.is-current{display:block;animation:fade-in-up .3s var(--ease) both}.endpoint-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}.method{display:inline-block;padding:2px 8px;border:1.2px solid var(--c,var(--blue));color:var(--c,var(--blue));border-radius:var(--wobble-b);font-family:var(--font-mono);font-size:12px;font-weight:700}.path{display:block;margin-top:8px;font-family:var(--font-mono);font-size:13px;overflow-wrap:anywhere}.endpoint p,.card p,.notice p{color:var(--ink-soft);font-size:13.5px;margin-top:7px}.flow-steps{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}.flow-step{position:relative}.flow-step .num{font-family:var(--font-mono);font-size:24px;color:var(--blue)}.flow-step:not(:last-child)::after{content:'›';position:absolute;right:-12px;top:20px;color:var(--ink-faint);font-size:25px}.model-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}.model{border-top:5px solid var(--c,var(--blue))}.model code{font-family:var(--font-mono);font-size:11.5px;overflow-wrap:anywhere}.caps{margin-top:9px;color:var(--ink-soft);font-size:12.5px}.pill{display:inline-block;margin:3px 3px 0 0;padding:1px 6px;border:1px solid var(--line);border-radius:999px}.yes{border-color:var(--teal);color:var(--teal)}.no{border-color:var(--ink-faint);color:var(--ink-faint)}.table-wrap{padding:0;overflow:hidden}.scroll{overflow-x:auto}table{width:100%;border-collapse:collapse;min-width:760px;font-size:13px}th,td{padding:10px 12px;border-bottom:1px dashed var(--line);text-align:left;vertical-align:top}th{background:color-mix(in srgb,var(--ink) 5%,var(--paper-alt));white-space:nowrap}tr:last-child td{border-bottom:0}td code,code.inline{font-family:var(--font-mono);font-size:12px}.required{color:var(--red);font-weight:700}.optional{color:var(--ink-faint)}.code-box{position:relative;padding:0;overflow:hidden;margin-top:14px}.code-head{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px dashed var(--line);color:var(--ink-soft);font-size:12px}.copy{border:1px solid var(--line);background:var(--paper-alt);color:var(--ink-soft);font:inherit;border-radius:var(--wobble-b);padding:2px 8px;cursor:pointer}.copy.done{color:var(--teal);border-color:var(--teal)}pre{margin:0;padding:14px;overflow:auto;background:color-mix(in srgb,var(--ink) 4%,var(--paper-alt));font-family:var(--font-mono);font-size:12px;line-height:1.65;color:var(--ink);tab-size:2}details{border-top:1px dashed var(--line)}details:first-of-type{border-top:0}summary{padding:11px 14px;cursor:pointer;font-weight:700}details>div{padding:0 14px 14px}.notice{border-color:var(--amber);display:grid;grid-template-columns:30px 1fr;gap:10px}.notice.danger{border-color:var(--red)}.notice .icon{font-family:var(--font-mono);font-size:22px;color:var(--amber)}.notice.danger .icon{color:var(--red)}.status-list{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.status{border-left:4px solid var(--c,var(--blue))}.status code{font-family:var(--font-mono);color:var(--c,var(--blue))}.error-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}.source{color:var(--ink-faint);font-size:12px;margin-top:28px}.lifeline{stroke:var(--line);stroke-dasharray:2 5}.node .shape path,.node .shape rect{stroke:var(--c,var(--ink))}.node .shape rect{fill:none;stroke-width:1.6}.node .hfill path{stroke:var(--c,var(--ink-faint));opacity:.3}.node .node-label{fill:var(--ink);font-family:var(--font-hand);font-size:14px;font-weight:700;text-anchor:middle;dominant-baseline:central}.node .node-sub{fill:var(--ink-soft);font-family:var(--font-hand);font-size:11.5px;text-anchor:middle;dominant-baseline:central}.edge path{stroke:var(--blue);fill:none}.edge-label{fill:var(--ink-soft);font-family:var(--font-hand);font-size:11.5px;text-anchor:middle}.flow-dot{display:none}@supports(offset-path:path('M0 0L8 8')){.flow-dot{display:block;opacity:0;offset-rotate:0deg;animation:flow-move linear infinite}}@keyframes flow-move{0%{offset-distance:0;opacity:0}12%,88%{opacity:.9}100%{offset-distance:100%;opacity:0}}@keyframes fade-in-up{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}.anim-in{opacity:0;animation:fade-in-up .4s var(--ease) forwards;animation-delay:calc(var(--i,0)*60ms)}.draw-in{stroke-dasharray:1;stroke-dashoffset:1;animation:draw-on .55s var(--ease) both;animation-delay:calc(var(--di,0)*15ms)}@keyframes draw-on{to{stroke-dashoffset:0}}.fade-el{opacity:0;animation:fade-el-in .35s ease-out both;animation-delay:calc(var(--di,0)*15ms)}@keyframes fade-el-in{to{opacity:1}}@media(max-width:960px){.model-grid{grid-template-columns:repeat(2,1fr)}.quick{grid-template-columns:1fr}.flow-steps{grid-template-columns:repeat(2,1fr)}.flow-step::after{display:none}}@media(max-width:720px){.container{padding:28px 14px 52px}.endpoint-grid,.error-grid,.status-list,.model-grid,.flow-steps{grid-template-columns:1fr}.section-head{display:block}.section-note{margin-top:6px}h1{font-size:25px}}@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}html{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+<main class="container">
+<header class="anim-in">
+<div class="eyebrow">PUBLIC API REFERENCE · VOLCENGINE MULTIMODAL</div>
+<h1>火山引擎文生图、图生图、生视频接口文档</h1>
+<p class="subtitle">调用方只连接 LiteLLM Gateway，不直接接触火山密钥。以下文档覆盖当前实现支持的模型、端点、参数、异步状态、返回结构与错误处理。</p>
+<div class="quick">
+<div class="card"><strong>Base URL</strong><code>http://&lt;gateway-host&gt;:4000</code></div>
+<div class="card"><strong>认证</strong><code>Authorization: Bearer $LITELLM_API_KEY</code></div>
+<div class="card"><strong>内容类型</strong><code>application/json · 图片编辑为 multipart/form-data</code></div>
+</div>
+</header>
+
+<section>
+<div class="section-head"><div><div class="eyebrow">REQUEST PATH</div><h2>统一网关，代理火山生成</h2></div><div class="section-note">Provider Key 只保存在网关服务端</div></div>
+<div class="diagram" id="architecture"></div>
+</section>
+
+<section>
+<div class="section-head"><div><div class="eyebrow">ENDPOINTS</div><h2>对外能力一览</h2></div></div>
+<div class="endpoint-grid">
+<article class="endpoint" style="--c:var(--teal)"><span class="method">POST</span><code class="path">/v1/images/generations</code><p>文生图；也可通过 JSON 的 <code class="inline">image</code> 字段执行图生图。</p></article>
+<article class="endpoint" style="--c:var(--teal)"><span class="method">POST</span><code class="path">/v1/images/edits</code><p>OpenAI 兼容的图片编辑入口，上传一张或多张图片。</p></article>
+<article class="endpoint" style="--c:var(--purple)"><span class="method">POST</span><code class="path">/v1/videos</code><p>创建异步视频生成任务，立即返回 queued 状态与 video_id。</p></article>
+<article class="endpoint" style="--c:var(--blue)"><span class="method">GET</span><code class="path">/v1/videos/{video_id}</code><p>查询任务状态与 usage；完成后 status 为 completed。</p></article>
+<article class="endpoint" style="--c:var(--blue)"><span class="method">GET</span><code class="path">/v1/videos/{video_id}/content</code><p>任务完成后下载视频二进制内容；未完成会返回错误。</p></article>
+<article class="endpoint" style="--c:var(--amber)"><span class="method">GET</span><code class="path">/v1/videos?custom_llm_provider=volcengine&amp;limit=20</code><p>列出火山视频任务；支持 limit 与 extra query，不支持 after / order。</p></article>
+<article class="endpoint" style="--c:var(--red)"><span class="method">DELETE</span><code class="path">/v1/videos/{video_id}</code><p>取消或删除上游任务，响应映射为 cancelled。</p></article>
+<article class="endpoint" style="--c:var(--ink-faint)"><span class="method">不支持</span><code class="path">remix · characters · video edits · extensions</code><p>LiteLLM 有这些通用路由，但当前火山 Seedance 2.0 适配器不实现。</p></article>
+</div>
+</section>
+
+<section>
+<div class="section-head"><div><div class="eyebrow">MODEL MATRIX</div><h2>支持模型与能力</h2></div><div class="section-note">代理模型列表是否可见，仍取决于模型管理中是否已添加路由</div></div>
+<div class="model-grid">
+<article class="card model" style="--c:var(--teal)"><code>doubao-seedream-5-0-260128</code><div class="caps"><span class="pill yes">文生图</span><span class="pill yes">图生图</span><span class="pill yes">组图</span></div></article>
+<article class="card model" style="--c:var(--purple)"><code>doubao-seedream-5-0-pro-260628</code><div class="caps"><span class="pill yes">文生图</span><span class="pill yes">图生图</span><span class="pill no">不支持组图</span></div></article>
+<article class="card model" style="--c:var(--blue)"><code>doubao-seedance-2-0-260128</code><div class="caps"><span class="pill yes">480p</span><span class="pill yes">720p</span><span class="pill yes">1080p</span><span class="pill yes">4K</span></div></article>
+<article class="card model" style="--c:var(--amber)"><code>doubao-seedance-2-0-fast-260128</code><div class="caps"><span class="pill yes">480p</span><span class="pill yes">720p</span><span class="pill no">无 1080p / 4K</span></div></article>
+<article class="card model" style="--c:var(--purple)"><code>doubao-seedance-2-0-mini-260615</code><div class="caps"><span class="pill yes">480p</span><span class="pill yes">720p</span><span class="pill no">无 1080p / 4K</span></div></article>
+</div>
+<div class="notice" style="margin-top:15px"><div class="icon">i</div><div><h3>当前数据库路由状态</h3><p>当前已启用 <code class="inline">volcengine/doubao-seedream-5-0-260128</code> 与 <code class="inline">volcengine/doubao-seedance-2-0-mini-260615</code>。其余模型实现与计费已验证，但需先在模型管理中添加路由，才能用对应模型名从代理调用。</p></div></div>
+</section>
+
+<section>
+<div class="section-head"><div><div class="eyebrow">HOW TO CALL</div><h2>按场景查看请求、参数与响应</h2></div><div class="section-note">代码块可直接复制后替换主机名与输入资源</div></div>
+<div class="tabs" role="tablist">
+<button class="tab is-current" data-tab="text-image">文生图</button>
+<button class="tab" data-tab="image-image">图生图</button>
+<button class="tab" data-tab="video">生视频</button>
+<button class="tab" data-tab="poll">轮询与下载</button>
+</div>
+
+<div class="tab-panel is-current" data-panel="text-image">
+<div class="flow-steps"><div class="card flow-step"><div class="num">01</div><h3>选择模型</h3><p>Lite 支持组图；Pro 支持普通图 / 大图两档。</p></div><div class="card flow-step"><div class="num">02</div><h3>编写提示词</h3><p>prompt 为必填；其他字段均按需传入。</p></div><div class="card flow-step"><div class="num">03</div><h3>POST JSON</h3><p>调用 <code class="inline">/v1/images/generations</code>。</p></div><div class="card flow-step"><div class="num">04</div><h3>读取 data</h3><p>响应包含 URL 或 b64_json，以及 usage。</p></div></div>
+<div class="code-box"><div class="code-head"><span>curl · 文生图</span><button class="copy">复制</button></div><pre><code>curl -sS http://&lt;gateway-host&gt;:4000/v1/images/generations \
+  -H "Authorization: Bearer $LITELLM_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "doubao-seedream-5-0-260128",
+    "prompt": "一只白色机械猫站在雨后的上海街头，电影感",
+    "size": "2048x2048",
+    "response_format": "url",
+    "output_format": "png",
+    "watermark": false,
+    "seed": 42
+  }'</code></pre></div>
+<div class="code-box"><div class="code-head"><span>Python · OpenAI SDK 兼容调用</span><button class="copy">复制</button></div><pre><code>import os
+
+from openai import OpenAI
+
+client = OpenAI(
+    api_key=os.environ["LITELLM_API_KEY"],
+    base_url="http://&lt;gateway-host&gt;:4000/v1",
+)
+
+result = client.images.generate(
+    model="doubao-seedream-5-0-260128",
+    prompt="一只白色机械猫站在雨后的上海街头，电影感",
+    size="2048x2048",
+    response_format="url",
+    extra_body={"output_format": "png", "watermark": False, "seed": 42},
+)
+print(result.data[0].url)</code></pre></div>
+</div>
+
+<div class="tab-panel" data-panel="image-image">
+<div class="notice"><div class="icon">i</div><div><h3>两种图生图入口</h3><p>JSON 客户端可向 <code class="inline">/v1/images/generations</code> 直接传 <code class="inline">image</code> URL / data URL / 数组；文件上传客户端使用 <code class="inline">/v1/images/edits</code>。两者底层都走火山 <code class="inline">/images/generations</code>。</p></div></div>
+<div class="code-box"><div class="code-head"><span>curl · JSON 图片 URL</span><button class="copy">复制</button></div><pre><code>curl -sS http://&lt;gateway-host&gt;:4000/v1/images/generations \
+  -H "Authorization: Bearer $LITELLM_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "doubao-seedream-5-0-pro-260628",
+    "prompt": "保留主体构图，改为水彩插画风格",
+    "image": [
+      "https://example.com/reference-1.png",
+      "https://example.com/reference-2.png"
+    ],
+    "size": "2048x2048",
+    "response_format": "url"
+  }'</code></pre></div>
+<div class="code-box"><div class="code-head"><span>curl · multipart 文件上传</span><button class="copy">复制</button></div><pre><code>curl -sS http://&lt;gateway-host&gt;:4000/v1/images/edits \
+  -H "Authorization: Bearer $LITELLM_API_KEY" \
+  -F "model=doubao-seedream-5-0-260128" \
+  -F "prompt=保留人物姿态，把背景改成雪山日落" \
+  -F "image=@./reference.png" \
+  -F "size=2048x2048" \
+  -F "response_format=url"</code></pre></div>
+</div>
+
+<div class="tab-panel" data-panel="video">
+<div class="flow-steps"><div class="card flow-step"><div class="num">01</div><h3>创建任务</h3><p>POST 后立刻获得编码后的 video_id。</p></div><div class="card flow-step"><div class="num">02</div><h3>保存 ID</h3><p>必须原样保存，不要自行解码或截断。</p></div><div class="card flow-step"><div class="num">03</div><h3>轮询状态</h3><p>queued / in_progress 时继续等待。</p></div><div class="card flow-step"><div class="num">04</div><h3>下载内容</h3><p>completed 后请求 content 端点。</p></div></div>
+<div class="code-box"><div class="code-head"><span>curl · 文本 / 首帧图片生视频</span><button class="copy">复制</button></div><pre><code>curl -sS http://&lt;gateway-host&gt;:4000/v1/videos \
+  -H "Authorization: Bearer $LITELLM_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "doubao-seedance-2-0-mini-260615",
+    "prompt": "镜头缓慢推进，海浪拍打黑色礁石，环境音自然",
+    "input_reference": "https://example.com/first-frame.png",
+    "seconds": "5",
+    "size": "1280x720",
+    "generate_audio": true,
+    "watermark": false
+  }'</code></pre></div>
+<div class="code-box"><div class="code-head"><span>curl · 包含参考视频输入</span><button class="copy">复制</button></div><pre><code>curl -sS http://&lt;gateway-host&gt;:4000/v1/videos \
+  -H "Authorization: Bearer $LITELLM_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "doubao-seedance-2-0-260128",
+    "prompt": "保持原视频运动节奏，改成水墨动画风格",
+    "content": [
+      {"type": "text", "text": "保持原视频运动节奏，改成水墨动画风格"},
+      {
+        "type": "video_url",
+        "video_url": {"url": "https://example.com/reference.mp4"},
+        "role": "reference_video"
+      }
+    ],
+    "duration": 5,
+    "resolution": "720p",
+    "ratio": "16:9",
+    "generate_audio": true
+  }'</code></pre></div>
+<div class="notice danger" style="margin-top:14px"><div class="icon">!</div><div><h3>视频输入影响计费档位</h3><p>只有 <code class="inline">content</code> 中存在 <code class="inline">type: video_url</code> 才按“有视频输入”单价计费。<code class="inline">input_reference</code> 是首帧图片，不属于视频输入。</p></div></div>
+</div>
+
+<div class="tab-panel" data-panel="poll">
+<div class="diagram" id="sequence"></div>
+<div class="code-box"><div class="code-head"><span>bash · 轮询并下载</span><button class="copy">复制</button></div><pre><code>VIDEO_ID='video_...'
+
+curl -sS \
+  -H "Authorization: Bearer $LITELLM_API_KEY" \
+  "http://&lt;gateway-host&gt;:4000/v1/videos/$VIDEO_ID"
+
+curl -sS \
+  -H "Authorization: Bearer $LITELLM_API_KEY" \
+  "http://&lt;gateway-host&gt;:4000/v1/videos/$VIDEO_ID/content" \
+  --output result.mp4</code></pre></div>
+<div class="status-list" style="margin-top:14px"><div class="card status" style="--c:var(--amber)"><code>queued</code><p>任务排队中，稍后轮询。</p></div><div class="card status" style="--c:var(--blue)"><code>in_progress</code><p>正在生成，继续轮询。</p></div><div class="card status" style="--c:var(--teal)"><code>completed</code><p>可请求 content 下载。</p></div><div class="card status" style="--c:var(--red)"><code>failed</code><p>读取 error 并停止重试。</p></div></div>
+</div>
+</section>
+
+<section>
+<div class="section-head"><div><div class="eyebrow">IMAGE PARAMETERS</div><h2>图片生成参数全集</h2></div><div class="section-note"><span class="required">必填</span> / <span class="optional">可选</span></div></div>
+<div class="table-wrap"><div class="scroll"><table><thead><tr><th>参数</th><th>类型</th><th>适用模型</th><th>说明</th></tr></thead><tbody>
+<tr><td><code>model</code> <span class="required">必填</span></td><td>string</td><td>全部图片模型</td><td>模型管理中暴露的模型名。</td></tr>
+<tr><td><code>prompt</code> <span class="required">必填</span></td><td>string</td><td>全部</td><td>生成或编辑指令。</td></tr>
+<tr><td><code>image</code></td><td>string | string[]</td><td>全部</td><td>图生图参考图片 URL、data URL 或数组。</td></tr>
+<tr><td><code>size</code></td><td>string</td><td>全部</td><td>目标尺寸，例如 <code>2048x2048</code>。</td></tr>
+<tr><td><code>response_format</code></td><td>string</td><td>全部</td><td><code>url</code> 或 <code>b64_json</code>。</td></tr>
+<tr><td><code>output_format</code></td><td>string</td><td>Lite / Pro</td><td>输出编码格式，例如 png、jpeg。</td></tr>
+<tr><td><code>watermark</code></td><td>boolean</td><td>全部</td><td>是否添加水印。</td></tr>
+<tr><td><code>seed</code></td><td>integer</td><td>全部</td><td>随机种子，用于提高结果可复现性。</td></tr>
+<tr><td><code>optimize_prompt_options</code></td><td>object</td><td>全部</td><td>提示词优化配置。</td></tr>
+<tr><td><code>sequential_image_generation</code></td><td>string</td><td>仅 Lite</td><td>启用或禁用组图生成。</td></tr>
+<tr><td><code>sequential_image_generation_options</code></td><td>object</td><td>仅 Lite</td><td>组图数量等配置。</td></tr>
+<tr><td><code>tools</code></td><td>array</td><td>仅 Lite</td><td>可用工具配置，例如搜索增强。</td></tr>
+</tbody></table></div></div>
+<div class="notice" style="margin-top:14px"><div class="icon">i</div><div><h3>图片编辑端点参数</h3><p><code class="inline">/v1/images/edits</code> 接收 <code class="inline">model</code>、<code class="inline">prompt</code>、一个或多个 <code class="inline">image</code> 文件，以及可选 <code class="inline">size</code>、<code class="inline">response_format</code>；文件会在网关内转为 data URL 再发给火山。</p></div></div>
+</section>
+
+<section>
+<div class="section-head"><div><div class="eyebrow">VIDEO PARAMETERS</div><h2>视频创建参数全集</h2></div><div class="section-note">通用字段会映射成火山字段；扩展字段直接透传</div></div>
+<div class="table-wrap"><div class="scroll"><table><thead><tr><th>参数</th><th>类型</th><th>映射 / 约束</th><th>用途</th></tr></thead><tbody>
+<tr><td><code>model</code> <span class="required">必填</span></td><td>string</td><td>3 个 Seedance 模型</td><td>选择视频模型。</td></tr>
+<tr><td><code>prompt</code> <span class="required">必填</span></td><td>string</td><td>转为 content 文本项</td><td>视频生成描述。</td></tr>
+<tr><td><code>input_reference</code></td><td>string</td><td>图片 URL / data URL</td><td>映射为 <code>first_frame</code>，不是视频输入。</td></tr>
+<tr><td><code>seconds</code></td><td>string | integer</td><td>映射为 <code>duration</code></td><td>Seedance 2.0 系列范围 4–15 秒。</td></tr>
+<tr><td><code>size</code></td><td>WIDTHxHEIGHT</td><td>映射为 ratio / resolution</td><td>常见值 1280x720、1920x1080、720x1280 等。</td></tr>
+<tr><td><code>user</code></td><td>string</td><td>映射为 safety_identifier</td><td>调用方安全标识。</td></tr>
+<tr><td><code>content</code></td><td>array</td><td>火山扩展</td><td>自定义文本、图片、参考视频等多模态内容；会覆盖自动构造内容。</td></tr>
+<tr><td><code>duration</code></td><td>integer</td><td>火山扩展，4–15</td><td>直接指定时长；与 seconds 二选一。</td></tr>
+<tr><td><code>resolution</code></td><td>string</td><td>480p / 720p / 1080p / 4K</td><td>Fast / Mini 仅支持 480p、720p。</td></tr>
+<tr><td><code>ratio</code></td><td>string</td><td>16:9 / 4:3 / 1:1 / 3:4 / 9:16 / 21:9</td><td>画面宽高比。</td></tr>
+<tr><td><code>generate_audio</code></td><td>boolean</td><td>火山扩展</td><td>是否同时生成音频。</td></tr>
+<tr><td><code>watermark</code></td><td>boolean</td><td>火山扩展</td><td>是否添加水印。</td></tr>
+<tr><td><code>return_last_frame</code></td><td>boolean</td><td>火山扩展</td><td>是否返回最后一帧。</td></tr>
+<tr><td><code>priority</code></td><td>string | integer</td><td>火山扩展</td><td>任务优先级。</td></tr>
+<tr><td><code>tools</code></td><td>array</td><td>火山扩展</td><td>视频生成工具配置。</td></tr>
+<tr><td><code>safety_identifier</code></td><td>string</td><td>火山扩展</td><td>安全审计标识；显式值优先于 user。</td></tr>
+<tr><td><code>execution_expires_after</code></td><td>integer</td><td>火山扩展</td><td>任务执行过期时间。</td></tr>
+<tr><td><code>callback_url</code></td><td>string</td><td>火山扩展</td><td>任务状态回调地址。</td></tr>
+<tr><td><code>camera_fixed</code></td><td>boolean</td><td>火山扩展</td><td>控制镜头是否固定。</td></tr>
+<tr><td><code>draft</code></td><td>boolean</td><td>火山扩展</td><td>草稿生成选项。</td></tr>
+<tr><td><code>frames</code></td><td>integer</td><td>火山扩展</td><td>按帧数指定生成规模。</td></tr>
+<tr><td><code>seed</code></td><td>integer</td><td>火山扩展</td><td>随机种子。</td></tr>
+<tr><td><code>service_tier</code></td><td>string</td><td>火山扩展</td><td>服务等级选择。</td></tr>
+</tbody></table></div></div>
+</section>
+
+<section>
+<div class="section-head"><div><div class="eyebrow">RESPONSES</div><h2>关键响应结构</h2></div></div>
+<div class="endpoint-grid">
+<div class="code-box" style="margin-top:0"><div class="code-head"><span>图片成功响应</span><button class="copy">复制</button></div><pre><code>{
+  "created": 1784700000,
+  "data": [
+    {"url": "https://.../generated.png"}
+  ],
+  "usage": {
+    "input_tokens": 0,
+    "input_tokens_details": {
+      "image_tokens": 0,
+      "text_tokens": 0
+    },
+    "output_tokens": 16384,
+    "total_tokens": 16384
+  }
+}</code></pre></div>
+<div class="code-box" style="margin-top:0"><div class="code-head"><span>视频状态响应</span><button class="copy">复制</button></div><pre><code>{
+  "id": "video_...",
+  "object": "video",
+  "status": "completed",
+  "seconds": "5",
+  "model": "doubao-seedance-2-0-mini-260615",
+  "usage": {
+    "completion_tokens": 40594,
+    "total_tokens": 40594,
+    "duration_seconds": 5,
+    "video_resolution": "480p",
+    "has_video_input": false
+  }
+}</code></pre></div>
+</div>
+</section>
+
+<section>
+<div class="section-head"><div><div class="eyebrow">ERROR PLAYBOOK</div><h2>常见错误与处理</h2></div></div>
+<div class="error-grid">
+<article class="card"><h3>Budget has been exceeded</h3><p>虚拟 Key、用户或团队预算不足。提高对应预算，或换用有余额的 Key；异步视频任务可能已在火山开始，预算应在创建前留足。</p></article>
+<article class="card"><h3>模型未配置 / 不在列表</h3><p>实现支持不等于当前代理已路由。到模型管理添加模型，并使用暴露给客户端的 <code class="inline">model_name</code>。</p></article>
+<article class="card"><h3>分辨率不支持</h3><p>Fast / Mini 不支持 1080p、4K；切换到 480p / 720p，或改用完整版 Seedance 2.0。</p></article>
+<article class="card"><h3>视频仍是 queued / in_progress</h3><p>这不是失败。指数退避轮询状态；只有 completed 后再调用 content 下载，failed 时停止。</p></article>
+<article class="card"><h3>不支持的参数</h3><p>默认会返回明确错误。若网关开启 drop_params，未知字段可能被丢弃；生产调用应只传本文档列出的字段。</p></article>
+<article class="card"><h3>视频 ID 无效</h3><p>必须保存 LiteLLM 返回的完整编码 ID。不要只截取火山原始 task id，否则模型和视频输入计费上下文会丢失。</p></article>
+</div>
+</section>
+
+<section>
+<div class="notice danger"><div class="icon">!</div><div><h3>安全边界</h3><p>客户端只持有 LiteLLM Virtual Key。火山 <code class="inline">ARK_API_KEY / VOLCENGINE_API_KEY</code> 只配置在网关服务端；不要写入浏览器代码、移动端包、HTML 文档、日志或仓库。本文所有示例均使用 <code class="inline">$LITELLM_API_KEY</code> 占位符。</p></div></div>
+</section>
+<p class="source">文档基于当前 LiteLLM 火山引擎 transformation、代理路由与 2026-07-22 真实端到端验证生成。</p>
+</main>
+
+<script type="module">
+const SKETCH={seed:7,roughness:1.2,bowing:1.1};
+const REDUCED=matchMedia('(prefers-reduced-motion: reduce)').matches;
+function loadScript(srcs,timeout=6000){return new Promise(resolve=>{const timer=setTimeout(()=>resolve(false),timeout);let i=0;const next=()=>{if(i>=srcs.length){clearTimeout(timer);resolve(false);return}const s=document.createElement('script');s.src=srcs[i++];s.onload=()=>{clearTimeout(timer);resolve(true)};s.onerror=()=>{s.remove();next()};document.head.appendChild(s)};next()})}
+const hasRough=await loadScript(['https://cdn.jsdelivr.net/npm/roughjs@4.6.6/bundled/rough.min.js','https://unpkg.com/roughjs@4.6.6/bundled/rough.js']);
+const NS='http://www.w3.org/2000/svg';
+const svgEl=(tag,attrs={})=>{const el=document.createElementNS(NS,tag);for(const [k,v] of Object.entries(attrs))el.setAttribute(k,v);return el};
+let rcHolder=null;
+function hashId(s){let h=9;for(const c of String(s))h=(h*31+c.charCodeAt(0))%1000;return h}
+function text(x,y,str,cls){const t=svgEl('text',{x,y,class:cls});t.textContent=str;return t}
+function sketchRect(x,y,w,h,seed){if(!hasRough)return svgEl('rect',{x,y,width:w,height:h,rx:8});return rcHolder.rectangle(x,y,w,h,{roughness:SKETCH.roughness,bowing:SKETCH.bowing,seed,strokeWidth:1.6})}
+function sketchPath(d,seed){if(!hasRough)return svgEl('path',{d,class:'shaft'});const g=rcHolder.path(d,{roughness:1,bowing:.8,seed,strokeWidth:1.6});g.classList.add('shaft');return g}
+function nodeBox({id,x,y,w=146,h=50,label,sub,color}){const g=svgEl('g',{class:'node','data-id':id});g.style.setProperty('--c',color);if(hasRough){const hf=svgEl('g',{class:'hfill'});hf.appendChild(rcHolder.rectangle(x,y,w,h,{seed:hashId(id),stroke:'none',fill:'#000',fillStyle:'hachure',fillWeight:.5,hachureGap:8,roughness:1}));g.appendChild(hf)}const shape=svgEl('g',{class:'shape'});shape.appendChild(sketchRect(x,y,w,h,hashId(id)));g.appendChild(shape);g.appendChild(text(x+w/2,y+h/2-(sub?7:0),label,'node-label'));if(sub)g.appendChild(text(x+w/2,y+h/2+13,sub,'node-sub'));return g}
+function edgeLine({id,x1,y1,x2,y2,label,color='var(--blue)'}){const d=`M ${x1} ${y1} L ${x2} ${y2}`,ang=Math.atan2(y2-y1,x2-x1),g=svgEl('g',{class:'edge','data-id':id});g.dataset.d=d;g.style.setProperty('--c',color);g.appendChild(sketchPath(d,hashId(id)));for(const side of [.5,-.5])g.appendChild(sketchPath(`M ${x2-10*Math.cos(ang+side)} ${y2-10*Math.sin(ang+side)} L ${x2} ${y2}`,hashId(id)+7));if(label)g.appendChild(text((x1+x2)/2,(y1+y2)/2-9,label,'edge-label'));return g}
+function flowDots(d){const g=svgEl('g',{class:'flow'});for(let i=0;i<2&&!REDUCED;i++){const c=svgEl('circle',{r:3.3,fill:'var(--blue)',class:'flow-dot'});c.style.offsetPath=`path('${d}')`;c.style.animationDuration='2.2s';c.style.animationDelay=`${-1.1*i}s`;g.appendChild(c)}return g}
+function renderArchitecture(){const svg=svgEl('svg',{viewBox:'0 0 980 170',role:'img','aria-label':'客户端通过 LiteLLM Gateway 调用火山引擎并返回生成产物与 usage'});if(hasRough)rcHolder=rough.svg(svg);const nodes=[{id:'client',x:20,y:55,label:'调用方',sub:'Virtual Key',color:'var(--amber)'},{id:'gateway',x:220,y:55,label:'LiteLLM Gateway',sub:'鉴权 · 路由 · 预算',color:'var(--blue)',w:170},{id:'volcano',x:450,y:55,label:'火山引擎',sub:'Ark 生成任务',color:'var(--purple)'},{id:'result',x:650,y:55,label:'产物 + Usage',sub:'图片 / 视频 / tokens',color:'var(--teal)',w:170},{id:'ledger',x:880,y:55,label:'响应',sub:'状态 · 费用',color:'var(--red)',w:80}];const edges=[{id:'a',x1:170,y1:80,x2:216,y2:80,label:'HTTPS'},{id:'b',x1:394,y1:80,x2:446,y2:80,label:'Provider Key'},{id:'c',x1:600,y1:80,x2:646,y2:80,label:'生成'},{id:'d',x1:824,y1:80,x2:876,y2:80,label:'标准化'}];edges.forEach(e=>{const g=edgeLine(e);svg.appendChild(g);svg.appendChild(flowDots(g.dataset.d))});nodes.forEach(n=>svg.appendChild(nodeBox(n)));document.getElementById('architecture').appendChild(svg);return svg}
+function renderSequence(){const actors=[{id:'client',label:'调用方',color:'var(--amber)'},{id:'gateway',label:'LiteLLM',color:'var(--blue)'},{id:'volcano',label:'火山任务',color:'var(--purple)'},{id:'content',label:'视频产物',color:'var(--teal)'}],messages=[['client','gateway','POST /v1/videos'],['gateway','volcano','创建任务'],['gateway','client','queued + video_id'],['client','gateway','GET /v1/videos/{id}'],['gateway','volcano','查询状态'],['gateway','client','completed + usage'],['client','gateway','GET /content'],['gateway','content','下载 video_url'],['gateway','client','video/mp4']];const colX=i=>95+i*230,top=50,rowH=37,h=top+rowH*(messages.length+1),svg=svgEl('svg',{viewBox:`0 0 880 ${h}`,role:'img','aria-label':'视频异步创建、轮询与下载时序图'});if(hasRough)rcHolder=rough.svg(svg);actors.forEach((a,i)=>{svg.appendChild(svgEl('line',{class:'lifeline',x1:colX(i),y1:53,x2:colX(i),y2:h-8}));svg.appendChild(nodeBox({id:a.id,x:colX(i)-70,y:6,w:140,h:38,label:a.label,color:a.color}))});messages.forEach((m,r)=>{const from=actors.findIndex(a=>a.id===m[0]),to=actors.findIndex(a=>a.id===m[1]),dir=to>from?1:-1,y=top+rowH*(r+1);svg.appendChild(edgeLine({id:`m${r}`,x1:colX(from)+5*dir,y1:y,x2:colX(to)-7*dir,y2:y,label:m[2]}))});document.getElementById('sequence').appendChild(svg);return svg}
+function cssIntro(svg){let i=0;svg.querySelectorAll('.shape path,.shape rect,.edge path').forEach(p=>{p.setAttribute('pathLength',1);p.style.setProperty('--di',i++);p.classList.add('draw-in')});svg.querySelectorAll('text').forEach(t=>{t.style.setProperty('--di',i);t.classList.add('fade-el')})}
+const architecture=renderArchitecture();cssIntro(architecture);
+document.querySelector('.tabs').addEventListener('click',e=>{const button=e.target.closest('[data-tab]');if(!button)return;document.querySelectorAll('.tab').forEach(el=>el.classList.toggle('is-current',el===button));document.querySelectorAll('.tab-panel').forEach(el=>el.classList.toggle('is-current',el.dataset.panel===button.dataset.tab));if(button.dataset.tab==='poll'&&!document.querySelector('#sequence svg')){const svg=renderSequence();cssIntro(svg)}});
+document.querySelectorAll('.copy').forEach(button=>button.addEventListener('click',async()=>{const code=button.closest('.code-box').querySelector('code').textContent;try{await navigator.clipboard.writeText(code);button.textContent='已复制';button.classList.add('done');setTimeout(()=>{button.textContent='复制';button.classList.remove('done')},1500)}catch{button.textContent='请手动复制'}}));
+</script>
+</body>
+</html>

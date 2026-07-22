@@ -6,7 +6,7 @@ Format: vid_{base64_encoded_string}
 """
 
 import base64
-from typing import Optional, Tuple
+from typing import Optional
 
 from litellm._logging import verbose_logger
 from litellm.types.utils import SpecialEnums
@@ -35,7 +35,12 @@ def _add_base64_padding(value: str) -> str:
     return value
 
 
-def encode_video_id_with_provider(video_id: str, provider: str, model_id: Optional[str] = None) -> str:
+def encode_video_id_with_provider(
+    video_id: str,
+    provider: str,
+    model_id: Optional[str] = None,
+    has_video_input: Optional[bool] = None,
+) -> str:
     """Encode provider and model_id into video_id using base64."""
     if not provider or not video_id:
         return video_id
@@ -50,8 +55,11 @@ def encode_video_id_with_provider(video_id: str, provider: str, model_id: Option
 
     # ID is not encoded (even if it starts with video_), so encode it
     assembled_id = str(SpecialEnums.LITELLM_MANAGED_VIDEO_COMPLETE_STR.value).format(provider, model_id or "", video_id)
+    billing_context = (
+        ";has_video_input:1" if has_video_input is True else ";has_video_input:0" if has_video_input is False else ""
+    )
 
-    base64_encoded_id: str = base64.b64encode(assembled_id.encode("utf-8")).decode("utf-8")
+    base64_encoded_id: str = base64.b64encode(f"{assembled_id}{billing_context}".encode("utf-8")).decode("utf-8")
 
     return f"{VIDEO_ID_PREFIX}{base64_encoded_id}"
 
@@ -99,10 +107,12 @@ def decode_video_id_with_provider(encoded_video_id: str) -> DecodedVideoId:
             model_id = model_id_part.replace("model_id:", "")
             decoded_video_id = video_id_part.replace("video_id:", "")
 
+        billing_context = next((part for part in parts[3:] if part.startswith("has_video_input:")), None)
         return DecodedVideoId(
             custom_llm_provider=custom_llm_provider,
             model_id=model_id,
             video_id=decoded_video_id,
+            **({"has_video_input": billing_context == "has_video_input:1"} if billing_context is not None else {}),
         )
     except Exception as e:
         verbose_logger.debug(f"Error decoding video_id '{encoded_video_id}': {e}")

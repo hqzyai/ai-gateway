@@ -28,6 +28,7 @@ export interface MessageType {
   content: string | MultimodalContent[];
   model?: string;
   isImage?: boolean;
+  isVideo?: boolean;
   isAudio?: boolean;
   isEmbeddings?: boolean;
   reasoningContent?: string;

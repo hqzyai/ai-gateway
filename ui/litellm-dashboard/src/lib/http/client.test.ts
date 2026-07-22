@@ -12,6 +12,9 @@ const errorResponse = (status: number, body: unknown): Response =>
 const rawErrorResponse = (status: number, text: string): Response =>
   ({ ok: false, status, text: async () => text }) as unknown as Response;
 
+const blobResponse = (blob: Blob): Response =>
+  ({ ok: true, status: 200, blob: async () => blob }) as unknown as Response;
+
 describe("createApiClient", () => {
   it("builds the URL from base + path + query and sets the auth + JSON headers", async () => {
     const fetchImpl = vi.fn(async () => okResponse({ ok: true }));
@@ -74,6 +77,14 @@ describe("createApiClient", () => {
     const client = createApiClient({ getBaseUrl: () => "", fetchImpl });
 
     await expect(client.delete("/policies/abc", { accessToken: "sk" })).resolves.toBeUndefined();
+  });
+
+  it("returns binary response bodies as blobs", async () => {
+    const videoBlob = new Blob(["video"], { type: "video/mp4" });
+    const fetchImpl = vi.fn(async () => blobResponse(videoBlob));
+    const client = createApiClient({ getBaseUrl: () => "", fetchImpl });
+
+    await expect(client.getBlob("/v1/videos/video-123/content", { accessToken: "sk" })).resolves.toBe(videoBlob);
   });
 
   it("omits the auth header when no token is provided", async () => {

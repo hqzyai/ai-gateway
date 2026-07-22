@@ -3,7 +3,7 @@
 import logging
 import time
 from functools import lru_cache
-from typing import TYPE_CHECKING, Any, List, Literal, Optional, Tuple, Union, cast
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union, cast
 
 from httpx import Response
 from pydantic import BaseModel
@@ -92,6 +92,7 @@ from litellm.types.llms.openai import (
     ResponsesAPIResponse,
 )
 from litellm.types.rerank import RerankBilledUnits, RerankResponse
+from litellm.types.videos.main import VideoObject
 from litellm.types.utils import (
     CallTypesLiteral,
     LiteLLMRealtimeStreamLoggingObject,
@@ -142,6 +143,8 @@ _VIDEO_CALL_TYPES = frozenset(
         CallTypes.avideo_edit.value,
         CallTypes.video_remix.value,
         CallTypes.avideo_remix.value,
+        CallTypes.video_retrieve.value,
+        CallTypes.avideo_retrieve.value,
     }
 )
 
@@ -1362,18 +1365,26 @@ def completion_cost(
                     usage_obj = getattr(completion_response, "usage", None)
                     duration_seconds: Optional[float] = None
                     video_resolution: Optional[str] = None
+                    video_completion_tokens: int | None = None
+                    has_video_input = False
                     if completion_response is not None and usage_obj:
                         # Handle both dict and Pydantic Usage object
                         if isinstance(usage_obj, dict):
                             duration_seconds = usage_obj.get("duration_seconds", None)
                             _vr = usage_obj.get("video_resolution", None)
+                            _video_completion_tokens = usage_obj.get("completion_tokens", None)
+                            has_video_input = usage_obj.get("has_video_input") is True
                         else:
                             duration_seconds = getattr(usage_obj, "duration_seconds", None)
                             _vr = getattr(usage_obj, "video_resolution", None)
+                            _video_completion_tokens = getattr(usage_obj, "completion_tokens", None)
+                            has_video_input = getattr(usage_obj, "has_video_input", None) is True
+                        if isinstance(_video_completion_tokens, int):
+                            video_completion_tokens = _video_completion_tokens
                         if _vr is not None:
                             video_resolution = str(_vr).strip().lower()
 
-                        if duration_seconds is not None:
+                        if duration_seconds is not None or video_completion_tokens is not None:
                             # Calculate cost based on video duration using video-specific cost calculation
                             from litellm.llms.openai.cost_calculation import (
                                 video_generation_cost,
@@ -1381,10 +1392,12 @@ def completion_cost(
 
                             return video_generation_cost(
                                 model=model,
-                                duration_seconds=duration_seconds,
+                                duration_seconds=duration_seconds or 0.0,
                                 custom_llm_provider=custom_llm_provider,
                                 model_info=_video_model_info,
                                 video_resolution=video_resolution,
+                                completion_tokens=video_completion_tokens,
+                                has_video_input=has_video_input,
                             )
                     # Fallback to default video cost calculation if no duration available
                     return default_video_cost_calculator(
@@ -1723,29 +1736,11 @@ def response_cost_calculator(
         OpenAIModerationResponse,
         Response,
         SearchResponse,
+        VideoObject,
     ],
     model: str,
     custom_llm_provider: Optional[str],
-    call_type: Literal[
-        "embedding",
-        "aembedding",
-        "completion",
-        "acompletion",
-        "atext_completion",
-        "text_completion",
-        "image_generation",
-        "aimage_generation",
-        "moderation",
-        "amoderation",
-        "atranscription",
-        "transcription",
-        "aspeech",
-        "speech",
-        "rerank",
-        "arerank",
-        "search",
-        "asearch",
-    ],
+    call_type: CallTypesLiteral,
     optional_params: dict,
     cache_hit: Optional[bool] = None,
     base_model: Optional[str] = None,

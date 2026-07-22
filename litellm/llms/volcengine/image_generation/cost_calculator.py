@@ -9,6 +9,13 @@ def cost_calculator(model: str, image_response: ImageResponse) -> float:
     )
     input_cost_per_image = float(model_info.get("input_cost_per_image") or 0.0)
     output_cost_per_image = float(model_info.get("output_cost_per_image") or 0.0)
+    large_output_cost_per_image = model_info.get("output_cost_per_image_above_16384_tokens")
+    output_tokens = image_response.usage.output_tokens if image_response.usage is not None else 0
+    selected_output_cost_per_image = (
+        float(large_output_cost_per_image)
+        if output_tokens > 16384 and large_output_cost_per_image is not None
+        else output_cost_per_image
+    )
     input_images = image_response.get_hidden_param("input_images")
     generated_images = image_response.get_hidden_param("generated_images")
     input_image_count = input_images if isinstance(input_images, int) and input_images >= 0 else 0
@@ -17,4 +24,4 @@ def cost_calculator(model: str, image_response: ImageResponse) -> float:
         if isinstance(generated_images, int) and generated_images >= 0
         else len(image_response.data or [])
     )
-    return input_cost_per_image * input_image_count + output_cost_per_image * output_image_count
+    return input_cost_per_image * input_image_count + selected_output_cost_per_image * output_image_count

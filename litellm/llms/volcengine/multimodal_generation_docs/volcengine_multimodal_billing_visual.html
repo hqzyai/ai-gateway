@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="paper">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>火山引擎多模态能力与计费报告</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/lxgwwenkai-regular.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/lxgwwenkai-bold.css">
+<style>
+:root{--paper:#faf7f0;--paper-alt:#fffdf8;--ink:#35322b;--ink-soft:#6f6a5e;--ink-faint:#a8a191;--line:#cfc8b8;--blue:#3b6ec9;--teal:#0e9d84;--amber:#d9930d;--red:#d64550;--purple:#8958d8;--ease:cubic-bezier(.25,.1,.25,1);--font-hand:'LXGW WenKai','Xiaolai SC','KaiTi','STKaiti','AR PL UKai CN',cursive;--font-mono:ui-monospace,'SF Mono','Cascadia Mono',Consolas,monospace;--wobble-a:255px 15px 225px 15px/15px 225px 15px 255px;--wobble-b:15px 225px 15px 255px/255px 15px 225px 15px}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--font-hand);font-size:15px;line-height:1.68;background-image:radial-gradient(var(--line) .8px,transparent .8px);background-size:26px 26px}.container{max-width:1180px;margin:0 auto;padding:38px 24px 68px}h1{margin:0;font-size:30px;line-height:1.25}h2{margin:0 0 6px;font-size:21px}h3{margin:0 0 8px;font-size:16px}p{margin:0}.subtitle{margin-top:9px;color:var(--ink-soft);max-width:850px}.eyebrow{color:var(--blue);font-weight:700;letter-spacing:.08em;font-size:13px}.stamp{display:inline-block;margin-top:12px;padding:3px 10px;border:1.4px dashed var(--teal);color:var(--teal);border-radius:var(--wobble-b);font-size:13px}section{margin-top:38px}.section-head{display:flex;justify-content:space-between;gap:16px;align-items:end;margin-bottom:14px}.section-note{color:var(--ink-soft);font-size:13px}.card,.panel,.diagram,.table-wrap,.formula{background:var(--paper-alt);border:1.6px solid var(--ink);border-radius:var(--wobble-a);padding:16px}.card:nth-child(even),.table-wrap:nth-child(even){border-radius:var(--wobble-b)}.metric-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}.metric strong{display:block;font-family:var(--font-mono);font-size:27px;line-height:1.2;color:var(--blue)}.metric:nth-child(2) strong{color:var(--purple)}.metric:nth-child(3) strong{color:var(--teal)}.metric:nth-child(4) strong{color:var(--amber)}.metric span{display:block;color:var(--ink-soft);font-size:13px;margin-top:6px}.layout-split{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:22px;align-items:start}.stepper{display:flex;flex-wrap:wrap;gap:8px}.step-btn{padding:5px 13px;border:1.6px solid var(--ink);border-radius:var(--wobble-b);background:var(--paper-alt);color:var(--ink-soft);font-family:var(--font-hand);font-size:14px;cursor:pointer;transition:color .2s var(--ease),background-color .2s var(--ease),transform .2s var(--ease)}.step-btn:hover{color:var(--ink);transform:translateY(-1px)}.step-btn.is-current{background:var(--ink);border-color:var(--ink);color:var(--paper-alt)}.diagram{margin-top:12px;padding:10px}.diagram svg{display:block;width:100%;height:auto}.panel{min-height:190px}.panel h3{color:var(--blue)}.panel p,.card p{font-size:13.5px;color:var(--ink-soft)}.kv{display:flex;justify-content:space-between;gap:12px;margin-top:7px;font-size:13px}.kv .k{color:var(--ink-faint)}.kv .v{text-align:right;color:var(--ink-soft);font-family:var(--font-mono);font-size:12px}.formula{margin-top:14px;border-color:var(--blue);background:color-mix(in srgb,var(--blue) 5%,var(--paper-alt))}.formula code,.money{font-family:var(--font-mono)}.formula code{display:block;margin-top:6px;color:var(--blue);white-space:normal}.model-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}.model-card{position:relative;overflow:hidden}.model-card .tag{display:inline-block;padding:2px 8px;border-radius:var(--wobble-b);border:1.2px solid var(--c,var(--blue));color:var(--c,var(--blue));font-size:12px;margin-bottom:8px}.model-name{font-family:var(--font-mono);font-size:13px;overflow-wrap:anywhere}.price-line{margin-top:10px;padding-top:9px;border-top:1.3px dashed var(--line);font-size:13px;color:var(--ink-soft)}.price-line strong{color:var(--ink)}.cap{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.pill{padding:2px 7px;border:1px solid var(--line);border-radius:999px;color:var(--ink-soft);font-size:12px}.pill.yes{border-color:var(--teal);color:var(--teal)}.pill.no{border-color:var(--ink-faint);color:var(--ink-faint);text-decoration:line-through}.table-wrap{padding:0;overflow:hidden}.scroll{overflow-x:auto}table{width:100%;border-collapse:collapse;min-width:760px;font-size:13px}th,td{padding:10px 12px;border-bottom:1px dashed var(--line);text-align:left;vertical-align:top}th{background:color-mix(in srgb,var(--ink) 5%,var(--paper-alt));font-weight:700;white-space:nowrap}tr:last-child td{border-bottom:0}.right{text-align:right;font-family:var(--font-mono);white-space:nowrap}.ok{color:var(--teal);font-weight:700}.warn{color:var(--amber);font-weight:700}.video-matrix td:first-child,.video-matrix th:first-child{position:sticky;left:0;background:var(--paper-alt);z-index:1}.video-matrix th:first-child{background:color-mix(in srgb,var(--ink) 5%,var(--paper-alt))}.legend{display:flex;gap:16px;flex-wrap:wrap;color:var(--ink-soft);font-size:12px;margin-top:10px}.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;background:var(--blue)}.dot.teal{background:var(--teal)}.dot.amber{background:var(--amber)}.route-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.route{border-left:5px solid var(--teal)}.route.pending{border-left-color:var(--amber)}.route code{font-family:var(--font-mono);font-size:12px;overflow-wrap:anywhere}.callout{display:grid;grid-template-columns:34px 1fr;gap:10px;align-items:start}.callout .mark{font-family:var(--font-mono);font-size:24px;color:var(--red)}.source{color:var(--ink-faint);font-size:12px;margin-top:26px}.node .shape path,.node .shape rect{stroke:var(--c,var(--ink));transition:stroke .2s var(--ease),stroke-width .2s var(--ease)}.node .shape rect{fill:none;stroke-width:1.6}.node .hfill path{stroke:var(--c,var(--ink-faint));opacity:.3}.node .node-label{fill:var(--ink);font-family:var(--font-hand);font-size:15px;font-weight:700;text-anchor:middle;dominant-baseline:central}.node .node-sub{fill:var(--ink-soft);font-family:var(--font-hand);font-size:12px;text-anchor:middle;dominant-baseline:central}.node.is-active .shape path,.node.is-active .shape rect{stroke-width:2.6}.edge path,.edge line{stroke:var(--ink-soft);fill:none;transition:stroke .2s var(--ease)}.edge .shaft{stroke-width:1.6}.edge.is-active path{stroke:var(--c,var(--blue))}.edge-label{fill:var(--ink-soft);font-family:var(--font-hand);font-size:12px;text-anchor:middle;transition:fill .2s var(--ease)}.edge-label.is-active{fill:var(--c,var(--blue));font-weight:700}.is-dimmed{opacity:.22}.node,.edge,.edge-label{transition:opacity .3s var(--ease)}.flow-dot{display:none}@supports(offset-path:path('M0 0L8 8')){.flow-dot{display:block;opacity:0;offset-rotate:0deg;animation:flow-move linear infinite}}@keyframes flow-move{0%{offset-distance:0;opacity:0}12%,88%{opacity:.9}100%{offset-distance:100%;opacity:0}}@keyframes fade-in-up{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}.anim-in{opacity:0;animation:fade-in-up .4s var(--ease) forwards;animation-delay:calc(var(--i,0)*60ms)}.draw-in{stroke-dasharray:1;stroke-dashoffset:1;animation:draw-on .55s var(--ease) both;animation-delay:calc(var(--di,0)*15ms)}@keyframes draw-on{to{stroke-dashoffset:0}}.fade-el{opacity:0;animation:fade-el-in .35s ease-out both;animation-delay:calc(var(--di,0)*15ms)}@keyframes fade-el-in{to{opacity:1}}.panel-swap{animation:fade-in-up .3s var(--ease) both}@media(max-width:860px){.layout-split,.route-grid{grid-template-columns:1fr}.metric-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:680px){.container{padding:28px 14px 52px}.metric-grid,.model-grid{grid-template-columns:1fr}.section-head{display:block}.section-note{margin-top:6px}h1{font-size:25px}}@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}html{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+<main class="container">
+<header class="anim-in">
+<div class="eyebrow">VOLCENGINE × LITELLM · 实测计费基线</div>
+<h1>文生图、图生图、生视频能力与计费报告</h1>
+<p class="subtitle">覆盖当前实现的 5 个模型、19 个真实生成场景与完整计费分支。计费口径按你的要求固定为：火山人民币单价的数字，在 LiteLLM 中 1:1 记作美元数字。</p>
+<span class="stamp">报告日期 2026-07-22 · 真实 API 对账</span>
+</header>
+
+<section class="metric-grid anim-in" style="--i:1">
+<div class="card metric"><strong>5</strong><span>2 个图片模型 + 3 个视频模型</span></div>
+<div class="card metric"><strong>19</strong><span>7 个图片场景 + 12 个视频场景</span></div>
+<div class="card metric"><strong>36/36</strong><span>自动化回归全部通过</span></div>
+<div class="card metric"><strong>1 : 1</strong><span>人民币价格数字 = LiteLLM 美元数字</span></div>
+</section>
+
+<section>
+<div class="section-head"><div><div class="eyebrow">BILLING PIPELINE</div><h2>一次生成怎样变成一笔费用</h2></div><div class="section-note">点击步骤或使用左右方向键</div></div>
+<div class="layout-split">
+<div><div class="stepper" id="stepper"></div><div class="diagram" id="diagram"></div></div>
+<aside class="panel" id="step-panel"></aside>
+</div>
+<div class="formula"><strong>两条最终公式</strong><code>图片费用 = 输入图片数 × 输入单价 + 成功输出图片数 × 输出档位单价</code><code>视频费用 = completion_tokens × 场景单价 ÷ 1,000,000</code></div>
+</section>
+
+<section>
+<div class="section-head"><div><div class="eyebrow">IMAGE MODELS</div><h2>图片模型与全部计费场景</h2></div><div class="section-note">输入图是否收费、输出大小与组图能力均会影响结果</div></div>
+<div class="model-grid">
+<article class="card model-card" style="--c:var(--teal)"><span class="tag">Seedream 5.0 Lite</span><h3 class="model-name">doubao-seedream-5-0-260128</h3><p>文生图与图生图统一按成功输出张数计费，输入图片不收费；支持一次返回组图。</p><div class="cap"><span class="pill yes">文生图</span><span class="pill yes">图生图</span><span class="pill yes">组图</span><span class="pill yes">输入图 ¥0</span></div><div class="price-line"><strong>¥0.22 / 成功输出图片</strong><br>LiteLLM 记账：$0.22 / 张</div></article>
+<article class="card model-card" style="--c:var(--purple)"><span class="tag">Seedream 5.0 Pro</span><h3 class="model-name">doubao-seedream-5-0-pro-260628</h3><p>输入图按张计费；输出按 <code>output_tokens</code> 是否超过 16,384 分普通图与大图两档。</p><div class="cap"><span class="pill yes">文生图</span><span class="pill yes">图生图</span><span class="pill no">组图</span><span class="pill">输入图 ¥0.02</span></div><div class="price-line"><strong>普通 ¥0.30 / 张 · 大图 ¥0.60 / 张</strong><br>LiteLLM 记账：数字 1:1</div></article>
+</div>
+<div class="table-wrap" style="margin-top:16px"><div class="scroll"><table><thead><tr><th>模型 / 场景</th><th>输入</th><th>成功输出</th><th>档位判断</th><th class="right">LiteLLM 费用</th></tr></thead><tbody>
+<tr><td>Lite 文生图</td><td>无图片</td><td>1 张 / 16,384 tokens</td><td>固定 ¥0.22/张</td><td class="right">$0.220000</td></tr>
+<tr><td>Lite 图生图</td><td>1 张图片</td><td>1 张</td><td>输入图免费</td><td class="right">$0.220000</td></tr>
+<tr><td>Lite 组图</td><td>无图片</td><td>2 张 / 32,768 tokens</td><td>2 × ¥0.22</td><td class="right">$0.440000</td></tr>
+<tr><td>Pro 普通文生图</td><td>无图片</td><td>1 张 / 16,384 tokens</td><td>≤ 16,384</td><td class="right">$0.300000</td></tr>
+<tr><td>Pro 普通图生图</td><td>2 张图片</td><td>1 张</td><td>2 × 0.02 + 0.30</td><td class="right">$0.340000</td></tr>
+<tr><td>Pro 大图文生图</td><td>无图片</td><td>1 张 / 18,000 tokens</td><td>&gt; 16,384</td><td class="right">$0.600000</td></tr>
+<tr><td>Pro 大图图生图</td><td>1 张图片</td><td>1 张 / 18,000 tokens</td><td>0.02 + 0.60</td><td class="right">$0.620000</td></tr>
+</tbody></table></div></div>
+</section>
+
+<section>
+<div class="section-head"><div><div class="eyebrow">VIDEO MODELS</div><h2>视频模型价格矩阵</h2></div><div class="section-note">单位：人民币 / 百万 completion tokens；LiteLLM 以相同数字记作美元</div></div>
+<div class="model-grid" style="grid-template-columns:repeat(3,1fr)">
+<article class="card model-card" style="--c:var(--blue)"><span class="tag">完整能力</span><h3 class="model-name">doubao-seedance-2-0-260128</h3><p>支持 480p、720p、1080p、4K；分辨率和是否包含参考视频共同决定单价。</p></article>
+<article class="card model-card" style="--c:var(--amber)"><span class="tag">快速版</span><h3 class="model-name">doubao-seedance-2-0-fast-260128</h3><p>支持 480p、720p；无视频输入 37，有视频输入 22。</p></article>
+<article class="card model-card" style="--c:var(--purple)"><span class="tag">轻量版</span><h3 class="model-name">doubao-seedance-2-0-mini-260615</h3><p>支持 480p、720p；无视频输入 23，有视频输入 14。</p></article>
+</div>
+<div class="table-wrap" style="margin-top:16px"><div class="scroll"><table class="video-matrix"><thead><tr><th>模型</th><th>480p / 720p<br>无视频 · 有视频</th><th>1080p<br>无视频 · 有视频</th><th>4K<br>无视频 · 有视频</th></tr></thead><tbody>
+<tr><td><code>Seedance 2.0</code></td><td class="money">46 · 28</td><td class="money">51 · 31</td><td class="money">26 · 16</td></tr>
+<tr><td><code>Seedance 2.0 Fast</code></td><td class="money">37 · 22</td><td>不支持</td><td>不支持</td></tr>
+<tr><td><code>Seedance 2.0 Mini</code></td><td class="money">23 · 14</td><td>不支持</td><td>不支持</td></tr>
+</tbody></table></div></div>
+<div class="legend"><span><i class="dot"></i>无视频输入：提示词 / 图片参考</span><span><i class="dot teal"></i>有视频输入：<code>reference_video</code></span><span><i class="dot amber"></i>分辨率取任务响应中的真实 <code>resolution</code></span></div>
+</section>
+
+<section>
+<div class="section-head"><div><div class="eyebrow">REAL RECONCILIATION</div><h2>12 个真实视频任务对账</h2></div><div class="section-note">每一行均由火山实际返回 usage 与 resolution 后再计算</div></div>
+<div class="table-wrap"><div class="scroll"><table><thead><tr><th>模型场景</th><th>视频输入</th><th>实际分辨率</th><th class="right">completion_tokens</th><th class="right">单价 / 百万</th><th class="right">计算费用</th></tr></thead><tbody>
+<tr><td>Seedance 2.0</td><td>无</td><td>480p</td><td class="right">40,594</td><td class="right">46</td><td class="right">$1.867324</td></tr>
+<tr><td>Seedance 2.0</td><td>无</td><td>720p</td><td class="right">87,300</td><td class="right">46</td><td class="right">$4.015800</td></tr>
+<tr><td>Seedance 2.0</td><td>无</td><td>1080p</td><td class="right">196,425</td><td class="right">51</td><td class="right">$10.017675</td></tr>
+<tr><td>Seedance 2.0</td><td>无</td><td>4K</td><td class="right">785,700</td><td class="right">26</td><td class="right">$20.428200</td></tr>
+<tr><td>Seedance 2.0 Fast</td><td>无</td><td>480p</td><td class="right">40,594</td><td class="right">37</td><td class="right">$1.501978</td></tr>
+<tr><td>Seedance 2.0 Mini</td><td>无</td><td>480p</td><td class="right">40,594</td><td class="right">23</td><td class="right">$0.933662</td></tr>
+<tr><td>Seedance 2.0</td><td>有</td><td>480p</td><td class="right">80,770</td><td class="right">28</td><td class="right">$2.261560</td></tr>
+<tr><td>Seedance 2.0</td><td>有</td><td>720p</td><td class="right">173,700</td><td class="right">28</td><td class="right">$4.863600</td></tr>
+<tr><td>Seedance 2.0</td><td>有</td><td>1080p</td><td class="right">390,825</td><td class="right">31</td><td class="right">$12.115575</td></tr>
+<tr><td>Seedance 2.0</td><td>有</td><td>4K</td><td class="right">1,563,300</td><td class="right">16</td><td class="right">$25.012800</td></tr>
+<tr><td>Seedance 2.0 Fast</td><td>有</td><td>480p</td><td class="right">80,770</td><td class="right">22</td><td class="right">$1.776940</td></tr>
+<tr><td>Seedance 2.0 Mini</td><td>有</td><td>480p</td><td class="right">80,770</td><td class="right">14</td><td class="right">$1.130780</td></tr>
+<tr><td colspan="5"><strong>视频矩阵合计</strong></td><td class="right"><strong>$85.925894</strong></td></tr>
+</tbody></table></div></div>
+<div class="card callout" style="margin-top:16px"><div class="mark">✓</div><div><h3>对账结论</h3><p>视频 12 个场景均按预期分支计费；本轮图片与视频真实测试估算火山总消耗为 <strong>¥89.885894</strong>。自动化回归 <span class="ok">36 passed</span>。</p></div></div>
+</section>
+
+<section>
+<div class="section-head"><div><div class="eyebrow">FIX & ROUTING</div><h2>修复记录与当前可调用状态</h2></div></div>
+<div class="route-grid">
+<article class="card callout"><div class="mark">!</div><div><h3>已修复：Pro 大图误计普通图价格</h3><p>旧逻辑曾把 <code>output_tokens &gt; 16384</code> 的输出仍按 $0.30 计费。现已改为 $0.60，并覆盖纯文生图与带输入图两条回归路径。</p></div></article>
+<article class="card route"><h3>当前数据库已启用路由</h3><p><code>volcengine/doubao-seedream-5-0-260128</code><br><code>volcengine/doubao-seedance-2-0-mini-260615</code></p><div class="price-line"><span class="ok">可直接从当前代理模型列表调用</span></div></article>
+<article class="card route pending"><h3>逻辑已验证，路由待添加</h3><p><code>doubao-seedream-5-0-pro-260628</code><br><code>doubao-seedance-2-0-260128</code><br><code>doubao-seedance-2-0-fast-260128</code></p><div class="price-line"><span class="warn">需在模型管理中添加后才会出现在当前代理模型列表</span></div></article>
+<article class="card"><h3>场景识别依据</h3><p>图片读取输入图张数、成功输出张数和 <code>output_tokens</code>；视频在创建任务时记录 <code>has_video_input</code>，查询任务时结合火山返回的真实分辨率与 <code>completion_tokens</code> 完成计费。</p></article>
+</div>
+</section>
+<p class="source">数据来源：当前 LiteLLM 火山引擎实现、模型价格配置、真实 API 端到端任务与 2026-07-22 自动化回归。报告不包含任何真实 API Key。</p>
+</main>
+<script type="module">
+const SKETCH={seed:7,roughness:1.2,bowing:1.1};
+const REDUCED=matchMedia('(prefers-reduced-motion: reduce)').matches;
+function loadScript(srcs,timeout=6000){return new Promise(resolve=>{const timer=setTimeout(()=>resolve(false),timeout);let i=0;const next=()=>{if(i>=srcs.length){clearTimeout(timer);resolve(false);return}const s=document.createElement('script');s.src=srcs[i++];s.onload=()=>{clearTimeout(timer);resolve(true)};s.onerror=()=>{s.remove();next()};document.head.appendChild(s)};next()})}
+const hasRough=await loadScript(['https://cdn.jsdelivr.net/npm/roughjs@4.6.6/bundled/rough.min.js','https://unpkg.com/roughjs@4.6.6/bundled/rough.js']);
+const NODE_W=132,NODE_H=58;
+const nodes=[{id:'request',x:18,y:76,label:'生成请求',sub:'模型 + 参数',color:'var(--amber)'},{id:'volcano',x:190,y:76,label:'火山任务',sub:'生成真实产物',color:'var(--purple)'},{id:'usage',x:362,y:76,label:'Usage',sub:'tokens + resolution',color:'var(--teal)'},{id:'branch',x:534,y:76,label:'场景选价',sub:'图片 / 视频分支',color:'var(--blue)'},{id:'ledger',x:706,y:76,label:'LiteLLM 记账',sub:'预算与日志',color:'var(--red)'}];
+const edges=[{id:'submit',from:'request',to:'volcano',label:'提交'},{id:'result',from:'volcano',to:'usage',label:'任务完成'},{id:'select',from:'usage',to:'branch',label:'提取维度'},{id:'charge',from:'branch',to:'ledger',label:'计算费用'}];
+const steps=[
+{label:'① 请求',title:'记录生成上下文',desc:'模型、输入图片或参考视频、请求分辨率在创建任务时进入链路。视频输入会被编码为 has_video_input，供异步查询后继续使用。',nodes:['request','volcano'],edges:['submit'],kv:[['关键标记','has_video_input']]},
+{label:'② 生成',title:'以火山真实结果为准',desc:'图片读取成功返回的输出张数与 output_tokens；视频等任务完成后读取 completion_tokens 和实际 resolution。',nodes:['volcano','usage'],edges:['result'],kv:[['图片','count + output_tokens'],['视频','completion_tokens + resolution']]},
+{label:'③ 选价',title:'按模型与场景选择单价',desc:'图片区分 Lite / Pro、输入张数与大图档位；视频区分三种模型、是否含视频输入及分辨率档位。',nodes:['usage','branch'],edges:['select'],kv:[['Pro 大图阈值','> 16,384 tokens'],['视频输入','reference_video']]},
+{label:'④ 记账',title:'按 1:1 口径写入 LiteLLM',desc:'人民币价格表中的数字直接作为 LiteLLM 美元价格数字。最终费用进入 spend log，并受 Key / 用户预算约束。',nodes:['branch','ledger'],edges:['charge'],kv:[['换算倍率','1 RMB number = 1 USD number'],['视频除数','1,000,000']]}
+];
+const NS='http://www.w3.org/2000/svg';
+const svgEl=(tag,attrs={})=>{const el=document.createElementNS(NS,tag);for(const [k,v] of Object.entries(attrs))el.setAttribute(k,v);return el};
+let rcHolder=null;
+function hashId(s){let h=9;for(const c of String(s))h=(h*31+c.charCodeAt(0))%1000;return h}
+function text(x,y,str,cls){const t=svgEl('text',{x,y,class:cls});t.textContent=str;return t}
+function sketchRect(x,y,w,h,seed){if(!hasRough)return svgEl('rect',{x,y,width:w,height:h,rx:8});return rcHolder.rectangle(x,y,w,h,{roughness:SKETCH.roughness,bowing:SKETCH.bowing,seed,strokeWidth:1.6})}
+function sketchPath(d,seed){if(!hasRough)return svgEl('path',{d,class:'shaft'});const g=rcHolder.path(d,{roughness:1,bowing:.8,seed,strokeWidth:1.6});g.classList.add('shaft');return g}
+function nodeBox(n){const g=svgEl('g',{class:'node','data-id':n.id});g.style.setProperty('--c',n.color);if(hasRough){const hf=svgEl('g',{class:'hfill'});hf.appendChild(rcHolder.rectangle(n.x,n.y,NODE_W,NODE_H,{seed:hashId(n.id),stroke:'none',fill:'#000',fillStyle:'hachure',fillWeight:.5,hachureGap:8,roughness:1}));g.appendChild(hf)}const shape=svgEl('g',{class:'shape'});shape.appendChild(sketchRect(n.x,n.y,NODE_W,NODE_H,hashId(n.id)));g.appendChild(shape);g.appendChild(text(n.x+NODE_W/2,n.y+NODE_H/2-8,n.label,'node-label'));g.appendChild(text(n.x+NODE_W/2,n.y+NODE_H/2+14,n.sub,'node-sub'));return g}
+function byId(id){return nodes.find(n=>n.id===id)}
+function edgeLine(e){const a=byId(e.from),b=byId(e.to),x1=a.x+NODE_W+4,y1=a.y+NODE_H/2,x2=b.x-4,y2=b.y+NODE_H/2,d=`M ${x1} ${y1} L ${x2} ${y2}`,ang=Math.atan2(y2-y1,x2-x1),g=svgEl('g',{class:'edge','data-id':e.id});g.dataset.d=d;g.style.setProperty('--c','var(--blue)');g.appendChild(sketchPath(d,hashId(e.id)));for(const side of [.5,-.5])g.appendChild(sketchPath(`M ${x2-10*Math.cos(ang+side)} ${y2-10*Math.sin(ang+side)} L ${x2} ${y2}`,hashId(e.id)+7));const label=text((x1+x2)/2,(y1+y2)/2-10,e.label,'edge-label');label.dataset.id=e.id;g.appendChild(label);return g}
+function flowDots(d){const g=svgEl('g',{class:'flow'});for(let i=0;i<2&&!REDUCED;i++){const c=svgEl('circle',{r:3.5,fill:'var(--blue)',class:'flow-dot'});c.style.offsetPath=`path('${d}')`;c.style.animationDuration='2.2s';c.style.animationDelay=`${-1.1*i}s`;g.appendChild(c)}return g}
+function renderDiagram(){const svg=svgEl('svg',{viewBox:'0 0 856 210',role:'img','aria-label':'从生成请求到 LiteLLM 记账的计费流程'});if(hasRough)rcHolder=rough.svg(svg);edges.forEach(e=>svg.appendChild(edgeLine(e)));nodes.forEach(n=>svg.appendChild(nodeBox(n)));document.getElementById('diagram').appendChild(svg);return svg}
+const state={step:0};
+function syncFlows(step){const svg=document.querySelector('#diagram svg');svg.querySelectorAll('.flow').forEach(f=>f.remove());step.edges.forEach(id=>{const edge=svg.querySelector(`.edge[data-id="${id}"]`);if(edge)svg.appendChild(flowDots(edge.dataset.d))})}
+function applyClasses(step){document.querySelectorAll('.step-btn').forEach((b,i)=>b.classList.toggle('is-current',i===state.step));document.querySelectorAll('.node').forEach(el=>{const on=step.nodes.includes(el.dataset.id);el.classList.toggle('is-active',on);el.classList.toggle('is-dimmed',!on)});document.querySelectorAll('.edge').forEach(el=>{const on=step.edges.includes(el.dataset.id);el.classList.toggle('is-active',on);el.classList.toggle('is-dimmed',!on)})}
+function renderPanel(step){const rows=step.kv.map(([k,v])=>`<div class="kv"><span class="k">${k}</span><span class="v">${v}</span></div>`).join('');document.getElementById('step-panel').innerHTML=`<div class="panel-swap"><h3>${step.title}</h3><p>${step.desc}</p><div style="margin-top:12px;padding-top:9px;border-top:1.3px dashed var(--line)">${rows}</div></div>`}
+function goStep(i){state.step=i;const step=steps[i];applyClasses(step);renderPanel(step);syncFlows(step)}
+document.getElementById('stepper').innerHTML=steps.map((s,i)=>`<button class="step-btn" data-i="${i}">${s.label}</button>`).join('');
+document.getElementById('stepper').addEventListener('click',e=>{const b=e.target.closest('button[data-i]');if(b)goStep(Number(b.dataset.i))});
+document.addEventListener('keydown',e=>{if(e.key==='ArrowRight')goStep(Math.min(state.step+1,steps.length-1));if(e.key==='ArrowLeft')goStep(Math.max(state.step-1,0))});
+function cssIntro(svg){let i=0;svg.querySelectorAll('.shape path,.shape rect,.edge path').forEach(p=>{p.setAttribute('pathLength',1);p.style.setProperty('--di',i++);p.classList.add('draw-in')});svg.querySelectorAll('text').forEach(t=>{t.style.setProperty('--di',i);t.classList.add('fade-el')});return 650+i*15}
+const svg=renderDiagram();renderPanel(steps[0]);applyClasses(steps[0]);if(REDUCED)syncFlows(steps[0]);else setTimeout(()=>syncFlows(steps[0]),cssIntro(svg)+100);
+</script>
+</body>
+</html>

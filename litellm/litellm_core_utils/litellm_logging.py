@@ -1368,6 +1368,7 @@ class Logging(LiteLLMLoggingBaseClass):
             LiteLLMRealtimeStreamLoggingObject,
             OpenAIModerationResponse,
             "SearchResponse",
+            VideoObject,
             dict,
             list,
         ],

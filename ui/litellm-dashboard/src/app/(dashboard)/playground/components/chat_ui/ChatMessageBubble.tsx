@@ -113,16 +113,26 @@ function ChatMessageBubble({
             hyphens: "auto",
           }}
         >
-          {message.isImage ? (
+          {message.isImage && (
             <img
               src={typeof message.content === "string" ? message.content : ""}
               alt="Generated image"
               className="max-w-full rounded-md border border-gray-200 shadow-xs"
               style={{ maxHeight: "500px" }}
             />
-          ) : message.isAudio ? (
-            <AudioRenderer message={message} />
-          ) : (
+          )}
+          {message.isVideo && (
+            <video
+              src={typeof message.content === "string" ? message.content : ""}
+              controls
+              playsInline
+              preload="metadata"
+              className="max-w-full rounded-md border border-gray-200 shadow-xs"
+              style={{ maxHeight: "500px" }}
+            />
+          )}
+          {message.isAudio && <AudioRenderer message={message} />}
+          {!message.isImage && !message.isVideo && !message.isAudio && (
             <>
               {/* Attached image for user messages based on endpoint */}
               {endpointType === EndpointType.RESPONSES && <ResponsesImageRenderer message={message} />}

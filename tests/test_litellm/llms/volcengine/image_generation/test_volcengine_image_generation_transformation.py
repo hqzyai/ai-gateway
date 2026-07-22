@@ -12,7 +12,7 @@ from litellm.llms.volcengine.common_utils import VolcEngineError
 from litellm.llms.volcengine.image_generation.transformation import (
     VolcEngineImageGenerationConfig,
 )
-from litellm.types.utils import ImageObject, ImageResponse, LlmProviders
+from litellm.types.utils import ImageObject, ImageResponse, ImageUsage, LlmProviders
 from litellm.utils import ProviderConfigManager
 
 
@@ -214,8 +214,8 @@ def test_image_generation_cost_falls_back_to_response_image_count():
 @pytest.mark.parametrize(
     ("model", "input_cost_per_image", "output_cost_per_image"),
     [
-        ("doubao-seedream-5-0-260128", 0.0, 0.03142857142857143),
-        ("doubao-seedream-5-0-pro-260628", 0.002857142857142857, 0.04285714285714286),
+        ("doubao-seedream-5-0-260128", 0.0, 0.22),
+        ("doubao-seedream-5-0-pro-260628", 0.02, 0.3),
     ],
 )
 def test_seedream_model_pricing(
@@ -243,3 +243,29 @@ def test_seedream_model_pricing(
     assert model_info["input_cost_per_image"] == pytest.approx(input_cost_per_image)
     assert model_info["output_cost_per_image"] == pytest.approx(output_cost_per_image)
     assert cost == pytest.approx(input_cost_per_image * 3 + output_cost_per_image * 2)
+
+
+@pytest.mark.parametrize(
+    ("output_tokens", "expected_cost"),
+    [(16384, 0.32), (16385, 0.62), (18000, 0.62)],
+)
+def test_seedream_pro_large_image_pricing(output_tokens: int, expected_cost: float) -> None:
+    model = "doubao-seedream-5-0-pro-260628"
+    response = ImageResponse(
+        data=[ImageObject(url="https://example.com/image.png")],
+        usage=ImageUsage(
+            input_tokens=0,
+            input_tokens_details={"image_tokens": 0, "text_tokens": 0},
+            output_tokens=output_tokens,
+            total_tokens=output_tokens,
+        ),
+        hidden_params={"generated_images": 1, "input_images": 1, "model": model},
+    )
+
+    cost = completion_cost(
+        completion_response=response,
+        model=f"volcengine/{model}",
+        call_type="image_edit",
+    )
+
+    assert cost == pytest.approx(expected_cost)

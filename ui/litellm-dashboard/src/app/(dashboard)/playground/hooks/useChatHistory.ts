@@ -32,6 +32,7 @@ export interface UseChatHistoryReturn {
   handleToggleSessionManagement: (useApi: boolean) => void;
   handleMCPEvent: (event: MCPEvent) => void;
   updateImageUI: (imageUrl: string, model: string) => void;
+  updateVideoUI: (videoUrl: string, model: string) => void;
   updateEmbeddingsUI: (embeddings: string, model?: string) => void;
   updateAudioUI: (audioUrl: string, model: string) => void;
   updateChatImageUI: (imageUrl: string, model?: string) => void;
@@ -102,7 +103,7 @@ export function useChatHistory({ simplified }: { simplified: boolean }): UseChat
     setChatHistory((prev) => {
       const last = prev[prev.length - 1];
       // if the last message is already from this same role, append
-      if (last && last.role === role && !last.isImage && !last.isAudio) {
+      if (last && last.role === role && !last.isImage && !last.isVideo && !last.isAudio) {
         // build a new object, but only set `model` if it wasn't there already
         const updated: MessageType = {
           ...last,
@@ -294,6 +295,10 @@ export function useChatHistory({ simplified }: { simplified: boolean }): UseChat
     setChatHistory((prevHistory) => [...prevHistory, { role: "assistant", content: imageUrl, model, isImage: true }]);
   };
 
+  const updateVideoUI = (videoUrl: string, model: string) => {
+    setChatHistory((prevHistory) => [...prevHistory, { role: "assistant", content: videoUrl, model, isVideo: true }]);
+  };
+
   const updateEmbeddingsUI = (embeddings: string, model?: string) => {
     setChatHistory((prevHistory) => [
       ...prevHistory,
@@ -343,7 +348,7 @@ export function useChatHistory({ simplified }: { simplified: boolean }): UseChat
     // would leak their blob URLs.
     setChatHistory((prev) => {
       prev.forEach((message) => {
-        if (message.isAudio && typeof message.content === "string") {
+        if ((message.isAudio || message.isVideo) && typeof message.content === "string") {
           URL.revokeObjectURL(message.content);
         }
       });
@@ -386,6 +391,7 @@ export function useChatHistory({ simplified }: { simplified: boolean }): UseChat
     handleToggleSessionManagement,
     handleMCPEvent,
     updateImageUI,
+    updateVideoUI,
     updateEmbeddingsUI,
     updateAudioUI,
     updateChatImageUI,

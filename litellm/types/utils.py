@@ -173,6 +173,15 @@ class SearchContextCostPerQuery(TypedDict, total=False):
     search_context_size_high: float
 
 
+class VideoTokenPricing(TypedDict, total=False):
+    no_video_input: float
+    video_input: float
+    no_video_input_1080p: float
+    video_input_1080p: float
+    no_video_input_4k: float
+    video_input_4k: float
+
+
 class AgenticLoopParams(TypedDict, total=False):
     """
     Parameters passed to agentic loop hooks (e.g., WebSearch interception).
@@ -248,8 +257,10 @@ class ModelInfoBase(ProviderSpecificModelInfo, total=False):
     output_cost_per_token_above_512k_tokens: Optional[float]  # MiniMax-M3: prompts >512K priced at 2x output
     output_cost_per_character_above_128k_tokens: Optional[float]  # only for vertex ai models
     output_cost_per_image: Optional[float]
+    output_cost_per_image_above_16384_tokens: Optional[float]
     output_cost_per_image_token: Optional[float]
     output_cost_per_video_token: Optional[float]  # for gemini omni models with video output
+    video_token_pricing: Optional[VideoTokenPricing]
     output_vector_size: Optional[int]
     output_cost_per_reasoning_token: Optional[float]
     output_cost_per_video_per_second: Optional[float]  # only for vertex ai models
@@ -549,6 +560,14 @@ CallTypesLiteral = Literal[
     "acreate_realtime_client_secret",
     "arealtime_calls",
     "acreate_realtime_transcription_session",
+    "create_video",
+    "acreate_video",
+    "video_edit",
+    "avideo_edit",
+    "video_remix",
+    "avideo_remix",
+    "video_retrieve",
+    "avideo_retrieve",
 ]
 
 # Mapping of API routes to their corresponding call types
@@ -3065,6 +3084,7 @@ class CustomPricingLiteLLMParams(BaseModel):
     input_cost_per_second: Optional[float] = None
     output_cost_per_second: Optional[float] = None
     output_cost_per_second_1080p: Optional[float] = None
+    video_token_pricing: Optional[VideoTokenPricing] = None
     input_cost_per_pixel: Optional[float] = None
     output_cost_per_pixel: Optional[float] = None
 

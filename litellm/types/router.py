@@ -28,7 +28,7 @@ from .completion import CompletionRequest
 from .embedding import EmbeddingRequest
 from .llms.openai import OpenAIFileObject
 from .search import SearchProvider
-from .utils import CustomPricingLiteLLMParams, ModelResponse
+from .utils import CustomPricingLiteLLMParams, ModelResponse, VideoTokenPricing
 
 
 class ConfigurableClientsideParamsCustomAuth(TypedDict):
@@ -414,6 +414,7 @@ class LiteLLMParamsTypedDict(TypedDict, total=False):
     input_cost_per_second: Optional[float]
     output_cost_per_second: Optional[float]
     output_cost_per_second_1080p: Optional[float]
+    video_token_pricing: Optional[VideoTokenPricing]
     num_retries: Optional[int]
     ## MOCK RESPONSES ##
     mock_response: Optional[Union[str, ModelResponse, Exception]]

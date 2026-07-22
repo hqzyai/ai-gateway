@@ -607,6 +607,7 @@ def validate_model_cost_values(model_data, exceptions=None):
         "output_cost_per_character",
         "input_cost_per_image",
         "output_cost_per_image",
+        "output_cost_per_image_above_16384_tokens",
         "input_cost_per_pixel",
         "output_cost_per_pixel",
         "input_cost_per_second",
@@ -650,6 +651,7 @@ def validate_model_cost_values(model_data, exceptions=None):
     # Also check nested cost fields
     nested_cost_fields = [
         "search_context_cost_per_query",
+        "video_token_pricing",
     ]
 
     for model_id, model_info in model_data.items():
@@ -811,6 +813,7 @@ def test_aaamodel_prices_and_context_window_json_is_valid():
                 "output_cost_per_character": {"type": "number"},
                 "output_cost_per_character_above_128k_tokens": {"type": "number"},
                 "output_cost_per_image": {"type": "number"},
+                "output_cost_per_image_above_16384_tokens": {"type": "number"},
                 "output_cost_per_image_token": {"type": "number"},
                 "output_cost_per_video_token": {"type": "number"},
                 "output_cost_per_pixel": {"type": "number"},
@@ -892,6 +895,7 @@ def test_aaamodel_prices_and_context_window_json_is_valid():
                             "/v1/audio/transcriptions",
                             "/v1/audio/speech",
                             "/v1/ocr",
+                            "/v1/videos",
                             "/vertex_ai/live",
                         ],
                     },
@@ -959,6 +963,19 @@ def test_aaamodel_prices_and_context_window_json_is_valid():
                         },
                         "additionalProperties": False,
                     },
+                },
+                "video_token_pricing": {
+                    "type": "object",
+                    "properties": {
+                        "no_video_input": {"type": "number"},
+                        "video_input": {"type": "number"},
+                        "no_video_input_1080p": {"type": "number"},
+                        "video_input_1080p": {"type": "number"},
+                        "no_video_input_4k": {"type": "number"},
+                        "video_input_4k": {"type": "number"},
+                    },
+                    "required": ["no_video_input", "video_input"],
+                    "additionalProperties": False,
                 },
             },
             "additionalProperties": False,

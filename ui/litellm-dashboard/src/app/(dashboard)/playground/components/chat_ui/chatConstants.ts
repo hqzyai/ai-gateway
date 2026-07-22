@@ -38,6 +38,7 @@ export const ENDPOINT_OPTIONS = [
   { value: EndpointType.RESPONSES, label: "/v1/responses" },
   { value: EndpointType.ANTHROPIC_MESSAGES, label: "/v1/messages" },
   { value: EndpointType.IMAGE, label: "/v1/images/generations" },
+  { value: EndpointType.VIDEO, label: "/v1/videos" },
   { value: EndpointType.IMAGE_EDITS, label: "/v1/images/edits" },
   { value: EndpointType.EMBEDDINGS, label: "/v1/embeddings" },
   { value: EndpointType.SPEECH, label: "/v1/audio/speech" },
