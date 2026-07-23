@@ -51,7 +51,7 @@ If you get an LIT001 or LIT002 fail, refactor the code to follow functional prog
 
 Every lint or type suppression must name the exact rule inside brackets and carry a reason comment, e.g. `# pyright: ignore[reportArgumentType]  # stubs lack async overload` or `# noqa: TID251  # <reason>`. `# type: ignore` is banned (LIT009): pyrightconfig.json sets `enableTypeIgnoreComments` to false, so it silently does nothing
 
-Commit and push your work when you're done without asking
+Do not commit, push, or create a pull request unless the user explicitly asks you to do so. When the work is done, leave the changes uncommitted by default
 
 When referencing or running models (coding, QA'ing, writing docs, writing tests, etc.), use the latest model in that model family unless otherwise specified; treat your training knowledge, memories, configs, and tests as stale, and determine the family's latest with model_prices_and_context_window.json or the web
 

@@ -815,6 +815,7 @@ def test_aaamodel_prices_and_context_window_json_is_valid():
                 "output_cost_per_image": {"type": "number"},
                 "output_cost_per_image_above_16384_tokens": {"type": "number"},
                 "output_cost_per_image_token": {"type": "number"},
+                "output_cost_per_video": {"type": "number"},
                 "output_cost_per_video_token": {"type": "number"},
                 "output_cost_per_pixel": {"type": "number"},
                 "output_cost_per_second": {"type": "number"},

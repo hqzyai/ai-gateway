@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="paper">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SiliconFlow 图片与视频计费可视化</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/lxgwwenkai-regular.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/lxgwwenkai-bold.css">
+<style>
+:root{--paper:#faf7f0;--paper-alt:#fffdf8;--ink:#35322b;--ink-soft:#6f6a5e;--ink-faint:#a8a191;--line:#cfc8b8;--blue:#3b6ec9;--teal:#0e9d84;--amber:#d9930d;--red:#d64550;--purple:#8958d8;--ease:cubic-bezier(.25,.1,.25,1);--font-hand:'LXGW WenKai','Xiaolai SC','KaiTi','STKaiti','AR PL UKai CN',cursive;--font-mono:ui-monospace,'SF Mono','Cascadia Mono',Consolas,monospace;--wobble-a:255px 15px 225px 15px/15px 225px 15px 255px;--wobble-b:15px 225px 15px 255px/255px 15px 225px 15px}
+[data-theme="chalk"]{--paper:#232830;--paper-alt:#2a303a;--ink:#e9e4d8;--ink-soft:#a8a294;--ink-faint:#6f6a5e;--line:#4a4f58;--blue:#6f9ee8;--teal:#3ec9ad;--amber:#e8b34b;--red:#e8707a;--purple:#ab8ae8}
+*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--font-hand);font-size:15px;line-height:1.7;background-image:radial-gradient(var(--line) .8px,transparent .8px);background-size:26px 26px}.container{max-width:1160px;margin:0 auto;padding:40px 24px 68px}h1{margin:0;font-size:30px;line-height:1.25}h2{margin:0 0 5px;font-size:21px}h3{margin:0 0 8px;font-size:16px}p{margin:0}.eyebrow{color:var(--purple);font-weight:700;letter-spacing:.08em;font-size:13px}.subtitle{margin-top:9px;color:var(--ink-soft);max-width:850px}section{margin-top:40px}.card,.diagram,.panel,.table-wrap,.notice{background:var(--paper-alt);border:1.6px solid var(--ink);border-radius:var(--wobble-a);padding:16px}.card:nth-child(even){border-radius:var(--wobble-b)}.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:15px;margin-top:22px}.metric .value{font-family:var(--font-mono);font-size:28px;font-weight:700;color:var(--c,var(--blue))}.metric p,.card p,.panel p,.notice p{font-size:13.5px;color:var(--ink-soft)}.section-head{display:flex;justify-content:space-between;align-items:end;gap:16px;margin-bottom:14px}.section-note{font-size:13px;color:var(--ink-soft)}.layout-split{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:22px;align-items:start}.stepper{display:flex;gap:8px;flex-wrap:wrap}.step-btn{padding:6px 13px;border:1.6px solid var(--ink);border-radius:var(--wobble-b);background:var(--paper-alt);color:var(--ink-soft);font-family:var(--font-hand);font-size:14px;cursor:pointer;transition:color .2s var(--ease),background-color .2s var(--ease),transform .2s var(--ease)}.step-btn:hover{color:var(--ink);transform:translateY(-1px)}.step-btn.is-current{background:var(--ink);border-color:var(--ink);color:var(--paper-alt)}.diagram{margin-top:12px;padding:10px}.diagram svg{display:block;width:100%;height:auto}.panel .num{font-family:var(--font-mono);font-size:28px;color:var(--blue)}.panel .formula{display:block;margin-top:12px;padding:10px;border:1px dashed var(--line);font-family:var(--font-mono);font-size:12px;color:var(--blue);overflow-wrap:anywhere}.panel .kv{display:flex;justify-content:space-between;gap:12px;margin-top:7px;font-size:13px}.panel .k{color:var(--ink-faint)}.panel .v{text-align:right;color:var(--ink-soft)}.panel-swap{animation:fade-in-up .3s var(--ease) both}.price-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.price{border-top:5px solid var(--c,var(--teal))}.price code{font-family:var(--font-mono);font-size:11.5px;overflow-wrap:anywhere}.price strong{display:block;margin-top:10px;font:700 23px var(--font-mono);color:var(--c,var(--teal))}.price span{font-size:12px;color:var(--ink-soft)}.table-wrap{padding:0;overflow:hidden}.scroll{overflow-x:auto}table{width:100%;border-collapse:collapse;min-width:760px;font-size:13px}th,td{padding:11px 13px;text-align:left;border-bottom:1px dashed var(--line);vertical-align:top}th{background:color-mix(in srgb,var(--ink) 5%,var(--paper-alt));white-space:nowrap}tr:last-child td{border-bottom:0}td code{font-family:var(--font-mono);font-size:12px}.ok{color:var(--teal);font-weight:700}.zero{color:var(--ink-faint)}.notice{border-color:var(--amber);display:grid;grid-template-columns:30px 1fr;gap:10px}.notice .icon{font:22px var(--font-mono);color:var(--amber)}.formula-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.formula-card{border-left:5px solid var(--c,var(--teal))}.formula-card code{display:block;margin-top:9px;font-family:var(--font-mono);font-size:13px;color:var(--c,var(--teal));overflow-wrap:anywhere}.source{margin-top:28px;color:var(--ink-faint);font-size:12px}.node .shape path,.node .shape rect{stroke:var(--c,var(--ink));transition:stroke .2s var(--ease),stroke-width .2s var(--ease)}.node .shape rect{fill:none;stroke-width:1.6}.node .node-label{fill:var(--ink);font-family:var(--font-hand);font-size:14px;font-weight:700;text-anchor:middle;dominant-baseline:central}.node .node-sub{fill:var(--ink-soft);font-family:var(--font-hand);font-size:11px;text-anchor:middle;dominant-baseline:central}.node.is-active .shape path,.node.is-active .shape rect{stroke-width:2.8}.edge path{stroke:var(--ink-soft);fill:none;transition:stroke .2s var(--ease)}.edge.is-active path{stroke:var(--c,var(--blue))}.edge-label{fill:var(--ink-soft);font-family:var(--font-hand);font-size:11.5px;text-anchor:middle}.edge-label.is-active{fill:var(--blue);font-weight:700}.node,.edge,.edge-label{transition:opacity .3s var(--ease)}.is-dimmed{opacity:.22}.flow-dot{display:none}@supports(offset-path:path('M0 0L8 8')){.flow-dot{display:block;opacity:0;offset-rotate:0deg;animation:flow-move linear infinite}}@keyframes flow-move{0%{offset-distance:0;opacity:0}12%,88%{opacity:.9}100%{offset-distance:100%;opacity:0}}@keyframes fade-in-up{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}.anim-in{opacity:0;animation:fade-in-up .4s var(--ease) forwards;animation-delay:calc(var(--i,0)*60ms)}.draw-in{stroke-dasharray:1;stroke-dashoffset:1;animation:draw-on .55s var(--ease) both;animation-delay:calc(var(--di,0)*15ms)}@keyframes draw-on{to{stroke-dashoffset:0}}.fade-el{opacity:0;animation:fade-el-in .35s ease-out both;animation-delay:calc(var(--di,0)*15ms)}@keyframes fade-el-in{to{opacity:1}}@media(max-width:900px){.metrics,.price-grid{grid-template-columns:repeat(2,1fr)}.layout-split,.formula-grid{grid-template-columns:1fr}}@media(max-width:620px){.container{padding:28px 14px 52px}.metrics,.price-grid{grid-template-columns:1fr}.section-head{display:block}.section-note{margin-top:6px}h1{font-size:25px}}@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+html[data-reduced="true"] *,html[data-reduced="true"] *::before,html[data-reduced="true"] *::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+</style>
+</head>
+<body>
+<main class="container">
+<header class="anim-in">
+<div class="eyebrow">BILLING TRACE · SILICONFLOW</div>
+<h1>SiliconFlow 图片与视频计费，是怎样对上的？</h1>
+<p class="subtitle">当前实现按“成功产物数 × 模型固定单价”计费。下面把请求、厂商结果、LiteLLM 计数和费用日志连成一条可核对的链路。</p>
+<div class="metrics">
+<article class="card metric" style="--c:var(--blue)"><div class="value">3</div><h3>生成场景实测</h3><p>文生图、图生图、文生视频。</p></article>
+<article class="card metric" style="--c:var(--teal)"><div class="value">3 / 3</div><h3>对账一致</h3><p>厂商明细与 LiteLLM 数值一致。</p></article>
+<article class="card metric" style="--c:var(--purple)"><div class="value">¥2.30</div><h3>本轮生成消耗</h3><p>0 + 0.30 + 2.00。</p></article>
+<article class="card metric" style="--c:var(--amber)"><div class="value">8</div><h3>聚焦测试通过</h3><p>图片生成、编辑与视频适配器。</p></article>
+</div>
+</header>
+
+<section>
+<div class="section-head"><div><div class="eyebrow">INTERACTIVE TRACE</div><h2>点一步，看一次费用如何形成</h2></div><div class="section-note">动画关闭或断网时，信息仍完整可读</div></div>
+<div class="layout-split">
+<div><div class="stepper" id="stepper"></div><div class="diagram" id="billing-diagram"></div></div>
+<aside class="panel" id="step-panel"></aside>
+</div>
+</section>
+
+<section>
+<div class="section-head"><div><div class="eyebrow">PRICE MATRIX</div><h2>当前后端价格表：图片固定单价</h2></div><div class="section-note">单位按当前模型价格配置的数字记录</div></div>
+<div class="price-grid">
+<article class="card price" style="--c:var(--ink-faint)"><code>Kwai-Kolors/Kolors</code><strong>0</strong><span>/ image</span></article>
+<article class="card price"><code>Qwen/Qwen-Image</code><strong>0.30</strong><span>/ image</span></article>
+<article class="card price"><code>Qwen/Qwen-Image-Edit</code><strong>0.30</strong><span>/ image</span></article>
+<article class="card price"><code>Qwen/Qwen-Image-Edit-2509</code><strong>0.30</strong><span>/ image</span></article>
+<article class="card price" style="--c:var(--amber)"><code>Tongyi-MAI/Z-Image-Turbo</code><strong>0.10</strong><span>/ image</span></article>
+<article class="card price"><code>Tongyi-MAI/Z-Image</code><strong>0.30</strong><span>/ image</span></article>
+<article class="card price" style="--c:var(--amber)"><code>baidu/ERNIE-Image-Turbo</code><strong>0.11</strong><span>/ image</span></article>
+</div>
+</section>
+
+<section>
+<div class="section-head"><div><div class="eyebrow">VIDEO PRICE</div><h2>视频按成功任务固定计费</h2></div></div>
+<div class="price-grid">
+<article class="card price" style="--c:var(--purple)"><code>Wan-AI/Wan2.2-T2V-A14B</code><strong>2.00</strong><span>/ completed video</span></article>
+<article class="card price" style="--c:var(--purple)"><code>Wan-AI/Wan2.2-I2V-A14B</code><strong>2.00</strong><span>/ completed video</span></article>
+<article class="card price" style="--c:var(--ink-faint)"><code>queued / in_progress / failed</code><strong>0</strong><span>未形成成功视频计数</span></article>
+</div>
+</section>
+
+<section>
+<div class="section-head"><div><div class="eyebrow">FORMULAS</div><h2>费用计算规则</h2></div></div>
+<div class="formula-grid">
+<article class="card formula-card"><h3>图片</h3><p>优先读取隐藏字段 generated_images；缺失时回退到 response.data 的长度。</p><code>图片费用 = 成功生成图片数 × output_cost_per_image</code></article>
+<article class="card formula-card" style="--c:var(--purple)"><h3>视频</h3><p>只有状态完成时，usage.generated_videos 才为 1；排队和处理中为 0。</p><code>视频费用 = 成功视频任务数 × output_cost_per_video</code></article>
+</div>
+</section>
+
+<section>
+<div class="section-head"><div><div class="eyebrow">REAL RECONCILIATION</div><h2>2026-07-22 真实调用对账</h2></div><div class="section-note">敏感 Key、产物 URL 和 requestId 均未保存</div></div>
+<div class="table-wrap"><div class="scroll"><table><thead><tr><th>场景</th><th>模型</th><th>成功产物</th><th>厂商明细</th><th>LiteLLM 费用</th><th>结果</th></tr></thead><tbody>
+<tr><td>文生图</td><td><code>Kwai-Kolors/Kolors</code></td><td>1 image</td><td class="zero">¥0</td><td class="zero">0</td><td class="ok">一致</td></tr>
+<tr><td>图生图</td><td><code>Qwen/Qwen-Image-Edit-2509</code></td><td>1 image</td><td>¥0.30</td><td>0.30</td><td class="ok">一致</td></tr>
+<tr><td>文生视频</td><td><code>Wan-AI/Wan2.2-T2V-A14B</code></td><td>1 video</td><td>¥2.00</td><td>2.00</td><td class="ok">一致</td></tr>
+<tr><td colspan="3"><strong>合计</strong></td><td><strong>¥2.30</strong></td><td><strong>2.30</strong></td><td class="ok">3 / 3</td></tr>
+</tbody></table></div></div>
+<div class="notice" style="margin-top:14px"><div class="icon">i</div><div><h3>币种语义要留意</h3><p>本轮厂商账单以人民币展示，而当前 LiteLLM 价格配置按相同数值写入。这里记录的是“数值对账一致”，不代表系统执行过人民币到美元的汇率换算。</p></div></div>
+</section>
+
+<section>
+<div class="section-head"><div><div class="eyebrow">OPERATIONS</div><h2>价格配置与热更新边界</h2></div></div>
+<div class="formula-grid">
+<article class="card"><h3>当前来源</h3><p>SiliconFlow 单价位于仓库根目录 <code>model_prices_and_context_window.json</code> 的模型条目中，图片使用 <code>output_cost_per_image</code>，视频使用 <code>output_cost_per_video</code>。</p></article>
+<article class="card"><h3>运行时加载</h3><p>修改本地 JSON 是否立即生效取决于服务的价格表加载方式和进程缓存。生产环境更适合使用远程价格表 URL 或启动时同步机制，并对版本、校验和与回滚做管理。</p></article>
+</div>
+</section>
+
+<p class="source">依据：当前分支 SiliconFlow 成本计算器、模型价格表、实测账单与 8 项聚焦测试；生成日期 2026-07-22。</p>
+</main>
+<script type="module">
+const SKETCH={seed:7,roughness:1.2,bowing:1.1};
+const PREVIEW=new URLSearchParams(location.search);
+const REDUCED=PREVIEW.has('reduced')||matchMedia('(prefers-reduced-motion: reduce)').matches;
+if(REDUCED)document.documentElement.dataset.reduced='true';
+function loadScript(srcs,timeout=6000){return new Promise(resolve=>{const timer=setTimeout(()=>resolve(false),timeout);let i=0;const next=()=>{if(i>=srcs.length){clearTimeout(timer);return resolve(false)}const s=document.createElement('script');s.src=srcs[i++];s.onload=()=>{clearTimeout(timer);resolve(true)};s.onerror=()=>{s.remove();next()};document.head.appendChild(s)};next()})}
+const hasRough=PREVIEW.has('offline')?false:await loadScript(['https://cdn.jsdelivr.net/npm/roughjs@4.6.6/bundled/rough.min.js','https://unpkg.com/roughjs@4.6.6/bundled/rough.js']);
+const steps=[
+{label:'① 请求',title:'记录模型与请求',desc:'网关识别模型、供应商和请求参数，为后续价格查询保留稳定键。',nodes:['request','gateway'],edges:['e0'],formula:'model + provider + request metadata',kv:[['计费时机','先记录，不扣费'],['失败请求','不形成成功产物']]},
+{label:'② 生成',title:'等待厂商产物成功',desc:'图片同步返回 images；视频异步经历 queued、in_progress，直到 completed。',nodes:['gateway','provider'],edges:['e1'],formula:'SiliconFlow response → normalized response',kv:[['图片结果','images[].url'],['视频成功','status = Succeed']]},
+{label:'③ 计数',title:'统计成功图片或视频',desc:'图片优先读取 generated_images，视频完成时写入 generated_videos = 1。',nodes:['provider','counter'],edges:['e2'],formula:'count = generated_images | generated_videos',kv:[['图片回退','len(response.data)'],['未完成视频','generated_videos = 0']]},
+{label:'④ 入账',title:'固定单价乘以成功数量',desc:'用模型价格表中的单产物价格计算费用，并写入 LiteLLM 费用日志。',nodes:['counter','spend'],edges:['e3'],formula:'cost = successful_outputs × unit_price',kv:[['图片字段','output_cost_per_image'],['视频字段','output_cost_per_video']]}
+];
+const nodes=[{id:'request',x:25,label:'调用请求',sub:'model · prompt',c:'var(--amber)'},{id:'gateway',x:225,label:'LiteLLM',sub:'路由与日志',c:'var(--blue)'},{id:'provider',x:425,label:'SiliconFlow',sub:'生成成功产物',c:'var(--purple)'},{id:'counter',x:625,label:'成功计数',sub:'images / videos',c:'var(--teal)'},{id:'spend',x:825,label:'费用记录',sub:'count × unit price',c:'var(--red)'}];
+const edges=nodes.slice(0,-1).map((node,i)=>({id:`e${i}`,x1:node.x+150,x2:nodes[i+1].x,y:82}));
+const NS='http://www.w3.org/2000/svg';const svgEl=(tag,attrs={})=>{const el=document.createElementNS(NS,tag);for(const[k,v]of Object.entries(attrs))el.setAttribute(k,v);return el};
+function renderDiagram(){const svg=svgEl('svg',{viewBox:'0 0 1000 180',role:'img','aria-label':'SiliconFlow 多模态计费四步流程'});document.querySelector('#billing-diagram').appendChild(svg);const rc=hasRough?rough.svg(svg):null;edges.forEach((e,i)=>{const g=svgEl('g',{class:'edge','data-id':e.id});const d=`M${e.x1} ${e.y} C${e.x1+18} ${e.y-18},${e.x2-18} ${e.y+18},${e.x2} ${e.y}`;const path=rc?rc.path(d,{roughness:1,bowing:.8,seed:30+i,strokeWidth:1.6}):svgEl('path',{d});path.setAttribute('pathLength','1');path.classList.add('draw-in');g.appendChild(path);const arrow=svgEl('path',{d:`M${e.x2-8} ${e.y-5} L${e.x2} ${e.y} L${e.x2-8} ${e.y+5}`});arrow.classList.add('fade-el');g.appendChild(arrow);svg.appendChild(g);const label=svgEl('text',{x:(e.x1+e.x2)/2,y:127,class:'edge-label','data-id':`label-${e.id}`});label.textContent=['识别','请求','计数','计算'][i];svg.appendChild(label);const dot=svgEl('circle',{r:3,fill:'var(--blue)',class:'flow-dot','data-id':`dot-${e.id}`});dot.style.offsetPath=`path('${d}')`;dot.style.animationDuration='2s';dot.style.animationDelay=`${i*.25}s`;svg.appendChild(dot)});nodes.forEach((n,i)=>{const g=svgEl('g',{class:'node','data-id':n.id});g.style.setProperty('--c',n.c);const shape=svgEl('g',{class:'shape'});shape.appendChild(rc?rc.rectangle(n.x,55,150,54,{roughness:SKETCH.roughness,bowing:SKETCH.bowing,seed:10+i,strokeWidth:1.6}):svgEl('rect',{x:n.x,y:55,width:150,height:54,rx:8}));g.appendChild(shape);const title=svgEl('text',{x:n.x+75,y:75,class:'node-label'});title.textContent=n.label;g.appendChild(title);const sub=svgEl('text',{x:n.x+75,y:96,class:'node-sub'});sub.textContent=n.sub;g.appendChild(sub);svg.appendChild(g)});if(REDUCED)svg.querySelectorAll('.draw-in,.fade-el').forEach(el=>el.classList.remove('draw-in','fade-el'))}
+function setStep(index){const step=steps[index];document.querySelectorAll('.step-btn').forEach((button,i)=>button.classList.toggle('is-current',i===index));document.querySelectorAll('.node').forEach(el=>{el.classList.toggle('is-active',step.nodes.includes(el.dataset.id));el.classList.toggle('is-dimmed',!step.nodes.includes(el.dataset.id))});document.querySelectorAll('.edge').forEach(el=>{el.classList.toggle('is-active',step.edges.includes(el.dataset.id));el.classList.toggle('is-dimmed',!step.edges.includes(el.dataset.id))});document.querySelectorAll('.edge-label').forEach(el=>{const id=el.dataset.id.replace('label-','');el.classList.toggle('is-active',step.edges.includes(id));el.classList.toggle('is-dimmed',!step.edges.includes(id))});const panel=document.querySelector('#step-panel');panel.classList.remove('panel-swap');void panel.offsetWidth;panel.innerHTML=`<div class="num">0${index+1}</div><h3>${step.title}</h3><p>${step.desc}</p><code class="formula">${step.formula}</code>${step.kv.map(([k,v])=>`<div class="kv"><span class="k">${k}</span><span class="v">${v}</span></div>`).join('')}`;panel.classList.add('panel-swap')}
+renderDiagram();
+const stepper=document.querySelector('#stepper');steps.forEach((step,i)=>{const button=document.createElement('button');button.className='step-btn';button.textContent=step.label;button.addEventListener('click',()=>setStep(i));stepper.appendChild(button)});setStep(0);
+</script>
+</body>
+</html>

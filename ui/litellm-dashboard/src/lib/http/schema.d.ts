@@ -25829,6 +25829,8 @@ export interface components {
             output_cost_per_token_flex?: number | null;
             /** Output Cost Per Token Priority */
             output_cost_per_token_priority?: number | null;
+            /** Output Cost Per Video */
+            output_cost_per_video?: number | null;
             /** Output Cost Per Video Per Second */
             output_cost_per_video_per_second?: number | null;
             /** Output Cost Per Video Token */
@@ -29749,6 +29751,8 @@ export interface components {
             default_model_placeholder?: string | null;
             /** Litellm Provider */
             litellm_provider: string;
+            /** Models */
+            models?: string[] | null;
             /** Provider */
             provider: string;
             /** Provider Display Name */
@@ -33707,6 +33711,8 @@ export interface components {
             output_cost_per_token_flex?: number | null;
             /** Output Cost Per Token Priority */
             output_cost_per_token_priority?: number | null;
+            /** Output Cost Per Video */
+            output_cost_per_video?: number | null;
             /** Output Cost Per Video Per Second */
             output_cost_per_video_per_second?: number | null;
             /** Output Cost Per Video Token */

@@ -1080,6 +1080,14 @@ OpenAIImageGenerationOptionalParams = Literal[
     "sequential_image_generation_options",
     "tools",
     "watermark",
+    "image_size",
+    "negative_prompt",
+    "num_inference_steps",
+    "batch_size",
+    "guidance_scale",
+    "cfg",
+    "image2",
+    "image3",
 ]
 
 OpenAIImageEditOptionalParams = Literal[

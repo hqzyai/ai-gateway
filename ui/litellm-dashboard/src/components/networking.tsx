@@ -242,6 +242,7 @@ export interface ProviderCreateInfo {
   provider_display_name: string;
   litellm_provider: string;
   default_model_placeholder?: string | null;
+  models?: string[] | null;
   credential_fields: ProviderCredentialFieldMetadata[];
 }
 

@@ -269,6 +269,7 @@ class ModelInfoBase(ProviderSpecificModelInfo, total=False):
     output_cost_per_image: Optional[float]
     output_cost_per_image_above_16384_tokens: Optional[float]
     output_cost_per_image_token: Optional[float]
+    output_cost_per_video: Optional[float]
     output_cost_per_video_token: Optional[float]  # for gemini omni models with video output
     video_token_pricing: Optional[VideoTokenPricing]
     output_vector_size: Optional[int]
@@ -3146,6 +3147,7 @@ class CustomPricingLiteLLMParams(BaseModel):
     output_cost_per_image: Optional[float] = None
     output_cost_per_image_above_16384_tokens: Optional[float] = None
     output_cost_per_image_token: Optional[float] = None
+    output_cost_per_video: Optional[float] = None
     output_cost_per_video_token: Optional[float] = None
     output_cost_per_reasoning_token: Optional[float] = None
     output_cost_per_video_per_second: Optional[float] = None

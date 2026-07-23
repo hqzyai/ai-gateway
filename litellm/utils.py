@@ -5493,6 +5493,7 @@ def _get_model_info_helper(
                 ),
                 output_cost_per_second=_model_info.get("output_cost_per_second", None),
                 output_cost_per_second_1080p=_model_info.get("output_cost_per_second_1080p", None),
+                output_cost_per_video=_model_info.get("output_cost_per_video", None),
                 output_cost_per_video_per_second=_model_info.get("output_cost_per_video_per_second", None),
                 output_cost_per_image=_model_info.get("output_cost_per_image", None),
                 output_cost_per_image_above_16384_tokens=_model_info.get(
@@ -5633,6 +5634,7 @@ def get_model_info(
             ]  # only for vertex ai models
             output_cost_per_image: Optional[float]
             output_vector_size: Optional[int]
+            output_cost_per_video: Optional[float]
             output_cost_per_video_per_second: Optional[float]  # only for vertex ai models
             output_cost_per_audio_per_second: Optional[float]  # only for vertex ai models
             litellm_provider: Required[str]
@@ -7937,6 +7939,12 @@ class ProviderConfigManager:
             )
 
             return VolcEngineEmbeddingConfig()
+        elif litellm.LlmProviders.SILICONFLOW == provider:
+            from litellm.llms.siliconflow.embedding.transformation import (
+                SiliconFlowEmbeddingConfig,
+            )
+
+            return SiliconFlowEmbeddingConfig()
         elif litellm.LlmProviders.DASHSCOPE == provider:
             from litellm.llms.dashscope.embed.transformation import (
                 DashScopeEmbeddingConfig,
@@ -8680,6 +8688,12 @@ class ProviderConfigManager:
             )
 
             return get_volcengine_image_generation_config(model)
+        elif LlmProviders.SILICONFLOW == provider:
+            from litellm.llms.siliconflow.image_generation import (
+                get_siliconflow_image_generation_config,
+            )
+
+            return get_siliconflow_image_generation_config(model)
         return None
 
     @staticmethod
@@ -8713,6 +8727,12 @@ class ProviderConfigManager:
             )
 
             return VolcEngineVideoConfig()
+        elif LlmProviders.SILICONFLOW == provider:
+            from litellm.llms.siliconflow.videos.transformation import (
+                SiliconFlowVideoConfig,
+            )
+
+            return SiliconFlowVideoConfig()
         return None
 
     @staticmethod
@@ -8839,6 +8859,12 @@ class ProviderConfigManager:
             )
 
             return get_volcengine_image_edit_config(model)
+        elif LlmProviders.SILICONFLOW == provider:
+            from litellm.llms.siliconflow.image_edit import (
+                get_siliconflow_image_edit_config,
+            )
+
+            return get_siliconflow_image_edit_config(model)
         return None
 
     @staticmethod

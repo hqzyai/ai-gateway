@@ -9,13 +9,13 @@ class SiliconFlowConfig(OpenAIGPTConfig):
     Reference: SiliconFlow is OpenAI compatible.
 
     API Key: SILICONFLOW_API_KEY
-    Default API Base: https://api.siliconflow.com/v1
+    Default API Base: https://api.siliconflow.cn/v1
 
     Users on the China mainland endpoint can set
     SILICONFLOW_API_BASE=https://api.siliconflow.cn/v1
     """
 
-    API_BASE_URL = "https://api.siliconflow.com/v1"
+    API_BASE_URL = "https://api.siliconflow.cn/v1"
 
     @property
     def custom_llm_provider(self) -> Optional[str]:
@@ -27,11 +27,7 @@ class SiliconFlowConfig(OpenAIGPTConfig):
 
     @staticmethod
     def get_api_base(api_base: Optional[str] = None) -> Optional[str]:
-        return (
-            api_base
-            or get_secret_str("SILICONFLOW_API_BASE")
-            or SiliconFlowConfig.API_BASE_URL
-        )
+        return api_base or get_secret_str("SILICONFLOW_API_BASE") or SiliconFlowConfig.API_BASE_URL
 
     def _get_openai_compatible_provider_info(
         self, api_base: Optional[str], api_key: Optional[str]

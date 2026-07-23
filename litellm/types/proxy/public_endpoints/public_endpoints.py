@@ -30,6 +30,7 @@ class ProviderCreateInfo(BaseModel):
     litellm_provider: str
     credential_fields: List[ProviderCredentialField]
     default_model_placeholder: Optional[str] = None
+    models: Optional[List[str]] = None
 
 
 class AgentCredentialField(BaseModel):

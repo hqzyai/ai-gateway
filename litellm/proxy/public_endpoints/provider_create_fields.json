@@ -2661,6 +2661,41 @@
     "default_model_placeholder": "sap/gpt-4"
   },
   {
+    "provider": "SiliconFlow",
+    "provider_display_name": "SiliconFlow",
+    "litellm_provider": "siliconflow",
+    "credential_fields": [
+      {
+        "key": "api_key",
+        "label": "API Key",
+        "placeholder": null,
+        "tooltip": null,
+        "required": true,
+        "field_type": "password",
+        "options": null,
+        "default_value": null
+      },
+      {
+        "key": "api_base",
+        "label": "API Base",
+        "placeholder": "https://api.siliconflow.cn/v1",
+        "tooltip": "Use https://api.siliconflow.com/v1 for the international endpoint.",
+        "required": false,
+        "field_type": "text",
+        "options": null,
+        "default_value": null
+      }
+    ],
+    "default_model_placeholder": "siliconflow/Qwen/Qwen3-8B",
+    "models": [
+      "siliconflow/Qwen/Qwen3-8B",
+      "siliconflow/BAAI/bge-m3",
+      "siliconflow/Kwai-Kolors/Kolors",
+      "siliconflow/Qwen/Qwen-Image-Edit-2509",
+      "siliconflow/Wan-AI/Wan2.2-T2V-A14B"
+    ]
+  },
+  {
     "provider": "Snowflake",
     "provider_display_name": "Snowflake",
     "litellm_provider": "snowflake",

@@ -10,7 +10,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import TeamDropdown from "../common_components/team_dropdown";
 import type { Team } from "../key_team_helpers/key_list";
 import { type CredentialItem, type ProviderCreateInfo, modelAvailableCall } from "../networking";
-import { Providers } from "../provider_info_helpers";
+import { getConfiguredProviderModels, Providers } from "../provider_info_helpers";
 import { ProviderLogo } from "../molecules/models/ProviderLogo";
 import AdvancedSettings from "./advanced_settings";
 import ConditionalPublicModelName from "./conditional_public_model_name";
@@ -92,6 +92,11 @@ const AddModelForm: React.FC<AddModelFormProps> = ({
     }
     return [...providerMetadata].sort((a, b) => a.provider_display_name.localeCompare(b.provider_display_name));
   }, [providerMetadata]);
+
+  const visibleProviderModels = useMemo(
+    () => getConfiguredProviderModels(selectedProvider, providerMetadata, providerModels),
+    [selectedProvider, providerMetadata, providerModels],
+  );
 
   const providerMetadataErrorText = providerMetadataError
     ? providerMetadataError instanceof Error
@@ -195,7 +200,7 @@ const AddModelForm: React.FC<AddModelFormProps> = ({
                 </Form.Item>
                 <LiteLLMModelNameField
                   selectedProvider={selectedProvider}
-                  providerModels={providerModels}
+                  providerModels={visibleProviderModels}
                   getPlaceholder={getPlaceholder}
                 />
 

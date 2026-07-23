@@ -6811,6 +6811,27 @@ def embedding(
                 aembedding=aembedding,
                 headers=headers,
             )
+        elif custom_llm_provider == "siliconflow":
+            siliconflow_key = api_key or litellm.api_key or get_secret_str("SILICONFLOW_API_KEY")
+            if siliconflow_key is None:
+                raise ValueError(
+                    "Missing API key for SiliconFlow. Set SILICONFLOW_API_KEY or pass the api_key parameter."
+                )
+            response = base_llm_http_handler.embedding(
+                model=model,
+                input=input,
+                timeout=timeout,
+                custom_llm_provider=custom_llm_provider,
+                logging_obj=logging,
+                api_base=api_base,
+                optional_params=optional_params,
+                litellm_params=litellm_params_dict,
+                model_response=EmbeddingResponse(),
+                api_key=siliconflow_key,
+                client=client,
+                aembedding=aembedding,
+                headers=headers,
+            )
         elif custom_llm_provider == "dashscope":
             dashscope_key = api_key or litellm.api_key or get_secret_str("DASHSCOPE_API_KEY")
             if dashscope_key is None:

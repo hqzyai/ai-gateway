@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   Providers,
   getPlaceholder,
+  getConfiguredProviderModels,
   getProviderLogoAndName,
   getProviderModels,
   providerLogoMap,
@@ -94,6 +95,11 @@ describe("provider_info_helpers", () => {
       expect(result.displayName).toBe(Providers.ZAI);
     });
 
+    it("should map siliconflow provider value to the SiliconFlow display name", () => {
+      const result = getProviderLogoAndName("siliconflow");
+      expect(result.displayName).toBe(Providers.SiliconFlow);
+    });
+
     it("should return provider value as display name when no mapping exists", () => {
       const unknownProvider = "unknown_provider";
       const result = getProviderLogoAndName(unknownProvider);
@@ -136,6 +142,7 @@ describe("provider_info_helpers", () => {
         Providers.PETALS,
         Providers.PG_VECTOR,
         Providers.PREDIBASE,
+        Providers.SiliconFlow,
         Providers.WANDB,
         Providers.ZAI,
       ];
@@ -225,6 +232,10 @@ describe("provider_info_helpers", () => {
       expect(getPlaceholder(Providers.ZAI)).toBe("zai/glm-4.5");
     });
 
+    it("should return a SiliconFlow placeholder for SiliconFlow provider", () => {
+      expect(getPlaceholder(Providers.SiliconFlow)).toBe("siliconflow/deepseek-ai/DeepSeek-V3");
+    });
+
     it("should return default gpt-3.5-turbo placeholder for unknown provider", () => {
       expect(getPlaceholder("UnknownProvider" as any)).toBe("gpt-3.5-turbo");
     });
@@ -265,6 +276,16 @@ describe("provider_info_helpers", () => {
       };
       const result = getProviderModels(Providers.OpenAI, modelMap);
       expect(result).toEqual(["gpt-3.5-turbo", "gpt-4"]);
+    });
+
+    it("should return SiliconFlow models from modelMap", () => {
+      const modelMap = {
+        "siliconflow/BAAI/bge-m3": { litellm_provider: "siliconflow" },
+        "siliconflow/Qwen/Qwen-Image": { litellm_provider: "siliconflow" },
+        "openai/gpt-4": { litellm_provider: "openai" },
+      };
+      const result = getProviderModels(Providers.SiliconFlow, modelMap);
+      expect(result).toEqual(["siliconflow/BAAI/bge-m3", "siliconflow/Qwen/Qwen-Image"]);
     });
 
     it("should return models whose litellm_provider is a prefix-anchored variant of the provider", () => {
@@ -438,6 +459,26 @@ describe("provider_info_helpers", () => {
       expect(openaiResult).toEqual(["gpt-3.5-turbo"]);
       expect(anthropicResult).toEqual(["claude-3-opus"]);
       expect(groqResult).toContain("groq-model");
+    });
+  });
+
+  describe("getConfiguredProviderModels", () => {
+    it("should prefer models declared in provider configuration", () => {
+      const configuredModels = ["siliconflow/Qwen/Qwen3-8B", "siliconflow/BAAI/bge-m3"];
+      const providerMetadata = [{ provider: Providers.SiliconFlow, models: configuredModels }];
+
+      expect(getConfiguredProviderModels(Providers.SiliconFlow, providerMetadata, ["fallback-model"])).toEqual(
+        configuredModels,
+      );
+    });
+
+    it("should use cost map models when provider configuration has no models", () => {
+      const fallbackModels = ["volcengine/model-a"];
+      const providerMetadata = [{ provider: Providers.VolcEngine }];
+
+      expect(getConfiguredProviderModels(Providers.VolcEngine, providerMetadata, fallbackModels)).toEqual(
+        fallbackModels,
+      );
     });
   });
 });

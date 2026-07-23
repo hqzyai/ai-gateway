@@ -1231,6 +1231,15 @@ class CostCalculatorUtils:
                 model=model,
                 image_response=completion_response,
             )
+        elif custom_llm_provider == litellm.LlmProviders.SILICONFLOW.value:
+            from litellm.llms.siliconflow.image_generation.cost_calculator import (
+                cost_calculator as siliconflow_image_cost_calculator,
+            )
+
+            return siliconflow_image_cost_calculator(
+                model=model,
+                image_response=completion_response,
+            )
         elif custom_llm_provider == litellm.LlmProviders.OPENAI.value:
             # gpt-image models use token-based pricing.
             model_lower = model.lower()

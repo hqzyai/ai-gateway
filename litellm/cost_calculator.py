@@ -2081,6 +2081,10 @@ def default_video_cost_calculator(
     if cost_info is None:
         raise Exception(f"Model not found in cost map for model={model}")
 
+    output_cost_per_video = cost_info.get("output_cost_per_video")
+    if output_cost_per_video is not None:
+        return output_cost_per_video
+
     # Check for video-specific cost per second first
     video_cost_per_second = cost_info.get("output_cost_per_video_per_second")
     if video_cost_per_second is not None:

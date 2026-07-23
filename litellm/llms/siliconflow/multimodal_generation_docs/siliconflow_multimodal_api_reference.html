@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="paper">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SiliconFlow 多模态生成 API 接口文档</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/lxgwwenkai-regular.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/lxgwwenkai-bold.css">
+<style>
+:root{--paper:#faf7f0;--paper-alt:#fffdf8;--ink:#35322b;--ink-soft:#6f6a5e;--ink-faint:#a8a191;--line:#cfc8b8;--blue:#3b6ec9;--teal:#0e9d84;--amber:#d9930d;--red:#d64550;--purple:#8958d8;--ease:cubic-bezier(.25,.1,.25,1);--font-hand:'LXGW WenKai','Xiaolai SC','KaiTi','STKaiti','AR PL UKai CN',cursive;--font-mono:ui-monospace,'SF Mono','Cascadia Mono',Consolas,monospace;--wobble-a:255px 15px 225px 15px/15px 225px 15px 255px;--wobble-b:15px 225px 15px 255px/255px 15px 225px 15px}
+[data-theme="chalk"]{--paper:#232830;--paper-alt:#2a303a;--ink:#e9e4d8;--ink-soft:#a8a294;--ink-faint:#6f6a5e;--line:#4a4f58;--blue:#6f9ee8;--teal:#3ec9ad;--amber:#e8b34b;--red:#e8707a;--purple:#ab8ae8}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--font-hand);font-size:15px;line-height:1.68;background-image:radial-gradient(var(--line) .8px,transparent .8px);background-size:26px 26px}.container{max-width:1180px;margin:0 auto;padding:38px 24px 68px}h1{margin:0;font-size:30px;line-height:1.25}h2{margin:0 0 6px;font-size:21px}h3{margin:0 0 8px;font-size:16px}p{margin:0}.subtitle{margin-top:9px;color:var(--ink-soft);max-width:900px}.eyebrow{color:var(--blue);font-weight:700;letter-spacing:.08em;font-size:13px}section{margin-top:38px}.card,.diagram,.table-wrap,.notice,.endpoint,.code-box{background:var(--paper-alt);border:1.6px solid var(--ink);border-radius:var(--wobble-a);padding:16px}.card:nth-child(even),.endpoint:nth-child(even){border-radius:var(--wobble-b)}.quick{display:grid;grid-template-columns:1.1fr 1fr 1fr;gap:15px;margin-top:22px}.quick strong{display:block;font-size:14px}.quick code{display:block;margin-top:6px;font-family:var(--font-mono);font-size:12px;color:var(--blue);overflow-wrap:anywhere}.diagram{margin-top:16px;padding:10px}.diagram svg{display:block;width:100%;height:auto}.section-head{display:flex;justify-content:space-between;gap:16px;align-items:end;margin-bottom:14px}.section-note{color:var(--ink-soft);font-size:13px}.tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}.tab{padding:7px 14px;border:1.6px solid var(--ink);border-radius:var(--wobble-b);background:var(--paper-alt);font:inherit;color:var(--ink-soft);cursor:pointer;transition:color .2s var(--ease),background-color .2s var(--ease),transform .2s var(--ease)}.tab:hover{transform:translateY(-1px);color:var(--ink)}.tab.is-current{background:var(--ink);color:var(--paper-alt)}.tab-panel{display:none}.tab-panel.is-current{display:block;animation:fade-in-up .3s var(--ease) both}.endpoint-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}.method{display:inline-block;padding:2px 8px;border:1.2px solid var(--c,var(--blue));color:var(--c,var(--blue));border-radius:var(--wobble-b);font-family:var(--font-mono);font-size:12px;font-weight:700}.path{display:block;margin-top:8px;font-family:var(--font-mono);font-size:13px;overflow-wrap:anywhere}.endpoint p,.card p,.notice p{color:var(--ink-soft);font-size:13.5px;margin-top:7px}.flow-steps{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}.flow-step{position:relative}.flow-step .num{font-family:var(--font-mono);font-size:24px;color:var(--blue)}.flow-step:not(:last-child)::after{content:'›';position:absolute;right:-12px;top:20px;color:var(--ink-faint);font-size:25px}.model-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.model{border-top:5px solid var(--c,var(--blue))}.model code{font-family:var(--font-mono);font-size:11.5px;overflow-wrap:anywhere}.caps{margin-top:9px;color:var(--ink-soft);font-size:12.5px}.pill{display:inline-block;margin:3px 3px 0 0;padding:1px 6px;border:1px solid var(--line);border-radius:999px}.yes{border-color:var(--teal);color:var(--teal)}.no{border-color:var(--ink-faint);color:var(--ink-faint)}.table-wrap{padding:0;overflow:hidden}.scroll{overflow-x:auto}table{width:100%;border-collapse:collapse;min-width:760px;font-size:13px}th,td{padding:10px 12px;border-bottom:1px dashed var(--line);text-align:left;vertical-align:top}th{background:color-mix(in srgb,var(--ink) 5%,var(--paper-alt));white-space:nowrap}tr:last-child td{border-bottom:0}td code,code.inline{font-family:var(--font-mono);font-size:12px}.required{color:var(--red);font-weight:700}.optional{color:var(--ink-faint)}.code-box{position:relative;padding:0;overflow:hidden;margin-top:14px}.code-head{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px dashed var(--line);color:var(--ink-soft);font-size:12px}.copy{border:1px solid var(--line);background:var(--paper-alt);color:var(--ink-soft);font:inherit;border-radius:var(--wobble-b);padding:2px 8px;cursor:pointer}.copy.done{color:var(--teal);border-color:var(--teal)}pre{margin:0;padding:14px;overflow:auto;background:color-mix(in srgb,var(--ink) 4%,var(--paper-alt));font-family:var(--font-mono);font-size:12px;line-height:1.65;color:var(--ink);tab-size:2}.notice{border-color:var(--amber);display:grid;grid-template-columns:30px 1fr;gap:10px}.notice.danger{border-color:var(--red)}.notice .icon{font-family:var(--font-mono);font-size:22px;color:var(--amber)}.notice.danger .icon{color:var(--red)}.status-list{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.status{border-left:4px solid var(--c,var(--blue))}.status code{font-family:var(--font-mono);color:var(--c,var(--blue))}.error-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}.source{color:var(--ink-faint);font-size:12px;margin-top:28px}.node .shape path,.node .shape rect{stroke:var(--c,var(--ink))}.node .shape rect{fill:none;stroke-width:1.6}.node .hfill path{stroke:var(--c,var(--ink-faint));opacity:.3}.node .node-label{fill:var(--ink);font-family:var(--font-hand);font-size:14px;font-weight:700;text-anchor:middle;dominant-baseline:central}.node .node-sub{fill:var(--ink-soft);font-family:var(--font-hand);font-size:11px;text-anchor:middle;dominant-baseline:central}.edge path{stroke:var(--blue);fill:none}.edge-label{fill:var(--ink-soft);font-family:var(--font-hand);font-size:11.5px;text-anchor:middle}.flow-dot{display:none}@supports(offset-path:path('M0 0L8 8')){.flow-dot{display:block;opacity:0;offset-rotate:0deg;animation:flow-move linear infinite}}@keyframes flow-move{0%{offset-distance:0;opacity:0}12%,88%{opacity:.9}100%{offset-distance:100%;opacity:0}}@keyframes fade-in-up{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}.anim-in{opacity:0;animation:fade-in-up .4s var(--ease) forwards;animation-delay:calc(var(--i,0)*60ms)}.draw-in{stroke-dasharray:1;stroke-dashoffset:1;animation:draw-on .55s var(--ease) both;animation-delay:calc(var(--di,0)*15ms)}@keyframes draw-on{to{stroke-dashoffset:0}}.fade-el{opacity:0;animation:fade-el-in .35s ease-out both;animation-delay:calc(var(--di,0)*15ms)}@keyframes fade-el-in{to{opacity:1}}@media(max-width:960px){.model-grid{grid-template-columns:repeat(2,1fr)}.quick{grid-template-columns:1fr}.flow-steps{grid-template-columns:repeat(2,1fr)}.flow-step::after{display:none}}@media(max-width:720px){.container{padding:28px 14px 52px}.endpoint-grid,.error-grid,.status-list,.model-grid,.flow-steps{grid-template-columns:1fr}.section-head{display:block}.section-note{margin-top:6px}h1{font-size:25px}}@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}html{scroll-behavior:auto}}
+html[data-reduced="true"] *,html[data-reduced="true"] *::before,html[data-reduced="true"] *::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+</style>
+</head>
+<body>
+<main class="container">
+<header class="anim-in">
+<div class="eyebrow">PUBLIC API REFERENCE · SILICONFLOW MULTIMODAL</div>
+<h1>SiliconFlow 文生图、图生图、生视频接口文档</h1>
+<p class="subtitle">调用方只连接 LiteLLM Gateway，使用 Virtual Key；SiliconFlow API Key 只保存在网关服务端。本文严格对应当前适配器实现，不包含厂商文档中尚未接入的能力。</p>
+<div class="quick">
+<div class="card"><strong>Gateway Base URL</strong><code>http://&lt;gateway-host&gt;:4000</code></div>
+<div class="card"><strong>客户端认证</strong><code>Authorization: Bearer $LITELLM_API_KEY</code></div>
+<div class="card"><strong>服务端配置</strong><code>SILICONFLOW_API_KEY · api_base 可选</code></div>
+</div>
+</header>
+
+<section>
+<div class="section-head"><div><div class="eyebrow">REQUEST PATH</div><h2>一条安全、可计费的生成链路</h2></div><div class="section-note">中国区默认上游 https://api.siliconflow.cn/v1</div></div>
+<div class="diagram" id="architecture"></div>
+</section>
+
+<section>
+<div class="section-head"><div><div class="eyebrow">ENDPOINTS</div><h2>对外能力一览</h2></div></div>
+<div class="endpoint-grid">
+<article class="endpoint" style="--c:var(--teal)"><span class="method">POST</span><code class="path">/v1/images/generations</code><p>文生图；支持 SiliconFlow 扩展参数。上游请求发送到 <code class="inline">/images/generations</code>。</p></article>
+<article class="endpoint" style="--c:var(--teal)"><span class="method">POST</span><code class="path">/v1/images/edits</code><p>上传 1–3 张图片；网关转为 data URI 后，仍以 JSON 调用上游图片生成端点。</p></article>
+<article class="endpoint" style="--c:var(--purple)"><span class="method">POST</span><code class="path">/v1/videos</code><p>创建异步任务；上游走 <code class="inline">/video/submit</code>，立即返回 queued 与编码后的 video_id。</p></article>
+<article class="endpoint" style="--c:var(--blue)"><span class="method">GET</span><code class="path">/v1/videos/{video_id}</code><p>查询任务；网关向 <code class="inline">/video/status</code> 发送 requestId 并标准化状态。</p></article>
+<article class="endpoint" style="--c:var(--blue)"><span class="method">GET</span><code class="path">/v1/videos/{video_id}/content</code><p>任务完成后由网关读取结果 URL 并下载视频二进制；不支持 variant。</p></article>
+<article class="endpoint" style="--c:var(--red)"><span class="method">不支持</span><code class="path">list · delete · remix · content variant</code><p>当前 SiliconFlow 适配器会明确返回不支持，不应把这些能力暴露给调用方。</p></article>
+</div>
+</section>
+
+<section>
+<div class="section-head"><div><div class="eyebrow">MODEL MATRIX</div><h2>当前价格表中的图片与视频模型</h2></div><div class="section-note">能否从下拉框选择，还取决于模型管理中是否添加了对应路由</div></div>
+<div class="model-grid">
+<article class="card model" style="--c:var(--amber)"><code>Kwai-Kolors/Kolors</code><div class="caps"><span class="pill yes">文生图</span><span class="pill yes">批量 1–4</span><span class="pill yes">guidance_scale</span></div></article>
+<article class="card model" style="--c:var(--teal)"><code>Qwen/Qwen-Image</code><div class="caps"><span class="pill yes">文生图</span><span class="pill yes">cfg</span><span class="pill yes">URL 响应</span></div></article>
+<article class="card model" style="--c:var(--teal)"><code>Tongyi-MAI/Z-Image-Turbo</code><div class="caps"><span class="pill yes">文生图</span><span class="pill yes">固定单图计费</span></div></article>
+<article class="card model" style="--c:var(--teal)"><code>Tongyi-MAI/Z-Image</code><div class="caps"><span class="pill yes">文生图</span><span class="pill yes">固定单图计费</span></div></article>
+<article class="card model" style="--c:var(--teal)"><code>baidu/ERNIE-Image-Turbo</code><div class="caps"><span class="pill yes">文生图</span><span class="pill yes">固定单图计费</span></div></article>
+<article class="card model" style="--c:var(--purple)"><code>Qwen/Qwen-Image-Edit</code><div class="caps"><span class="pill yes">图生图</span><span class="pill no">仅 1 张输入图</span></div></article>
+<article class="card model" style="--c:var(--purple)"><code>Qwen/Qwen-Image-Edit-2509</code><div class="caps"><span class="pill yes">图生图</span><span class="pill yes">最多 3 张输入图</span></div></article>
+<article class="card model" style="--c:var(--blue)"><code>Wan-AI/Wan2.2-T2V-A14B</code><div class="caps"><span class="pill yes">文生视频</span><span class="pill yes">异步任务</span></div></article>
+<article class="card model" style="--c:var(--blue)"><code>Wan-AI/Wan2.2-I2V-A14B</code><div class="caps"><span class="pill yes">图生视频</span><span class="pill yes">input_reference</span></div></article>
+</div>
+</section>
+
+<section>
+<div class="section-head"><div><div class="eyebrow">HOW TO CALL</div><h2>按场景查看可复制示例</h2></div><div class="section-note">示例全部使用中文提示词</div></div>
+<div class="tabs" role="tablist">
+<button class="tab is-current" data-tab="text-image">文生图</button>
+<button class="tab" data-tab="image-image">图生图</button>
+<button class="tab" data-tab="video">生视频</button>
+<button class="tab" data-tab="poll">轮询与下载</button>
+</div>
+
+<div class="tab-panel is-current" data-panel="text-image">
+<div class="flow-steps"><div class="card flow-step"><div class="num">01</div><h3>选择模型</h3><p>模型名必须对应已配置的网关路由。</p></div><div class="card flow-step"><div class="num">02</div><h3>给出中文提示词</h3><p>prompt 必填，负向提示词按需提供。</p></div><div class="card flow-step"><div class="num">03</div><h3>提交 JSON</h3><p>size 会映射为 image_size。</p></div><div class="card flow-step"><div class="num">04</div><h3>读取 URL</h3><p>仅支持 response_format=url。</p></div></div>
+<div class="code-box"><div class="code-head"><span>curl · 文生图</span><button class="copy">复制</button></div><pre><code>curl -sS http://&lt;gateway-host&gt;:4000/v1/images/generations \
+  -H "Authorization: Bearer $LITELLM_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "Kwai-Kolors/Kolors",
+    "prompt": "雨后的苏州园林，一只白猫坐在石桥上，电影光影",
+    "negative_prompt": "模糊，低清晰度，文字水印",
+    "size": "1024x1024",
+    "n": 1,
+    "seed": 42,
+    "response_format": "url"
+  }'</code></pre></div>
+<div class="notice" style="margin-top:14px"><div class="icon">i</div><div><h3>Kolors 专有映射</h3><p><code class="inline">n</code> 会映射为 <code class="inline">batch_size</code>；还可传 <code class="inline">guidance_scale</code>。Qwen-Image 使用 <code class="inline">cfg</code>。</p></div></div>
+</div>
+
+<div class="tab-panel" data-panel="image-image">
+<div class="code-box" style="margin-top:0"><div class="code-head"><span>curl · multipart 多图编辑</span><button class="copy">复制</button></div><pre><code>curl -sS http://&lt;gateway-host&gt;:4000/v1/images/edits \
+  -H "Authorization: Bearer $LITELLM_API_KEY" \
+  -F "model=Qwen/Qwen-Image-Edit-2509" \
+  -F "prompt=保留第一张图的人物，把服装替换成第二张图的款式" \
+  -F "image=@./person.png" \
+  -F "image=@./clothes.png" \
+  -F "size=1024x1024" \
+  -F "response_format=url"</code></pre></div>
+<div class="notice"><div class="icon">i</div><div><h3>输入图数量</h3><p>至少 1 张、最多 3 张。只有 <code class="inline">Qwen/Qwen-Image-Edit-2509</code> 支持多图；普通 Image-Edit 只允许一张。</p></div></div>
+</div>
+
+<div class="tab-panel" data-panel="video">
+<div class="flow-steps"><div class="card flow-step"><div class="num">01</div><h3>提交任务</h3><p>POST 后返回 queued。</p></div><div class="card flow-step"><div class="num">02</div><h3>保存 video_id</h3><p>不要截断或自行解码。</p></div><div class="card flow-step"><div class="num">03</div><h3>轮询状态</h3><p>queued / in_progress 继续等待。</p></div><div class="card flow-step"><div class="num">04</div><h3>下载成品</h3><p>completed 后访问 content。</p></div></div>
+<div class="code-box"><div class="code-head"><span>curl · 图生视频</span><button class="copy">复制</button></div><pre><code>curl -sS http://&lt;gateway-host&gt;:4000/v1/videos \
+  -H "Authorization: Bearer $LITELLM_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "Wan-AI/Wan2.2-I2V-A14B",
+    "prompt": "镜头缓慢推进，海浪拍打礁石，云层随风移动",
+    "input_reference": "https://example.com/first-frame.png",
+    "size": "1280x720",
+    "negative_prompt": "画面抖动，主体变形，闪烁",
+    "seed": 42
+  }'</code></pre></div>
+<div class="notice danger" style="margin-top:14px"><div class="icon">!</div><div><h3>当前没有时长参数</h3><p>适配器不支持 <code class="inline">seconds</code> 或 <code class="inline">duration</code>。size 只接受 1280x720、720x1280、960x960。</p></div></div>
+</div>
+
+<div class="tab-panel" data-panel="poll">
+<div class="code-box" style="margin-top:0"><div class="code-head"><span>bash · 查询并下载</span><button class="copy">复制</button></div><pre><code>VIDEO_ID='video_...'
+
+curl -sS \
+  -H "Authorization: Bearer $LITELLM_API_KEY" \
+  "http://&lt;gateway-host&gt;:4000/v1/videos/$VIDEO_ID"
+
+curl -sS \
+  -H "Authorization: Bearer $LITELLM_API_KEY" \
+  "http://&lt;gateway-host&gt;:4000/v1/videos/$VIDEO_ID/content" \
+  --output result.mp4</code></pre></div>
+<div class="status-list" style="margin-top:14px"><div class="card status" style="--c:var(--amber)"><code>queued</code><p>上游 InQueue，稍后轮询。</p></div><div class="card status" style="--c:var(--blue)"><code>in_progress</code><p>上游 InProgress，继续等待。</p></div><div class="card status" style="--c:var(--teal)"><code>completed</code><p>上游 Succeed，可下载。</p></div><div class="card status" style="--c:var(--red)"><code>failed</code><p>读取 error.message，停止轮询。</p></div></div>
+</div>
+</section>
+
+<section>
+<div class="section-head"><div><div class="eyebrow">IMAGE PARAMETERS</div><h2>图片生成与编辑参数</h2></div><div class="section-note"><span class="required">必填</span> / <span class="optional">可选</span></div></div>
+<div class="table-wrap"><div class="scroll"><table><thead><tr><th>参数</th><th>类型 / 范围</th><th>适用范围</th><th>行为</th></tr></thead><tbody>
+<tr><td><code>model</code> <span class="required">必填</span></td><td>string</td><td>全部</td><td>网关模型路由名。</td></tr>
+<tr><td><code>prompt</code> <span class="required">必填</span></td><td>string</td><td>全部</td><td>中文或其他语言的生成 / 编辑指令。</td></tr>
+<tr><td><code>response_format</code></td><td>仅 <code>url</code></td><td>全部</td><td>不支持 b64_json。</td></tr>
+<tr><td><code>size</code> / <code>image_size</code></td><td>string</td><td>全部</td><td>size 映射为上游 image_size。</td></tr>
+<tr><td><code>seed</code></td><td>0–9,999,999,999</td><td>图片生成</td><td>随机种子。</td></tr>
+<tr><td><code>negative_prompt</code></td><td>string</td><td>图片生成</td><td>负向提示词。</td></tr>
+<tr><td><code>num_inference_steps</code></td><td>1–100</td><td>图片生成</td><td>推理步数。</td></tr>
+<tr><td><code>n</code> / <code>batch_size</code></td><td>1–4</td><td>Kolors</td><td>n 映射为 batch_size。</td></tr>
+<tr><td><code>guidance_scale</code></td><td>0–20</td><td>Kolors</td><td>提示词引导强度。</td></tr>
+<tr><td><code>cfg</code></td><td>0.1–20</td><td>Qwen-Image</td><td>分类器自由引导参数。</td></tr>
+<tr><td><code>image</code></td><td>文件 / data URI</td><td>图片编辑</td><td>必需；2509 最多三张，其他模型一张。</td></tr>
+<tr><td><code>image2</code> / <code>image3</code></td><td>string</td><td>仅 Edit-2509</td><td>上游多图字段，由适配器组装。</td></tr>
+</tbody></table></div></div>
+</section>
+
+<section>
+<div class="section-head"><div><div class="eyebrow">VIDEO PARAMETERS</div><h2>视频创建参数</h2></div></div>
+<div class="table-wrap"><div class="scroll"><table><thead><tr><th>参数</th><th>类型 / 范围</th><th>映射</th><th>说明</th></tr></thead><tbody>
+<tr><td><code>model</code> <span class="required">必填</span></td><td>string</td><td>原样发送</td><td>T2V 或 I2V 模型。</td></tr>
+<tr><td><code>prompt</code> <span class="required">必填</span></td><td>string</td><td>原样发送</td><td>视频描述。</td></tr>
+<tr><td><code>input_reference</code></td><td>图片 URL / data URL</td><td><code>image</code></td><td>不能是文件对象或视频。</td></tr>
+<tr><td><code>size</code></td><td>1280x720 / 720x1280 / 960x960</td><td><code>image_size</code></td><td>其他尺寸会在网关校验失败。</td></tr>
+<tr><td><code>negative_prompt</code></td><td>string</td><td>原样发送</td><td>负向提示词。</td></tr>
+<tr><td><code>seed</code></td><td>0–9,999,999,999</td><td>原样发送</td><td>随机种子。</td></tr>
+</tbody></table></div></div>
+</section>
+
+<section>
+<div class="section-head"><div><div class="eyebrow">RESPONSES</div><h2>标准化响应与计数元数据</h2></div></div>
+<div class="endpoint-grid">
+<div class="code-box" style="margin-top:0"><div class="code-head"><span>图片成功响应</span><button class="copy">复制</button></div><pre><code>{
+  "created": 1784700000,
+  "data": [
+    {"url": "https://.../generated.png"}
+  ]
+}</code></pre></div>
+<div class="code-box" style="margin-top:0"><div class="code-head"><span>视频完成响应</span><button class="copy">复制</button></div><pre><code>{
+  "id": "video_...",
+  "object": "video",
+  "status": "completed",
+  "model": "Wan-AI/Wan2.2-T2V-A14B",
+  "usage": {
+    "generated_videos": 1,
+    "inference_time": 12.3,
+    "seed": 42
+  }
+}</code></pre></div>
+</div>
+<div class="notice" style="margin-top:14px"><div class="icon">i</div><div><h3>图片隐藏元数据</h3><p>适配器保留 <code class="inline">model</code>、<code class="inline">generated_images</code>、<code class="inline">seed</code> 与 <code class="inline">timings</code>，用于计费和调试；公开响应的稳定读取位置是 <code class="inline">data[].url</code>。</p></div></div>
+</section>
+
+<section>
+<div class="section-head"><div><div class="eyebrow">ERRORS &amp; SECURITY</div><h2>失败处理与安全边界</h2></div></div>
+<div class="error-grid">
+<article class="card"><h3>401 / Token is invalid</h3><p>检查服务端 SiliconFlow Key 是否有效、模型路由是否引用了正确凭据。客户端 Virtual Key 与厂商 Key 不要混用。</p></article>
+<article class="card"><h3>400 / 参数校验失败</h3><p>检查 response_format、seed、图片数量、视频 size，以及是否误传 duration、seconds 等不支持字段。</p></article>
+<article class="card"><h3>异步任务 failed</h3><p>停止轮询并读取 <code class="inline">error.message</code>。只有 completed 才能请求 content。</p></article>
+<article class="card"><h3>密钥与日志</h3><p>只在服务端保存 SILICONFLOW_API_KEY；示例、测试报告、日志和前端配置中都不得写入真实 Key。</p></article>
+</div>
+</section>
+
+<p class="source">依据：当前分支 SiliconFlow image_generation、image_edit、videos 适配器与 model_prices_and_context_window.json；文档生成日期 2026-07-22。</p>
+</main>
+<script type="module">
+const SKETCH={seed:7,roughness:1.2,bowing:1.1};
+const PREVIEW=new URLSearchParams(location.search);
+const REDUCED=PREVIEW.has('reduced')||matchMedia('(prefers-reduced-motion: reduce)').matches;
+if(REDUCED)document.documentElement.dataset.reduced='true';
+function loadScript(srcs,timeout=6000){return new Promise(resolve=>{const timer=setTimeout(()=>resolve(false),timeout);let i=0;const next=()=>{if(i>=srcs.length){clearTimeout(timer);return resolve(false)}const s=document.createElement('script');s.src=srcs[i++];s.onload=()=>{clearTimeout(timer);resolve(true)};s.onerror=()=>{s.remove();next()};document.head.appendChild(s)};next()})}
+const hasRough=PREVIEW.has('offline')?false:await loadScript(['https://cdn.jsdelivr.net/npm/roughjs@4.6.6/bundled/rough.min.js','https://unpkg.com/roughjs@4.6.6/bundled/rough.js']);
+const NS='http://www.w3.org/2000/svg';
+const svgEl=(tag,attrs={})=>{const el=document.createElementNS(NS,tag);for(const[k,v]of Object.entries(attrs))el.setAttribute(k,v);return el};
+function drawArchitecture(){const host=document.querySelector('#architecture');const svg=svgEl('svg',{viewBox:'0 0 1080 210',role:'img','aria-label':'调用方通过 LiteLLM Gateway 请求 SiliconFlow，响应被标准化并写入费用日志'});host.appendChild(svg);const rc=hasRough?rough.svg(svg):null;const nodes=[{id:'caller',x:25,label:'业务调用方',sub:'Virtual Key',c:'var(--amber)'},{id:'gateway',x:240,label:'LiteLLM Gateway',sub:'路由 · 参数校验',c:'var(--blue)'},{id:'provider',x:455,label:'SiliconFlow',sub:'图片 / 视频生成',c:'var(--purple)'},{id:'normalized',x:670,label:'标准化结果',sub:'URL · 状态 · usage',c:'var(--teal)'},{id:'spend',x:885,label:'费用日志',sub:'模型 × 成功产物数',c:'var(--red)'}];const edges=[];for(let i=0;i<nodes.length-1;i++)edges.push({id:`edge-${i}`,x1:nodes[i].x+170,x2:nodes[i+1].x,y:92});edges.forEach((e,i)=>{const g=svgEl('g',{class:'edge','data-id':e.id});const d=`M${e.x1} ${e.y} C${e.x1+22} ${e.y-20},${e.x2-22} ${e.y+20},${e.x2} ${e.y}`;const shape=rc?rc.path(d,{roughness:1,bowing:.8,seed:30+i,strokeWidth:1.6}):svgEl('path',{d});shape.setAttribute('pathLength','1');shape.classList.add('draw-in');g.appendChild(shape);const head=svgEl('path',{d:`M${e.x2-9} ${e.y-6} L${e.x2} ${e.y} L${e.x2-9} ${e.y+6}`});head.classList.add('fade-el');g.appendChild(head);svg.appendChild(g);const dot=svgEl('circle',{r:3,fill:'var(--blue)',class:'flow-dot','data-id':`dot-${i}`});dot.style.offsetPath=`path('${d}')`;dot.style.animationDuration=`${2.1+i*.15}s`;dot.style.animationDelay=`${i*.28}s`;svg.appendChild(dot)});nodes.forEach((n,i)=>{const g=svgEl('g',{class:'node','data-id':n.id});g.style.setProperty('--c',n.c);const shape=svgEl('g',{class:'shape'});const box=rc?rc.rectangle(n.x,65,170,58,{roughness:SKETCH.roughness,bowing:SKETCH.bowing,seed:10+i,strokeWidth:1.6}):svgEl('rect',{x:n.x,y:65,width:170,height:58,rx:8});shape.appendChild(box);g.appendChild(shape);const label=svgEl('text',{x:n.x+85,y:86,class:'node-label'});label.textContent=n.label;g.appendChild(label);const sub=svgEl('text',{x:n.x+85,y:108,class:'node-sub'});sub.textContent=n.sub;g.appendChild(sub);svg.appendChild(g)});const labels=['鉴权请求','厂商请求','响应映射','成功后计费'];labels.forEach((t,i)=>{const x=(nodes[i].x+170+nodes[i+1].x)/2;const label=svgEl('text',{x,y:145,class:'edge-label','data-id':`label-${i}`});label.textContent=t;svg.appendChild(label)});if(REDUCED)svg.querySelectorAll('.draw-in,.fade-el').forEach(el=>el.classList.remove('draw-in','fade-el'))}
+drawArchitecture();
+document.querySelectorAll('.tab').forEach(button=>button.addEventListener('click',()=>{document.querySelectorAll('.tab').forEach(el=>el.classList.toggle('is-current',el===button));document.querySelectorAll('.tab-panel').forEach(panel=>panel.classList.toggle('is-current',panel.dataset.panel===button.dataset.tab))}));
+document.querySelectorAll('.copy').forEach(button=>button.addEventListener('click',async()=>{const text=button.closest('.code-box').querySelector('pre').innerText;try{await navigator.clipboard.writeText(text);button.textContent='已复制';button.classList.add('done');setTimeout(()=>{button.textContent='复制';button.classList.remove('done')},1200)}catch{button.textContent='请手动复制'}}));
+</script>
+</body>
+</html>

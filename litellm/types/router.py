@@ -414,6 +414,7 @@ class LiteLLMParamsTypedDict(TypedDict, total=False):
     input_cost_per_second: Optional[float]
     output_cost_per_second: Optional[float]
     output_cost_per_second_1080p: Optional[float]
+    output_cost_per_video: Optional[float]
     video_token_pricing: Optional[VideoTokenPricing]
     num_retries: Optional[int]
     ## MOCK RESPONSES ##
@@ -443,6 +444,7 @@ SPECIAL_MODEL_INFO_PARAMS = [
     "output_cost_per_character",
     "cache_read_input_token_cost",
     "cache_creation_input_token_cost",
+    "output_cost_per_video",
 ]
 
 

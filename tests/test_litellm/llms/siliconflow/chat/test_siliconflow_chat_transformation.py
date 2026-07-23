@@ -1,5 +1,7 @@
 import os
 import sys
+import json
+from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, os.path.abspath("../../../../.."))
@@ -30,10 +32,7 @@ class TestSiliconFlowConfig:
 
     def test_get_api_base_precedence(self):
         # Explicit argument wins over everything.
-        assert (
-            self.config.get_api_base("https://custom-base.com/v1")
-            == "https://custom-base.com/v1"
-        )
+        assert self.config.get_api_base("https://custom-base.com/v1") == "https://custom-base.com/v1"
 
         # SILICONFLOW_API_BASE override (e.g. the China mainland endpoint).
         with patch(
@@ -42,13 +41,12 @@ class TestSiliconFlowConfig:
         ):
             assert self.config.get_api_base() == "https://api.siliconflow.cn/v1"
 
-        # Falls back to the default global endpoint.
         with patch(
             "litellm.llms.siliconflow.chat.transformation.get_secret_str",
             return_value=None,
         ):
             assert self.config.get_api_base() == SiliconFlowConfig.API_BASE_URL
-            assert SiliconFlowConfig.API_BASE_URL == "https://api.siliconflow.com/v1"
+            assert SiliconFlowConfig.API_BASE_URL == "https://api.siliconflow.cn/v1"
 
     def test_get_openai_compatible_provider_info(self):
         def fake_secret(name, *args, **kwargs):
@@ -58,16 +56,12 @@ class TestSiliconFlowConfig:
             "litellm.llms.siliconflow.chat.transformation.get_secret_str",
             side_effect=fake_secret,
         ):
-            api_base, api_key = self.config._get_openai_compatible_provider_info(
-                api_base=None, api_key=None
-            )
-        assert api_base == "https://api.siliconflow.com/v1"
+            api_base, api_key = self.config._get_openai_compatible_provider_info(api_base=None, api_key=None)
+        assert api_base == "https://api.siliconflow.cn/v1"
         assert api_key == "sk-secret"
 
     def test_supported_params_include_tools(self):
-        params = self.config.get_supported_openai_params(
-            model="deepseek-ai/DeepSeek-V3"
-        )
+        params = self.config.get_supported_openai_params(model="deepseek-ai/DeepSeek-V3")
         for expected in ("temperature", "stream", "tools", "tool_choice"):
             assert expected in params
 
@@ -75,13 +69,11 @@ class TestSiliconFlowConfig:
 class TestSiliconFlowProviderResolution:
     def test_get_llm_provider_resolves_prefixed_model(self):
         with patch.dict(os.environ, {"SILICONFLOW_API_KEY": "sk-secret"}, clear=False):
-            model, provider, api_key, api_base = get_llm_provider(
-                model="siliconflow/deepseek-ai/DeepSeek-V3"
-            )
+            model, provider, api_key, api_base = get_llm_provider(model="siliconflow/deepseek-ai/DeepSeek-V3")
         assert model == "deepseek-ai/DeepSeek-V3"
         assert provider == "siliconflow"
         assert api_key == "sk-secret"
-        assert api_base == "https://api.siliconflow.com/v1"
+        assert api_base == "https://api.siliconflow.cn/v1"
 
     def test_get_llm_provider_detects_provider_from_api_base(self):
         _, provider, _, _ = get_llm_provider(
@@ -92,9 +84,7 @@ class TestSiliconFlowProviderResolution:
         assert provider == "siliconflow"
 
     def test_get_supported_openai_params_routes_to_config(self):
-        params = get_supported_openai_params(
-            model="deepseek-ai/DeepSeek-V3", custom_llm_provider="siliconflow"
-        )
+        params = get_supported_openai_params(model="deepseek-ai/DeepSeek-V3", custom_llm_provider="siliconflow")
         assert params is not None
         assert "tools" in params
 
@@ -104,3 +94,13 @@ class TestSiliconFlowProviderResolution:
         assert LlmProviders.SILICONFLOW.value == "siliconflow"
         assert "siliconflow" in litellm.openai_compatible_providers
         assert "api.siliconflow.com/v1" in litellm.openai_compatible_endpoints
+
+
+def test_siliconflow_qwen3_8b_pricing_metadata() -> None:
+    pricing_path = Path(__file__).parents[5] / "model_prices_and_context_window.json"
+    pricing = json.loads(pricing_path.read_text())
+    model_info = pricing["siliconflow/Qwen/Qwen3-8B"]
+
+    assert model_info["input_cost_per_token"] == 0.0
+    assert model_info["output_cost_per_token"] == 0.0
+    assert model_info["mode"] == "chat"

@@ -151,6 +151,7 @@ export enum Providers {
   SAGEMAKER_LEGACY = "Sagemaker",
   Sambanova = "Sambanova",
   SAP = "SAP Generative AI Hub",
+  SiliconFlow = "SiliconFlow",
   Snowflake = "Snowflake",
   Soniox = "Soniox",
   TEXT_COMPLETION_CODESTRAL = "Text-Completion-Codestral",
@@ -260,6 +261,7 @@ export const provider_map: Record<string, string> = {
   SageMaker: "sagemaker_chat",
   Sambanova: "sambanova",
   SAP: "sap",
+  SiliconFlow: "siliconflow",
   Snowflake: "snowflake",
   Soniox: "soniox",
   TEXT_COMPLETION_CODESTRAL: "text-completion-codestral",
@@ -439,6 +441,8 @@ export const getPlaceholder = (selectedProvider: string): string => {
     return "cursor/claude-4-sonnet";
   } else if (selectedProvider === Providers.ZAI) {
     return "zai/glm-4.5";
+  } else if (selectedProvider === Providers.SiliconFlow) {
+    return "siliconflow/deepseek-ai/DeepSeek-V3";
   } else {
     return "gpt-3.5-turbo";
   }
@@ -498,4 +502,13 @@ export const getProviderModels = (provider: Providers, modelMap: any): Array<str
   }
 
   return providerModels;
+};
+
+export const getConfiguredProviderModels = (
+  provider: Providers,
+  providerMetadata: Array<{ provider: string; models?: string[] | null }> | undefined,
+  fallbackModels: string[],
+): string[] => {
+  const configuredModels = providerMetadata?.find((providerInfo) => providerInfo.provider === provider)?.models;
+  return configuredModels?.length ? configuredModels : fallbackModels;
 };
