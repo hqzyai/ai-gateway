@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "ark-docs-mcp": {
+      "type": "http",
+      "url": "https://mcp.ark-doc-resources.cn/mcp/"
+    }
+  }
+}

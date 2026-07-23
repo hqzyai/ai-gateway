@@ -174,6 +174,16 @@ class SearchContextCostPerQuery(TypedDict, total=False):
 
 
 class VideoTokenPricing(TypedDict, total=False):
+    """
+    Per-token video-generation rates, split by whether the request carried video input.
+
+    ``<video_input|no_video_input>_<resolution>`` prices one resolution and the bare keys
+    are the resolution-agnostic fallback. Any resolution a provider reports is accepted,
+    so the suffixed keys below are the ones currently shipped, not the allowed set.
+    """
+
+    __pydantic_config__ = ConfigDict(extra="allow")
+
     no_video_input: float
     video_input: float
     no_video_input_1080p: float
@@ -291,6 +301,8 @@ class ModelInfoBase(ProviderSpecificModelInfo, total=False):
             "realtime",
         ]
     ]
+    supported_endpoints: Optional[List[str]]
+    use_openai_responses_path: Optional[bool]
     tpm: Optional[int]
     rpm: Optional[int]
     provider_specific_entry: Optional[Dict[str, float]]
@@ -3132,6 +3144,7 @@ class CustomPricingLiteLLMParams(BaseModel):
     output_cost_per_token_above_272k_tokens_priority: Optional[float] = None
     output_cost_per_character_above_128k_tokens: Optional[float] = None
     output_cost_per_image: Optional[float] = None
+    output_cost_per_image_above_16384_tokens: Optional[float] = None
     output_cost_per_image_token: Optional[float] = None
     output_cost_per_video_token: Optional[float] = None
     output_cost_per_reasoning_token: Optional[float] = None

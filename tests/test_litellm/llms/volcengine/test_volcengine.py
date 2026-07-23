@@ -2,11 +2,15 @@ import os
 import sys
 from unittest.mock import MagicMock, patch
 
+import pytest
 from pydantic import BaseModel
 
+import litellm
+from litellm.cost_calculator import cost_per_token
 from litellm.llms.volcengine.chat.transformation import (
     VolcEngineChatConfig as VolcEngineConfig,
 )
+from litellm.types.utils import PromptTokensDetailsWrapper, Usage
 from litellm.utils import get_optional_params
 
 
@@ -152,3 +156,112 @@ class TestVolcEngineConfig:
                 and mock_create.call_args.kwargs.get("extra_body", {})["thinking"]
                 == {"type": "disabled"}
             )
+
+
+ARK_CHAT_TIERS = {
+    "volcengine/doubao-seed-2-0-pro-260215": (
+        (3.2e-06, 1.6e-05, 6.4e-07),
+        (4.8e-06, 2.4e-05, 9.6e-07),
+        (9.6e-06, 4.8e-05, 1.92e-06),
+    ),
+    "volcengine/doubao-seed-2-0-code-preview-260215": (
+        (3.2e-06, 1.6e-05, 6.4e-07),
+        (4.8e-06, 2.4e-05, 9.6e-07),
+        (9.6e-06, 4.8e-05, 1.92e-06),
+    ),
+    "volcengine/doubao-seed-2-0-lite-260215": (
+        (6e-07, 3.6e-06, 1.2e-07),
+        (9e-07, 5.4e-06, 1.8e-07),
+        (1.8e-06, 1.08e-05, 3.6e-07),
+    ),
+    "volcengine/doubao-seed-2-0-mini-260215": (
+        (2e-07, 2e-06, 4e-08),
+        (4e-07, 4e-06, 8e-08),
+        (8e-07, 8e-06, 1.6e-07),
+    ),
+}
+
+ARK_TIER_BOUNDARIES = ((1000, 0), (32768, 0), (32769, 1), (131072, 1), (131073, 2), (262144, 2))
+
+
+@pytest.mark.parametrize("model", sorted(ARK_CHAT_TIERS))
+@pytest.mark.parametrize(("prompt_tokens", "tier"), ARK_TIER_BOUNDARIES)
+def test_seed_2_0_chat_cost_matches_ark_input_length_tier(model: str, prompt_tokens: int, tier: int) -> None:
+    """doubao-seed-2.0 bills the whole request at the tier its prompt length falls in.
+
+    These entries used to carry only ``tiered_pricing``, which no volcengine cost path
+    reads, so every request tracked as $0. Ark's boundaries are 32768 and 131072 prompt
+    tokens inclusive, so a prompt sitting exactly on a boundary stays in the lower tier.
+    """
+    input_rate, output_rate, _ = ARK_CHAT_TIERS[model][tier]
+    completion_tokens = 1000
+
+    prompt_cost, completion_cost = cost_per_token(
+        model=model,
+        custom_llm_provider="volcengine",
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+    )
+
+    assert prompt_cost == pytest.approx(input_rate * prompt_tokens)
+    assert completion_cost == pytest.approx(output_rate * completion_tokens)
+
+
+@pytest.mark.parametrize("model", sorted(ARK_CHAT_TIERS))
+@pytest.mark.parametrize(("prompt_tokens", "tier"), ((1000, 0), (50000, 1), (200000, 2)))
+def test_seed_2_0_chat_cached_prompt_uses_the_same_tier(model: str, prompt_tokens: int, tier: int) -> None:
+    """Cache-read tokens are billed at the tier's own ContextSessionHit rate."""
+    input_rate, _, cache_rate = ARK_CHAT_TIERS[model][tier]
+    cached_tokens = 500
+
+    prompt_cost, _ = cost_per_token(
+        model=model,
+        custom_llm_provider="volcengine",
+        usage_object=Usage(
+            prompt_tokens=prompt_tokens,
+            completion_tokens=100,
+            total_tokens=prompt_tokens + 100,
+            prompt_tokens_details=PromptTokensDetailsWrapper(cached_tokens=cached_tokens),
+        ),
+        prompt_tokens=prompt_tokens,
+        completion_tokens=100,
+    )
+
+    expected = input_rate * (prompt_tokens - cached_tokens) + cache_rate * cached_tokens
+    assert prompt_cost == pytest.approx(expected)
+
+
+@pytest.mark.parametrize("model", sorted(ARK_CHAT_TIERS))
+def test_seed_2_0_tiered_pricing_agrees_with_above_threshold_fields(model: str) -> None:
+    """The two representations must not drift.
+
+    ``tiered_pricing`` drives the proxy's pre-call budget reservation while the
+    ``_above_<N>_tokens`` fields drive actual spend, so a rate present in one and not
+    the other would reserve and bill different amounts for the same request.
+    """
+    entry = litellm.get_model_info(model=model, custom_llm_provider="volcengine")
+    tiers = entry["tiered_pricing"]
+    boundaries = (0, 32768, 131072)
+
+    assert [tier["range"][0] for tier in tiers] == list(boundaries)
+
+    for index, threshold in enumerate(boundaries):
+        suffix = "" if index == 0 else f"_above_{threshold}_tokens"
+        assert tiers[index]["input_cost_per_token"] == entry[f"input_cost_per_token{suffix}"]
+        assert tiers[index]["output_cost_per_token"] == entry[f"output_cost_per_token{suffix}"]
+
+
+@pytest.mark.parametrize(
+    ("model", "expected_cost_per_image"),
+    [
+        ("volcengine/doubao-seedream-4-0-250828", 0.2),
+        ("volcengine/doubao-seedream-4-5-251128", 0.25),
+    ],
+)
+def test_seedream_4_x_models_are_priced(model: str, expected_cost_per_image: float) -> None:
+    """These shipped without a price-map entry, so every generation tracked as $0."""
+    entry = litellm.get_model_info(model=model, custom_llm_provider="volcengine")
+
+    assert entry["mode"] == "image_generation"
+    assert entry["output_cost_per_image"] == pytest.approx(expected_cost_per_image)
+    assert entry["input_cost_per_image"] == 0.0

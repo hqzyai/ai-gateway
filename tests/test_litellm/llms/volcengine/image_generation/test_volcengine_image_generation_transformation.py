@@ -269,3 +269,97 @@ def test_seedream_pro_large_image_pricing(output_tokens: int, expected_cost: flo
     )
 
     assert cost == pytest.approx(expected_cost)
+
+
+def _image_response(output_tokens: int, generated_images: int, input_images: int, model: str) -> ImageResponse:
+    return ImageResponse(
+        data=[ImageObject(url="https://example.com/image.png")],
+        usage=ImageUsage(
+            input_tokens=0,
+            input_tokens_details={"image_tokens": 0, "text_tokens": 0},
+            output_tokens=output_tokens,
+            total_tokens=output_tokens,
+        ),
+        hidden_params={"generated_images": generated_images, "input_images": input_images, "model": model},
+    )
+
+
+@pytest.mark.parametrize(
+    ("output_tokens", "expected_cost"),
+    [(4096, 0.32), (4097, 0.47), (8192, 0.47), (8193, 0.62)],
+)
+def test_image_cost_honors_output_token_thresholds_other_than_16384(
+    output_tokens: int, expected_cost: float
+) -> None:
+    """Large-image tiers come from the price map, not a hard-coded 16384 boundary.
+
+    Before this was generalized the calculator only ever read
+    output_cost_per_image_above_16384_tokens, so a model with different tier
+    boundaries silently billed every output image at the base rate.
+    """
+    model = "doubao-seedream-custom-thresholds"
+    model_info = {
+        "litellm_provider": "volcengine",
+        "mode": "image_generation",
+        "input_cost_per_image": 0.02,
+        "output_cost_per_image": 0.3,
+        "output_cost_per_image_above_4096_tokens": 0.45,
+        "output_cost_per_image_above_8192_tokens": 0.6,
+    }
+
+    with patch.dict(litellm.model_cost, {f"volcengine/{model}": model_info}):
+        cost = completion_cost(
+            completion_response=_image_response(output_tokens, 1, 1, model),
+            model=f"volcengine/{model}",
+            call_type="image_generation",
+        )
+
+    assert cost == pytest.approx(expected_cost)
+
+
+@pytest.mark.parametrize(("output_tokens", "expected_cost"), [(16384, 0.45), (16385, 0.95)])
+def test_deployment_can_override_large_image_pricing_via_litellm_params(
+    output_tokens: int, expected_cost: float
+) -> None:
+    """output_cost_per_image_above_16384_tokens must survive the litellm_params -> model_info copy.
+
+    Router only forwards fields declared on CustomPricingLiteLLMParams, so an
+    undeclared field would leave the deployment billing at the built-in rate.
+    """
+    from litellm import Router
+    from litellm.utils import _invalidate_model_cost_lowercase_map
+
+    model_id = "volcengine-seedream-pro-deployment"
+    backend_model = "doubao-seedream-5-0-pro-260628"
+
+    with patch.dict(litellm.model_cost):
+        Router(
+            model_list=[
+                {
+                    "model_name": "seedream-pro",
+                    "litellm_params": {
+                        "model": f"volcengine/{backend_model}",
+                        "api_key": "fake-key",
+                        "input_cost_per_image": 0.05,
+                        "output_cost_per_image": 0.4,
+                        "output_cost_per_image_above_16384_tokens": 0.9,
+                    },
+                    "model_info": {"id": model_id, "mode": "image_generation"},
+                }
+            ]
+        )
+
+        assert litellm.model_cost[model_id]["output_cost_per_image_above_16384_tokens"] == 0.9
+
+        cost = completion_cost(
+            completion_response=_image_response(output_tokens, 1, 1, backend_model),
+            model=backend_model,
+            call_type="image_generation",
+            custom_llm_provider="volcengine",
+            custom_pricing=True,
+            router_model_id=model_id,
+        )
+
+    _invalidate_model_cost_lowercase_map()
+
+    assert cost == pytest.approx(expected_cost)

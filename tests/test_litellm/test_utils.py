@@ -969,15 +969,21 @@ def test_aaamodel_prices_and_context_window_json_is_valid():
                     "properties": {
                         "no_video_input": {"type": "number"},
                         "video_input": {"type": "number"},
-                        "no_video_input_1080p": {"type": "number"},
-                        "video_input_1080p": {"type": "number"},
-                        "no_video_input_4k": {"type": "number"},
-                        "video_input_4k": {"type": "number"},
+                    },
+                    # Any resolution the provider reports may carry its own rate; the
+                    # runtime looks up "<video_input|no_video_input>_<resolution>" and
+                    # falls back to the bare key. See _video_output_cost_per_token.
+                    "patternProperties": {
+                        r"^(no_)?video_input_[a-z0-9_]{1,24}$": {"type": "number"}
                     },
                     "required": ["no_video_input", "video_input"],
                     "additionalProperties": False,
                 },
             },
+            # Any "<base>_above_<N>[k]_tokens" threshold rate is honored by
+            # get_model_info (_ABOVE_THRESHOLD_COST_KEY in litellm/utils.py), so
+            # thresholds beyond the ones enumerated above validate too.
+            "patternProperties": {r"^[a-z_]+_above_\d+k?_tokens$": {"type": "number"}},
             "additionalProperties": False,
         },
     }

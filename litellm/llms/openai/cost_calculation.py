@@ -3,7 +3,7 @@ Helper util for handling openai-specific cost calculation
 - e.g.: prompt caching
 """
 
-from typing import Literal, Mapping, Optional, Tuple
+from typing import Literal, Mapping, Optional, Tuple, cast
 
 from litellm._logging import verbose_logger
 from litellm.litellm_core_utils.llm_cost_calc.utils import generic_cost_per_token
@@ -173,13 +173,23 @@ def _video_output_cost_per_token(
     video_resolution: str | None,
     has_video_input: bool,
 ) -> float | None:
-    pricing = model_info.get("video_token_pricing")
-    if not isinstance(pricing, Mapping):
+    """
+    Per-token video output rate from ``video_token_pricing``.
+
+    Looks up ``<video_input|no_video_input>_<resolution>`` (e.g. ``no_video_input_720p``)
+    for whatever resolution the provider reported, then falls back to the
+    resolution-agnostic ``<video_input|no_video_input>`` key.
+    """
+    raw_pricing = model_info.get("video_token_pricing")
+    if not isinstance(raw_pricing, Mapping):
         return None
+    pricing = cast(  # cast-ok: isinstance narrows the value but not the Mapping's type arguments
+        Mapping[str, object], raw_pricing
+    )
     input_key = "video_input" if has_video_input else "no_video_input"
-    resolution = (video_resolution or "").strip().lower()
-    key = f"{input_key}_{resolution}" if resolution in {"1080p", "4k"} else input_key
-    rate = pricing.get(key)
+    suffix = _video_resolution_to_cost_field_suffix(video_resolution or "")
+    tiered_rate = pricing.get(f"{input_key}_{suffix}") if suffix is not None else None
+    rate = tiered_rate if isinstance(tiered_rate, (int, float)) else pricing.get(input_key)
     return float(rate) if isinstance(rate, (int, float)) else None
 
 

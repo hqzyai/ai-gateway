@@ -40,6 +40,7 @@ from litellm.litellm_core_utils.llm_cost_calc.utils import (
     calculate_cache_writing_cost,
     generic_cost_per_token,
     get_token_type_cost_breakdown,
+    select_above_threshold_rate,
 )
 from litellm.types.utils import CacheCreationTokenDetails, Usage
 
@@ -2237,3 +2238,139 @@ def test_token_type_cost_breakdown_applies_regional_uplift():
     text_input_cost = 600 * model_info["input_cost_per_token"] * uplift
     assert text_output_cost + eu.reasoning_cost == pytest.approx(completion_cost)
     assert text_input_cost + eu.cache_read_cost == pytest.approx(prompt_cost)
+
+
+GEMINI_DAY0_LAUNCH_PRICING = [
+    ("gemini-3.6-flash", 1.5e-06, 7.5e-06, 1.5e-07),
+    ("gemini/gemini-3.6-flash", 1.5e-06, 7.5e-06, 1.5e-07),
+    ("vertex_ai/gemini-3.6-flash", 1.5e-06, 7.5e-06, 1.5e-07),
+    ("gemini-3.5-flash-lite", 3e-07, 2.5e-06, 3e-08),
+    ("gemini/gemini-3.5-flash-lite", 3e-07, 2.5e-06, 3e-08),
+    ("vertex_ai/gemini-3.5-flash-lite", 3e-07, 2.5e-06, 3e-08),
+]
+
+
+@pytest.mark.parametrize("model,input_cost,output_cost,cache_read_cost", GEMINI_DAY0_LAUNCH_PRICING)
+def test_gemini_36_flash_and_35_flash_lite_launch_pricing(model, input_cost, output_cost, cache_read_cost):
+    os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
+    litellm.model_cost = litellm.get_model_cost_map(url="")
+
+    model_cost_map = litellm.model_cost[model]
+    assert model_cost_map["input_cost_per_token"] == input_cost
+    assert model_cost_map["output_cost_per_token"] == output_cost
+    assert model_cost_map["output_cost_per_reasoning_token"] == output_cost
+    assert model_cost_map["cache_read_input_token_cost"] == cache_read_cost
+    assert model_cost_map["mode"] == "chat"
+    assert model_cost_map["supports_reasoning"] is True
+    assert model_cost_map["supports_function_calling"] is True
+    assert model_cost_map["max_input_tokens"] == 1048576
+
+
+def test_generic_cost_per_token_gemini_36_flash():
+    os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
+    litellm.model_cost = litellm.get_model_cost_map(url="")
+
+    usage = Usage(
+        prompt_tokens=1000,
+        completion_tokens=500,
+        total_tokens=1500,
+        completion_tokens_details=CompletionTokensDetailsWrapper(
+            reasoning_tokens=200,
+            text_tokens=300,
+        ),
+        prompt_tokens_details=PromptTokensDetailsWrapper(text_tokens=1000),
+    )
+    prompt_cost, completion_cost = generic_cost_per_token(
+        model="gemini-3.6-flash",
+        usage=usage,
+        custom_llm_provider="gemini",
+    )
+    assert prompt_cost == pytest.approx(0.0015)
+    assert completion_cost == pytest.approx(0.00375)
+
+
+def test_generic_cost_per_token_gemini_35_flash_lite():
+    os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
+    litellm.model_cost = litellm.get_model_cost_map(url="")
+
+    usage = Usage(
+        prompt_tokens=1000,
+        completion_tokens=500,
+        total_tokens=1500,
+        completion_tokens_details=CompletionTokensDetailsWrapper(
+            reasoning_tokens=200,
+            text_tokens=300,
+        ),
+        prompt_tokens_details=PromptTokensDetailsWrapper(text_tokens=1000),
+    )
+    prompt_cost, completion_cost = generic_cost_per_token(
+        model="gemini-3.5-flash-lite",
+        usage=usage,
+        custom_llm_provider="gemini",
+    )
+    assert prompt_cost == pytest.approx(0.0003)
+    assert completion_cost == pytest.approx(0.00125)
+
+
+@pytest.mark.parametrize(
+    ("tokens", "expected"),
+    [
+        (4096, None),
+        (4097, 0.45),
+        (8192, 0.45),
+        (8193, 0.6),
+        (99999, 0.6),
+    ],
+)
+def test_select_above_threshold_rate_picks_highest_crossed_tier(tokens, expected):
+    """Every declared threshold is honored, and the highest crossed one wins.
+
+    Guards the image-generation tiers, whose thresholds are not limited to the
+    hard-coded 128k/200k/272k/512k token set used by chat models.
+    """
+    model_info = {
+        "output_cost_per_image": 0.3,
+        "output_cost_per_image_above_4096_tokens": 0.45,
+        "output_cost_per_image_above_8192_tokens": 0.6,
+    }
+
+    assert select_above_threshold_rate(
+        model_info=model_info,
+        base_key="output_cost_per_image",
+        tokens=tokens,
+    ) == expected
+
+
+def test_select_above_threshold_rate_parses_k_suffixed_thresholds():
+    model_info = {"input_cost_per_token_above_32k_tokens": 7e-07}
+
+    assert (
+        select_above_threshold_rate(model_info=model_info, base_key="input_cost_per_token", tokens=32001) == 7e-07
+    )
+    assert select_above_threshold_rate(model_info=model_info, base_key="input_cost_per_token", tokens=32000) is None
+
+
+def test_select_above_threshold_rate_ignores_other_base_keys_and_malformed_keys():
+    """A tier must not leak across cost bases, and an unparseable threshold must not raise."""
+    model_info = {
+        "output_cost_per_image": 0.3,
+        "input_cost_per_token_above_4096_tokens": 9e-07,
+        "output_cost_per_image_above_notanumber_tokens": 5.0,
+        "output_cost_per_image_above_4096": 7.0,
+        "output_cost_per_image_above_4096_tokens": None,
+    }
+
+    assert (
+        select_above_threshold_rate(model_info=model_info, base_key="output_cost_per_image", tokens=1_000_000) is None
+    )
+
+
+def test_select_above_threshold_rate_without_any_tier_returns_none():
+    assert (
+        select_above_threshold_rate(
+            model_info={"output_cost_per_image": 0.3},
+            base_key="output_cost_per_image",
+            tokens=1_000_000,
+        )
+        is None
+    )

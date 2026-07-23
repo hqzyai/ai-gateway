@@ -22630,6 +22630,12 @@ export interface components {
              */
             provider_url_destination_allowed_hosts?: string[] | null;
             /**
+             * Proxy Config Reload Interval Seconds
+             * @description how often (in seconds) each pod reloads config-in-DB objects (models, credentials, guardrails, etc.) when store_model_in_db is enabled; lower values speed up multi-pod convergence at the cost of more DB load. Applied on proxy startup
+             * @default 30
+             */
+            proxy_config_reload_interval_seconds: number;
+            /**
              * Reject Clientside Metadata Tags
              * @description When set to True, rejects requests that contain client-side 'metadata.tags' to prevent users from influencing budgets by sending different tags. Tags can only be inherited from the API key metadata.
              */
@@ -25791,6 +25797,8 @@ export interface components {
             output_cost_per_character_above_128k_tokens?: number | null;
             /** Output Cost Per Image */
             output_cost_per_image?: number | null;
+            /** Output Cost Per Image Above 16384 Tokens */
+            output_cost_per_image_above_16384_tokens?: number | null;
             /** Output Cost Per Image Token */
             output_cost_per_image_token?: number | null;
             /** Output Cost Per Pixel */
@@ -33338,7 +33346,14 @@ export interface components {
             /** Vector Store Name */
             vector_store_name?: string | null;
         };
-        /** VideoTokenPricing */
+        /**
+         * VideoTokenPricing
+         * @description Per-token video-generation rates, split by whether the request carried video input.
+         *
+         *     ``<video_input|no_video_input>_<resolution>`` prices one resolution and the bare keys
+         *     are the resolution-agnostic fallback. Any resolution a provider reports is accepted,
+         *     so the suffixed keys below are the ones currently shipped, not the allowed set.
+         */
         VideoTokenPricing: {
             /** No Video Input */
             no_video_input?: number;
@@ -33660,6 +33675,8 @@ export interface components {
             output_cost_per_character_above_128k_tokens?: number | null;
             /** Output Cost Per Image */
             output_cost_per_image?: number | null;
+            /** Output Cost Per Image Above 16384 Tokens */
+            output_cost_per_image_above_16384_tokens?: number | null;
             /** Output Cost Per Image Token */
             output_cost_per_image_token?: number | null;
             /** Output Cost Per Pixel */
