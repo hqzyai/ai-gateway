@@ -1,4 +1,5 @@
 import litellm
+from litellm.litellm_core_utils.llm_cost_calc.utils import select_above_threshold_rate
 from litellm.types.utils import ImageResponse
 
 
@@ -9,12 +10,14 @@ def cost_calculator(model: str, image_response: ImageResponse) -> float:
     )
     input_cost_per_image = float(model_info.get("input_cost_per_image") or 0.0)
     output_cost_per_image = float(model_info.get("output_cost_per_image") or 0.0)
-    large_output_cost_per_image = model_info.get("output_cost_per_image_above_16384_tokens")
     output_tokens = image_response.usage.output_tokens if image_response.usage is not None else 0
+    large_output_cost_per_image = select_above_threshold_rate(
+        model_info=model_info,
+        base_key="output_cost_per_image",
+        tokens=output_tokens,
+    )
     selected_output_cost_per_image = (
-        float(large_output_cost_per_image)
-        if output_tokens > 16384 and large_output_cost_per_image is not None
-        else output_cost_per_image
+        large_output_cost_per_image if large_output_cost_per_image is not None else output_cost_per_image
     )
     input_images = image_response.get_hidden_param("input_images")
     generated_images = image_response.get_hidden_param("generated_images")

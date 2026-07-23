@@ -2,7 +2,7 @@
 ## Helper utilities for cost_per_token()
 
 from dataclasses import dataclass
-from typing import Any, Literal, Optional, Tuple, TypedDict, cast
+from typing import Any, Literal, Mapping, Optional, Tuple, TypedDict, cast
 
 import litellm
 from litellm._logging import verbose_logger
@@ -196,6 +196,38 @@ def _get_service_tier_cost_key(base_key: str, service_tier: Optional[str]) -> st
 def _parse_above_token_threshold(key: str) -> float:
     threshold_str = key.split("_above_")[1].split("_tokens")[0]
     return float(threshold_str.replace("k", "")) * (1000 if "k" in threshold_str else 1)
+
+
+def _safe_parse_above_token_threshold(key: str) -> Optional[float]:
+    try:
+        return _parse_above_token_threshold(key)
+    except (IndexError, ValueError):
+        return None
+
+
+def select_above_threshold_rate(
+    model_info: Mapping[str, object],
+    base_key: str,
+    tokens: int,
+) -> Optional[float]:
+    """
+    Highest ``{base_key}_above_{N}_tokens`` / ``{base_key}_above_{N}k_tokens`` rate that
+    ``tokens`` clears, e.g. ``output_cost_per_image_above_16384_tokens`` for 18000 tokens.
+
+    Returns None when the model declares no such tier or when ``tokens`` sits at or below
+    every declared threshold, so callers fall back to the untiered ``base_key`` rate.
+    """
+    prefix = f"{base_key}_above_"
+    matched = tuple(
+        (threshold, float(rate))
+        for threshold, rate in (
+            (_safe_parse_above_token_threshold(key), model_info.get(key))
+            for key in model_info
+            if key.startswith(prefix) and key.endswith("_tokens")
+        )
+        if threshold is not None and isinstance(rate, (int, float)) and tokens > threshold
+    )
+    return max(matched, key=lambda tier: tier[0])[1] if matched else None
 
 
 def _get_token_base_cost(

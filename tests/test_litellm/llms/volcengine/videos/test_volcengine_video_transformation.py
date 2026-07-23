@@ -281,3 +281,106 @@ def test_video_content_downloads_completed_task_output() -> None:
     )
 
     assert config.transform_video_content_response(task_response, MagicMock()) == b"video-bytes"
+
+
+@pytest.mark.parametrize(
+    ("resolution", "has_video_input", "expected_rate"),
+    [
+        ("720p", False, 9.9e-05),
+        ("720p", True, 5.5e-05),
+        ("1080p", False, 5.1e-05),
+        ("1080p", True, 2.8e-05),
+        ("480p", False, 4.6e-05),
+        ("480p", True, 2.8e-05),
+    ],
+)
+def test_video_cost_honors_any_configured_resolution_tier(
+    resolution: str, has_video_input: bool, expected_rate: float
+) -> None:
+    """Resolution tiers are read from video_token_pricing for whatever resolution ran.
+
+    The lookup used to accept only 1080p and 4k suffixes, so a configured
+    no_video_input_720p / video_input_720p rate was silently ignored and 720p
+    billed at the resolution-agnostic rate. Resolutions with no tier of their
+    own must still fall back to the bare key.
+    """
+    from unittest.mock import patch
+
+    from litellm.llms.openai.cost_calculation import video_generation_cost
+
+    model = "volcengine/doubao-seedance-custom-resolutions"
+    completion_tokens = 100_000
+    model_info = {
+        "litellm_provider": "volcengine",
+        "mode": "video_generation",
+        "video_token_pricing": {
+            "no_video_input": 4.6e-05,
+            "video_input": 2.8e-05,
+            "no_video_input_720p": 9.9e-05,
+            "video_input_720p": 5.5e-05,
+            "no_video_input_1080p": 5.1e-05,
+        },
+    }
+
+    with patch.dict(litellm.model_cost, {model: model_info}):
+        cost = video_generation_cost(
+            model=model,
+            duration_seconds=4.0,
+            custom_llm_provider="volcengine",
+            video_resolution=resolution,
+            completion_tokens=completion_tokens,
+            has_video_input=has_video_input,
+        )
+
+    assert cost == pytest.approx(expected_rate * completion_tokens)
+
+
+def test_custom_pricing_params_keep_non_standard_resolution_tiers() -> None:
+    """Per-deployment video_token_pricing must not lose resolutions outside the shipped set.
+
+    VideoTokenPricing is a TypedDict, so pydantic dropped any key it did not
+    declare, silently discarding a deployment's 720p rate.
+    """
+    from litellm.types.utils import CustomPricingLiteLLMParams
+
+    params = CustomPricingLiteLLMParams(
+        video_token_pricing={
+            "no_video_input": 4.6e-05,
+            "video_input": 2.8e-05,
+            "no_video_input_720p": 9.9e-05,
+        }
+    )
+
+    assert params.video_token_pricing == {
+        "no_video_input": 4.6e-05,
+        "video_input": 2.8e-05,
+        "no_video_input_720p": 9.9e-05,
+    }
+
+
+@pytest.mark.parametrize(
+    ("resolution", "has_video_input", "completion_tokens", "expected_cost"),
+    [
+        ("480p", False, 40594, 1.867324),
+        ("1080p", False, 196425, 10.017675),
+        ("4k", False, 785700, 20.4282),
+        ("720p", True, 173700, 4.8636),
+        ("4k", True, 1563300, 25.0128),
+    ],
+)
+def test_shipped_seedance_pricing_matches_volcengine_billing(
+    resolution: str, has_video_input: bool, completion_tokens: int, expected_cost: float
+) -> None:
+    """Reconciled against real Volcengine task usage; see volcengine_billing_e2e_report_2026-07-22.md."""
+    from litellm.llms.openai.cost_calculation import video_generation_cost
+
+    cost = video_generation_cost(
+        model="doubao-seedance-2-0-260128",
+        duration_seconds=4.0,
+        custom_llm_provider="volcengine",
+        video_resolution=resolution,
+        completion_tokens=completion_tokens,
+        has_video_input=has_video_input,
+    )
+
+    assert cost == pytest.approx(expected_cost)

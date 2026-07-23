@@ -40,6 +40,7 @@ from litellm.litellm_core_utils.llm_cost_calc.utils import (
     calculate_cache_writing_cost,
     generic_cost_per_token,
     get_token_type_cost_breakdown,
+    select_above_threshold_rate,
 )
 from litellm.types.utils import CacheCreationTokenDetails, Usage
 
@@ -2309,3 +2310,67 @@ def test_generic_cost_per_token_gemini_35_flash_lite():
     )
     assert prompt_cost == pytest.approx(0.0003)
     assert completion_cost == pytest.approx(0.00125)
+
+
+@pytest.mark.parametrize(
+    ("tokens", "expected"),
+    [
+        (4096, None),
+        (4097, 0.45),
+        (8192, 0.45),
+        (8193, 0.6),
+        (99999, 0.6),
+    ],
+)
+def test_select_above_threshold_rate_picks_highest_crossed_tier(tokens, expected):
+    """Every declared threshold is honored, and the highest crossed one wins.
+
+    Guards the image-generation tiers, whose thresholds are not limited to the
+    hard-coded 128k/200k/272k/512k token set used by chat models.
+    """
+    model_info = {
+        "output_cost_per_image": 0.3,
+        "output_cost_per_image_above_4096_tokens": 0.45,
+        "output_cost_per_image_above_8192_tokens": 0.6,
+    }
+
+    assert select_above_threshold_rate(
+        model_info=model_info,
+        base_key="output_cost_per_image",
+        tokens=tokens,
+    ) == expected
+
+
+def test_select_above_threshold_rate_parses_k_suffixed_thresholds():
+    model_info = {"input_cost_per_token_above_32k_tokens": 7e-07}
+
+    assert (
+        select_above_threshold_rate(model_info=model_info, base_key="input_cost_per_token", tokens=32001) == 7e-07
+    )
+    assert select_above_threshold_rate(model_info=model_info, base_key="input_cost_per_token", tokens=32000) is None
+
+
+def test_select_above_threshold_rate_ignores_other_base_keys_and_malformed_keys():
+    """A tier must not leak across cost bases, and an unparseable threshold must not raise."""
+    model_info = {
+        "output_cost_per_image": 0.3,
+        "input_cost_per_token_above_4096_tokens": 9e-07,
+        "output_cost_per_image_above_notanumber_tokens": 5.0,
+        "output_cost_per_image_above_4096": 7.0,
+        "output_cost_per_image_above_4096_tokens": None,
+    }
+
+    assert (
+        select_above_threshold_rate(model_info=model_info, base_key="output_cost_per_image", tokens=1_000_000) is None
+    )
+
+
+def test_select_above_threshold_rate_without_any_tier_returns_none():
+    assert (
+        select_above_threshold_rate(
+            model_info={"output_cost_per_image": 0.3},
+            base_key="output_cost_per_image",
+            tokens=1_000_000,
+        )
+        is None
+    )

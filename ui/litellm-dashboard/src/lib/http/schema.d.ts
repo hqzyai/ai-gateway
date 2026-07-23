@@ -25797,6 +25797,8 @@ export interface components {
             output_cost_per_character_above_128k_tokens?: number | null;
             /** Output Cost Per Image */
             output_cost_per_image?: number | null;
+            /** Output Cost Per Image Above 16384 Tokens */
+            output_cost_per_image_above_16384_tokens?: number | null;
             /** Output Cost Per Image Token */
             output_cost_per_image_token?: number | null;
             /** Output Cost Per Pixel */
@@ -33344,7 +33346,14 @@ export interface components {
             /** Vector Store Name */
             vector_store_name?: string | null;
         };
-        /** VideoTokenPricing */
+        /**
+         * VideoTokenPricing
+         * @description Per-token video-generation rates, split by whether the request carried video input.
+         *
+         *     ``<video_input|no_video_input>_<resolution>`` prices one resolution and the bare keys
+         *     are the resolution-agnostic fallback. Any resolution a provider reports is accepted,
+         *     so the suffixed keys below are the ones currently shipped, not the allowed set.
+         */
         VideoTokenPricing: {
             /** No Video Input */
             no_video_input?: number;
@@ -33666,6 +33675,8 @@ export interface components {
             output_cost_per_character_above_128k_tokens?: number | null;
             /** Output Cost Per Image */
             output_cost_per_image?: number | null;
+            /** Output Cost Per Image Above 16384 Tokens */
+            output_cost_per_image_above_16384_tokens?: number | null;
             /** Output Cost Per Image Token */
             output_cost_per_image_token?: number | null;
             /** Output Cost Per Pixel */
