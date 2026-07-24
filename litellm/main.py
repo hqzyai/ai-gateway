@@ -7523,6 +7523,23 @@ async def atranscription(*args, **kwargs) -> TranscriptionResponse:
         )
 
 
+def _set_audio_transcription_duration(
+    response: TranscriptionResponse | Coroutine[Any, Any, TranscriptionResponse] | None,
+    file: FileTypes,
+) -> TranscriptionResponse | Coroutine[Any, Any, TranscriptionResponse] | None:
+    if response is None or isinstance(response, Coroutine):
+        return response
+    if (
+        getattr(response, "duration", None) is not None
+        or response._hidden_params.get("audio_transcription_duration") is not None
+    ):
+        return response
+    calculated_duration = calculate_request_duration(file)
+    if calculated_duration is not None:
+        response._hidden_params["audio_transcription_duration"] = calculated_duration
+    return response
+
+
 @client
 def transcription(
     model: str,
@@ -7548,6 +7565,7 @@ def transcription(
 
     Allows router to load balance between them
     """
+    explicit_api_key = api_key
     litellm_call_id = kwargs.get("litellm_call_id", None)
     proxy_server_request = kwargs.get("proxy_server_request", None)
     model_info = kwargs.get("model_info", None)
@@ -7649,7 +7667,36 @@ def transcription(
             max_retries=max_retries,
             litellm_params=litellm_params_dict,
         )
-    elif custom_llm_provider == "openai" or (custom_llm_provider in litellm.openai_compatible_providers):
+    elif custom_llm_provider == "volcengine":
+        from litellm.llms.volcengine.audio_transcription.transformation import (
+            VolcEngineAudioTranscriptionConfig,
+        )
+
+        if not isinstance(provider_config, VolcEngineAudioTranscriptionConfig):
+            raise ValueError("Volcengine Audio Transcription configuration not found")
+        response = base_llm_http_handler.audio_transcriptions(
+            model=model,
+            audio_file=file,
+            optional_params=optional_params,
+            litellm_params=litellm_params_dict,
+            model_response=model_response,
+            atranscription=atranscription,
+            client=(
+                client
+                if client is not None and (isinstance(client, HTTPHandler) or isinstance(client, AsyncHTTPHandler))
+                else None
+            ),
+            timeout=timeout,
+            max_retries=max_retries,
+            logging_obj=litellm_logging_obj,
+            api_base=api_base,
+            api_key=explicit_api_key or get_secret_str("VOLCENGINE_SPEECH_API_KEY") or api_key,
+            custom_llm_provider=custom_llm_provider,
+            headers=extra_headers,
+            provider_config=provider_config,
+            shared_session=shared_session,
+        )
+    elif custom_llm_provider in ("openai", *litellm.openai_compatible_providers):
         api_base = (
             api_base
             or litellm.api_base
@@ -7774,18 +7821,10 @@ def transcription(
             shared_session=shared_session,
         )
 
-    # Store duration in _hidden_params for cost calculation without
-    # exposing it in the response body (see sync path comment above).
-    if response is not None and not isinstance(response, Coroutine):
-        existing_duration = getattr(response, "duration", None)
-        if existing_duration is None:
-            calculated_duration = calculate_request_duration(file)
-            if calculated_duration is not None:
-                response._hidden_params["audio_transcription_duration"] = calculated_duration
-
-    if response is None:
+    response_with_duration = _set_audio_transcription_duration(response=response, file=file)
+    if response_with_duration is None:
         raise ValueError("Unmapped provider passed in. Unable to get the response.")
-    return response
+    return response_with_duration
 
 
 @client
@@ -7849,6 +7888,7 @@ def speech(
     aspeech: Optional[bool] = None,
     **kwargs,
 ) -> Union[HttpxBinaryResponseContent, Coroutine[Any, Any, HttpxBinaryResponseContent]]:
+    explicit_api_key = api_key
     user = kwargs.get("user", None)
     litellm_call_id: Optional[str] = kwargs.get("litellm_call_id", None)
     proxy_server_request = kwargs.get("proxy_server_request", None)
@@ -7912,7 +7952,9 @@ def speech(
         Coroutine[Any, Any, HttpxBinaryResponseContent],
         None,
     ] = None
-    if custom_llm_provider == "openai" or custom_llm_provider in litellm.openai_compatible_providers:
+    if custom_llm_provider == "openai" or (
+        custom_llm_provider in litellm.openai_compatible_providers and custom_llm_provider != "volcengine"
+    ):
         if voice is None or not (isinstance(voice, str)):
             raise litellm.BadRequestError(
                 message="'voice' is required to be passed as a string for OpenAI TTS",
@@ -8252,6 +8294,32 @@ def speech(
             api_base=api_base,
             api_key=api_key,
             **kwargs,
+        )
+    elif custom_llm_provider == "volcengine":
+        from litellm.llms.volcengine.text_to_speech.transformation import (
+            VolcEngineTextToSpeechConfig,
+        )
+
+        if not isinstance(text_to_speech_provider_config, VolcEngineTextToSpeechConfig):
+            raise ValueError("Volcengine Text-to-Speech configuration not found")
+        volcengine_litellm_params = {
+            **litellm_params_dict,
+            "api_base": api_base,
+            "api_key": explicit_api_key or get_secret_str("VOLCENGINE_SPEECH_API_KEY") or api_key,
+        }
+        response = base_llm_http_handler.text_to_speech_handler(
+            model=model,
+            input=input,
+            voice=voice if isinstance(voice, str) else None,
+            text_to_speech_provider_config=text_to_speech_provider_config,
+            text_to_speech_optional_params=optional_params,
+            custom_llm_provider=custom_llm_provider,
+            litellm_params=volcengine_litellm_params,
+            logging_obj=logging_obj,
+            timeout=timeout,
+            extra_headers=extra_headers,
+            client=client,
+            _is_async=aspeech or False,
         )
 
     if response is None:

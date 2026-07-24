@@ -95,6 +95,16 @@ def get_supported_openai_params(
     elif custom_llm_provider == "ai21_chat" or custom_llm_provider == "ai21":
         return litellm.AI21ChatConfig().get_supported_openai_params(model=model)
     elif custom_llm_provider == "volcengine":
+        if request_type == "embeddings":
+            embedding_config = litellm.ProviderConfigManager.get_provider_embedding_config(
+                model=model, provider=LlmProviders.VOLCENGINE
+            )
+            return embedding_config.get_supported_openai_params(model=model) if embedding_config else None
+        if request_type == "transcription":
+            transcription_config = litellm.ProviderConfigManager.get_provider_audio_transcription_config(
+                model=model, provider=LlmProviders.VOLCENGINE
+            )
+            return transcription_config.get_supported_openai_params(model=model) if transcription_config else None
         return litellm.VolcEngineConfig().get_supported_openai_params(model=model)
     elif custom_llm_provider == "groq":
         return litellm.GroqChatConfig().get_supported_openai_params(model=model)

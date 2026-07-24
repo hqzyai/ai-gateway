@@ -8147,6 +8147,12 @@ class ProviderConfigManager:
             )
 
             return ScalewayAudioTranscriptionConfig()
+        elif litellm.LlmProviders.VOLCENGINE == provider:
+            from litellm.llms.volcengine.audio_transcription.transformation import (
+                VolcEngineAudioTranscriptionConfig,
+            )
+
+            return VolcEngineAudioTranscriptionConfig()
         elif litellm.LlmProviders.MISTRAL == provider:
             from litellm.llms.mistral.audio_transcription.transformation import (
                 MistralAudioTranscriptionConfig,
@@ -9001,6 +9007,12 @@ class ProviderConfigManager:
             )
 
             return AWSPollyTextToSpeechConfig()
+        elif litellm.LlmProviders.VOLCENGINE == provider:
+            from litellm.llms.volcengine.text_to_speech.transformation import (
+                VolcEngineTextToSpeechConfig,
+            )
+
+            return VolcEngineTextToSpeechConfig()
         return None
 
     @staticmethod
