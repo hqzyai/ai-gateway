@@ -166,6 +166,42 @@ tr:last-child td { border-bottom: 0; }
 .param-item { color: var(--ink-soft); font-size: 12.5px; border-bottom: 1px dashed var(--line); padding-bottom: 5px; }
 .param-item code { color: var(--ink); }
 .field-note { margin-top: 10px; color: var(--ink-faint); font-size: 12.5px; }
+.generator-layout { display: grid; grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr); gap: 18px; align-items: start; }
+.generator-form { display: grid; gap: 15px; }
+.form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.form-field { display: grid; gap: 5px; align-content: start; }
+.form-field.full { grid-column: 1 / -1; }
+.form-field label, .form-title { color: var(--ink); font-size: 13px; font-weight: 700; }
+.form-field small { color: var(--ink-faint); font-size: 11.5px; line-height: 1.45; }
+.required-star { color: var(--red); }
+input, select, textarea {
+  width: 100%; border: 1.4px solid var(--ink); border-radius: var(--wobble-b);
+  background: var(--paper-alt); color: var(--ink); padding: 8px 10px;
+  font: 13px/1.45 var(--font-hand); outline: none;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--blue); box-shadow: 0 0 0 2px color-mix(in srgb, var(--blue) 16%, transparent); }
+input.is-invalid, select.is-invalid { border-color: var(--red); background: color-mix(in srgb, var(--red) 5%, var(--paper-alt)); }
+textarea { min-height: 68px; resize: vertical; }
+.sub-form { padding: 13px; border: 1.4px dashed var(--line); border-radius: var(--wobble-a); background: color-mix(in srgb, var(--teal) 4%, var(--paper-alt)); }
+.sub-form + .sub-form { margin-top: 10px; }
+.form-help { margin: 4px 0 10px; color: var(--ink-soft); font-size: 12px; }
+.repeat-list { display: grid; gap: 8px; }
+.repeat-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) auto; gap: 7px; align-items: end; }
+.repeat-row.image-tier-row { grid-template-columns: 1fr 1fr auto; }
+.repeat-row.video-row { grid-template-columns: minmax(90px, 0.7fr) 1fr 1fr auto; }
+.repeat-label { color: var(--ink-faint); font-size: 10.5px; margin-bottom: 2px; }
+.remove-row { padding: 7px 9px; border-color: var(--red); color: var(--red); }
+.add-row { margin-top: 9px; padding: 5px 11px; color: var(--teal); border-color: var(--teal); }
+.check-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.check-label { display: flex; gap: 7px; align-items: center; color: var(--ink-soft); font-size: 12.5px; }
+.check-label input { width: auto; accent-color: var(--blue); }
+.generator-output { position: sticky; top: 14px; }
+.generator-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.generator-actions .copy-btn { padding: 5px 11px; }
+.gen-status { margin-top: 10px; padding: 8px 10px; border-left: 3px solid var(--teal); color: var(--ink-soft); background: color-mix(in srgb, var(--teal) 7%, transparent); font-size: 12px; }
+.gen-status.has-error { border-color: var(--red); color: var(--red); background: color-mix(in srgb, var(--red) 7%, transparent); }
+.conversion-list { margin-top: 10px; display: grid; gap: 5px; color: var(--ink-faint); font-size: 11.5px; }
+.generator-output pre { min-height: 460px; max-height: 720px; }
 .checklist { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; counter-reset: steps; }
 .check { padding: 14px 14px 14px 48px; position: relative; background: var(--paper-alt); border-bottom: 1px dashed var(--line); }
 .check::before { counter-increment: steps; content: counter(steps); position: absolute; left: 14px; top: 15px; width: 24px; height: 24px; display: grid; place-items: center; border: 1.6px solid var(--blue); border-radius: 50%; color: var(--blue); font-weight: 700; }
@@ -183,10 +219,16 @@ tr:last-child td { border-bottom: 0; }
 @keyframes draw-on { to { stroke-dashoffset: 0; } }
 @keyframes fade-el-in { to { opacity: 1; } }
 @media (max-width: 860px) {
-  .layout-split, .layout-compare { grid-template-columns: 1fr; }
+  .layout-split, .layout-compare, .generator-layout { grid-template-columns: 1fr; }
   .guide-top { grid-template-columns: 1fr; }
   .checklist { grid-template-columns: 1fr; }
   .section-head { display: block; }
+  .generator-output { position: static; }
+}
+@media (max-width: 620px) {
+  .form-grid, .check-grid { grid-template-columns: 1fr; }
+  .repeat-row, .repeat-row.image-tier-row, .repeat-row.video-row { grid-template-columns: 1fr 1fr; }
+  .remove-row { grid-column: 1 / -1; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
@@ -215,6 +257,7 @@ tr:last-child td { border-bottom: 0; }
       <a class="pill" href="#architecture">接入地图</a>
       <a class="pill" href="#catalog">模型目录</a>
       <a class="pill" href="#billing">计费能力</a>
+      <a class="pill" href="#generator">自动生成 JSON</a>
       <a class="pill" href="#configuration">价格 JSON</a>
       <a class="pill" href="#onboarding">新增流程</a>
       <a class="pill" href="#limits">限制与验证</a>
@@ -263,6 +306,65 @@ tr:last-child td { border-bottom: 0; }
     <div class="callout">
       <strong>Chat 双配置</strong>
       <p><code>tiered_pricing</code> 只用于请求前预算预留，不参与火山请求结束后的实际成本计算。实际落库依赖 <code>input/output/cache_*_above_{N}_tokens</code>。分档模型必须同时维护两套并保持一致。</p>
+    </div>
+  </section>
+
+  <section id="generator">
+    <div class="section-head">
+      <div><h2>可视化价格 JSON 生成器</h2><p>选择模型类型，按火山官网显示的单位填写价格，页面会自动换算并生成可粘贴到 <code>model_prices_and_context_window.json</code> 的条目。所有计算只在当前浏览器完成，不会上传数据。</p></div>
+    </div>
+    <div class="callout" style="border-color:var(--amber);margin-top:0;margin-bottom:14px">
+      <strong style="color:var(--amber)">填写规则</strong>
+      <p>模型 ID 可以只填 <code>doubao-xxx</code>，生成器会自动补 <code>volcengine/</code>。Chat/视频输入官网的“元/百万 token”，TTS 输入“元/万字符”，STT 输入“元/小时”；图片价格按“元/张”原样填写。</p>
+    </div>
+    <div class="generator-layout">
+      <form class="panel generator-form" id="json-generator" novalidate>
+        <div class="form-grid">
+          <div class="form-field">
+            <label for="gen-mode">模型类型 <span class="required-star">*</span></label>
+            <select id="gen-mode">
+              <option value="chat">文本对话 Chat</option>
+              <option value="image">图片生成 / 编辑</option>
+              <option value="video">视频生成</option>
+              <option value="tts">TTS 文本转语音</option>
+              <option value="stt">STT 语音转文字</option>
+            </select>
+            <small>切换类型会载入一份可修改的真实示例。</small>
+          </div>
+          <div class="form-field">
+            <label for="gen-model-id">火山模型 ID <span class="required-star">*</span></label>
+            <input id="gen-model-id" autocomplete="off" spellcheck="false">
+            <small>可带或不带 volcengine/ 前缀。</small>
+          </div>
+          <div class="form-field full">
+            <label for="gen-source">官方价格来源 URL <span class="required-star">*</span></label>
+            <input id="gen-source" type="url" autocomplete="off" spellcheck="false">
+          </div>
+          <div class="form-field full">
+            <label for="gen-notes">价格说明</label>
+            <textarea id="gen-notes" spellcheck="false"></textarea>
+            <small>留空时自动生成币种和换算说明。</small>
+          </div>
+        </div>
+        <div id="gen-dynamic-fields"></div>
+        <div class="generator-actions">
+          <button class="copy-btn" type="button" id="gen-reset">重新载入示例</button>
+        </div>
+      </form>
+      <aside class="code-shell generator-output">
+        <div class="code-head">
+          <span>生成结果：价格表单条记录</span>
+          <div class="generator-actions">
+            <button class="copy-btn" type="button" id="gen-copy">复制条目</button>
+            <button class="copy-btn" type="button" id="gen-download">下载单条 JSON</button>
+          </div>
+        </div>
+        <div class="code-body"><pre id="gen-output"></pre></div>
+        <div style="padding:0 12px 12px">
+          <div class="gen-status" id="gen-status"></div>
+          <div class="conversion-list" id="gen-conversions"></div>
+        </div>
+      </aside>
     </div>
   </section>
 
@@ -570,6 +672,339 @@ document.getElementById('model-filters').addEventListener('click', e => {
   renderModels(button.dataset.filter);
 });
 renderModels();
+
+const generatorDefaults = {
+  chat: {
+    modelId: 'doubao-seed-2-0-pro-260215',
+    source: 'https://www.volcengine.com/docs/82379/1330310',
+    notes: 'CN list prices recorded 1:1 as USD. Ark bills a request at one input-length tier.',
+    values: { maxInput: 262144, maxOutput: 131072, input: 3.2, output: 16, cache: 0.64 },
+    tiers: [[32768, 4.8, 24, 0.96], [131072, 9.6, 48, 1.92]],
+    capabilities: { functionCalling: true, toolChoice: false, vision: true, reasoning: true, promptCaching: false, assistantPrefill: false }
+  },
+  image: {
+    modelId: 'doubao-seedream-5-0-pro-260628',
+    source: 'https://console.volcengine.com/ark/region:cn-beijing/model?view=DEFAULT_VIEW&groupType=ModelGroups',
+    notes: 'CN list prices recorded 1:1 as USD.',
+    values: { input: 0.02, output: 0.30 },
+    tiers: [[16384, 0.60]]
+  },
+  video: {
+    modelId: 'doubao-seedance-2-0-260128',
+    source: 'https://www.volcengine.com/docs/82379/1544106',
+    notes: 'CN list prices recorded 1:1 as USD.',
+    values: { noVideo: 46, video: 28, audioInput: true, audioOutput: true },
+    resolutions: [['1080p', 51, 31], ['4k', 26, 16]]
+  },
+  tts: {
+    modelId: 'seed-tts-2.0',
+    source: 'https://www.volcengine.com/docs/6561/1359370',
+    notes: 'CN list price is CNY 3 per 10,000 characters; recorded 1:1 as USD.',
+    values: { perTenThousand: 3 }
+  },
+  stt: {
+    modelId: 'volc.bigasr.auc_turbo',
+    source: 'https://www.volcengine.com/docs/6561/1359370',
+    notes: 'CN list price is CNY 4.5 per hour; recorded 1:1 as USD.',
+    values: { perHour: 4.5 }
+  }
+};
+const generatorModeMeta = {
+  chat: { mode: 'chat', endpoint: '/v1/chat/completions' },
+  image: { mode: 'image_generation', endpoint: '/v1/images/generations' },
+  video: { mode: 'video_generation', endpoint: '/v1/videos' },
+  tts: { mode: 'audio_speech', endpoint: '/v1/audio/speech' },
+  stt: { mode: 'audio_transcription', endpoint: '/v1/audio/transcriptions' }
+};
+let latestGenerated = null;
+function chatTierMarkup(values = ['', '', '', '']) {
+  return `<div class="repeat-row chat-tier-row">
+    <div><div class="repeat-label">输入阈值 N</div><input class="tier-threshold" type="number" min="1" step="1" value="${values[0]}"></div>
+    <div><div class="repeat-label">输入价 / 百万 token</div><input class="tier-input" type="number" min="0" step="any" value="${values[1]}"></div>
+    <div><div class="repeat-label">输出价 / 百万 token</div><input class="tier-output" type="number" min="0" step="any" value="${values[2]}"></div>
+    <div><div class="repeat-label">缓存价 / 百万 token</div><input class="tier-cache" type="number" min="0" step="any" value="${values[3]}"></div>
+    <button class="copy-btn remove-row" type="button" data-remove-row>删除</button>
+  </div>`;
+}
+function imageTierMarkup(values = ['', '']) {
+  return `<div class="repeat-row image-tier-row">
+    <div><div class="repeat-label">输出 token 阈值 N</div><input class="image-tier-threshold" type="number" min="1" step="1" value="${values[0]}"></div>
+    <div><div class="repeat-label">越过阈值后的元 / 张</div><input class="image-tier-rate" type="number" min="0" step="any" value="${values[1]}"></div>
+    <button class="copy-btn remove-row" type="button" data-remove-row>删除</button>
+  </div>`;
+}
+function videoResolutionMarkup(values = ['', '', '']) {
+  return `<div class="repeat-row video-row video-resolution-row">
+    <div><div class="repeat-label">分辨率后缀</div><input class="video-resolution" value="${values[0]}" placeholder="1080p"></div>
+    <div><div class="repeat-label">无视频输入 / 百万 token</div><input class="video-resolution-no" type="number" min="0" step="any" value="${values[1]}"></div>
+    <div><div class="repeat-label">有视频输入 / 百万 token</div><input class="video-resolution-yes" type="number" min="0" step="any" value="${values[2]}"></div>
+    <button class="copy-btn remove-row" type="button" data-remove-row>删除</button>
+  </div>`;
+}
+function renderGeneratorFields(mode) {
+  const sample = generatorDefaults[mode];
+  const box = document.getElementById('gen-dynamic-fields');
+  if (mode === 'chat') {
+    box.innerHTML = `<div class="sub-form"><div class="form-title">基础价格与上下文</div><p class="form-help">价格直接填官网的“元 / 百万 token”，生成器会自动除以 1,000,000。</p><div class="form-grid">
+      <div class="form-field"><label for="gen-max-input">最大输入 token</label><input id="gen-max-input" type="number" min="1" step="1" value="${sample.values.maxInput}"></div>
+      <div class="form-field"><label for="gen-max-output">最大输出 token</label><input id="gen-max-output" type="number" min="1" step="1" value="${sample.values.maxOutput}"></div>
+      <div class="form-field"><label for="gen-chat-input">基础输入价 / 百万 token <span class="required-star">*</span></label><input id="gen-chat-input" type="number" min="0" step="any" value="${sample.values.input}"></div>
+      <div class="form-field"><label for="gen-chat-output">基础输出价 / 百万 token <span class="required-star">*</span></label><input id="gen-chat-output" type="number" min="0" step="any" value="${sample.values.output}"></div>
+      <div class="form-field"><label for="gen-chat-cache">缓存命中价 / 百万 token</label><input id="gen-chat-cache" type="number" min="0" step="any" value="${sample.values.cache}"></div>
+    </div></div>
+    <div class="sub-form"><div class="form-title">按输入长度分档</div><p class="form-help">没有分档可以删除全部行；N 表示 prompt_tokens 严格大于该值后换档。</p><div class="repeat-list" id="gen-chat-tiers">${sample.tiers.map(chatTierMarkup).join('')}</div><button class="copy-btn add-row" type="button" id="gen-add-chat-tier">增加分档</button></div>
+    <div class="sub-form"><div class="form-title">模型能力</div><p class="form-help">这些字段不参与算钱，用于 UI 和路由识别模型能力。</p><div class="check-grid">
+      <label class="check-label"><input id="gen-cap-function" type="checkbox" ${sample.capabilities.functionCalling ? 'checked' : ''}>函数 / 工具调用</label>
+      <label class="check-label"><input id="gen-cap-tool-choice" type="checkbox" ${sample.capabilities.toolChoice ? 'checked' : ''}>tool_choice</label>
+      <label class="check-label"><input id="gen-cap-vision" type="checkbox" ${sample.capabilities.vision ? 'checked' : ''}>视觉输入</label>
+      <label class="check-label"><input id="gen-cap-reasoning" type="checkbox" ${sample.capabilities.reasoning ? 'checked' : ''}>推理 / thinking</label>
+      <label class="check-label"><input id="gen-cap-cache" type="checkbox" ${sample.capabilities.promptCaching ? 'checked' : ''}>提示词缓存</label>
+      <label class="check-label"><input id="gen-cap-prefill" type="checkbox" ${sample.capabilities.assistantPrefill ? 'checked' : ''}>assistant prefill</label>
+    </div></div>`;
+  } else if (mode === 'image') {
+    box.innerHTML = `<div class="sub-form"><div class="form-title">按图片张数计费</div><p class="form-help">图片价格按官网“元 / 张”原样写入，不做除法换算。</p><div class="form-grid">
+      <div class="form-field"><label for="gen-image-input">输入图元 / 张</label><input id="gen-image-input" type="number" min="0" step="any" value="${sample.values.input}"></div>
+      <div class="form-field"><label for="gen-image-output">输出图元 / 张 <span class="required-star">*</span></label><input id="gen-image-output" type="number" min="0" step="any" value="${sample.values.output}"></div>
+    </div></div>
+    <div class="sub-form"><div class="form-title">输出图片 token 分档</div><p class="form-help">普通图片没有大图档时可以删除全部行。</p><div class="repeat-list" id="gen-image-tiers">${sample.tiers.map(imageTierMarkup).join('')}</div><button class="copy-btn add-row" type="button" id="gen-add-image-tier">增加分档</button></div>`;
+  } else if (mode === 'video') {
+    box.innerHTML = `<div class="sub-form"><div class="form-title">视频 token 基础价格</div><p class="form-help">填官网“元 / 百万 token”，至少填写一个基础价。</p><div class="form-grid">
+      <div class="form-field"><label for="gen-video-no">无视频输入 / 百万 token</label><input id="gen-video-no" type="number" min="0" step="any" value="${sample.values.noVideo}"></div>
+      <div class="form-field"><label for="gen-video-yes">有视频输入 / 百万 token</label><input id="gen-video-yes" type="number" min="0" step="any" value="${sample.values.video}"></div>
+    </div></div>
+    <div class="sub-form"><div class="form-title">分辨率专属价格</div><p class="form-help">没有专属价格的分辨率会自动回落到基础价。</p><div class="repeat-list" id="gen-video-resolutions">${sample.resolutions.map(videoResolutionMarkup).join('')}</div><button class="copy-btn add-row" type="button" id="gen-add-video-resolution">增加分辨率</button></div>
+    <div class="sub-form"><div class="form-title">视频能力</div><div class="check-grid">
+      <label class="check-label"><input id="gen-video-audio-input" type="checkbox" ${sample.values.audioInput ? 'checked' : ''}>支持音频输入</label>
+      <label class="check-label"><input id="gen-video-audio-output" type="checkbox" ${sample.values.audioOutput ? 'checked' : ''}>支持音频输出</label>
+    </div></div>`;
+  } else if (mode === 'tts') {
+    box.innerHTML = `<div class="sub-form"><div class="form-title">TTS 按字符计费</div><p class="form-help">填官网“元 / 10,000 字符”，生成器会自动除以 10,000。</p><div class="form-field"><label for="gen-tts-rate">元 / 10,000 字符 <span class="required-star">*</span></label><input id="gen-tts-rate" type="number" min="0" step="any" value="${sample.values.perTenThousand}"></div></div>`;
+  } else {
+    box.innerHTML = `<div class="sub-form"><div class="form-title">STT 按音频时长计费</div><p class="form-help">填官网“元 / 小时”，生成器会自动除以 3,600。</p><div class="form-field"><label for="gen-stt-rate">元 / 小时 <span class="required-star">*</span></label><input id="gen-stt-rate" type="number" min="0" step="any" value="${sample.values.perHour}"></div></div>`;
+  }
+}
+function loadGeneratorExample(mode) {
+  const sample = generatorDefaults[mode];
+  document.getElementById('gen-model-id').value = sample.modelId;
+  document.getElementById('gen-source').value = sample.source;
+  document.getElementById('gen-notes').value = sample.notes;
+  renderGeneratorFields(mode);
+  generatePriceJson();
+}
+function numberFromInput(id, label, required, errors) {
+  const input = document.getElementById(id);
+  if (!input) return null;
+  const raw = input.value.trim();
+  if (raw === '') {
+    if (required) { errors.push(`${label}不能为空`); input.classList.add('is-invalid'); }
+    return null;
+  }
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < 0) {
+    errors.push(`${label}必须是大于等于 0 的数字`);
+    input.classList.add('is-invalid');
+    return null;
+  }
+  return value;
+}
+function integerFromInput(id, label, required, errors) {
+  const value = numberFromInput(id, label, required, errors);
+  if (value !== null && (!Number.isInteger(value) || value <= 0)) {
+    errors.push(`${label}必须是正整数`);
+    document.getElementById(id).classList.add('is-invalid');
+    return null;
+  }
+  return value;
+}
+function normalizedModelKey(value) {
+  const trimmed = value.trim();
+  return trimmed.startsWith('volcengine/') ? trimmed : `volcengine/${trimmed}`;
+}
+function perMillion(value) { return value * 0.000001; }
+function readableRate(value) { return JSON.stringify(value); }
+function fragmentFromEntry(key, entry) {
+  const full = JSON.stringify({ [key]: entry }, null, 2);
+  return full.split('\n').slice(1, -1).map(line => line.startsWith('  ') ? line.slice(2) : line).join('\n');
+}
+function generatePriceJson() {
+  document.querySelectorAll('#json-generator .is-invalid').forEach(el => el.classList.remove('is-invalid'));
+  const errors = [];
+  const conversions = [];
+  const mode = document.getElementById('gen-mode').value;
+  const meta = generatorModeMeta[mode];
+  const modelInput = document.getElementById('gen-model-id');
+  const sourceInput = document.getElementById('gen-source');
+  const modelId = modelInput.value.trim();
+  const source = sourceInput.value.trim();
+  if (!modelId) { errors.push('火山模型 ID 不能为空'); modelInput.classList.add('is-invalid'); }
+  if (!source) { errors.push('官方价格来源 URL 不能为空'); sourceInput.classList.add('is-invalid'); }
+  if (source && !sourceInput.validity.valid) { errors.push('官方价格来源必须是完整 URL'); sourceInput.classList.add('is-invalid'); }
+  const entry = { litellm_provider: 'volcengine', mode: meta.mode };
+  if (mode === 'chat') {
+    const maxInput = integerFromInput('gen-max-input', '最大输入 token', false, errors);
+    const maxOutput = integerFromInput('gen-max-output', '最大输出 token', false, errors);
+    const inputMillion = numberFromInput('gen-chat-input', '基础输入价', true, errors);
+    const outputMillion = numberFromInput('gen-chat-output', '基础输出价', true, errors);
+    const cacheMillion = numberFromInput('gen-chat-cache', '缓存命中价', false, errors);
+    if (maxInput !== null) entry.max_input_tokens = maxInput;
+    if (maxOutput !== null) { entry.max_output_tokens = maxOutput; entry.max_tokens = maxOutput; }
+    if (inputMillion !== null) { entry.input_cost_per_token = perMillion(inputMillion); conversions.push(`输入：${inputMillion} ÷ 1,000,000 = ${readableRate(entry.input_cost_per_token)} / token`); }
+    if (outputMillion !== null) { entry.output_cost_per_token = perMillion(outputMillion); conversions.push(`输出：${outputMillion} ÷ 1,000,000 = ${readableRate(entry.output_cost_per_token)} / token`); }
+    if (cacheMillion !== null) { entry.cache_read_input_token_cost = perMillion(cacheMillion); conversions.push(`缓存：${cacheMillion} ÷ 1,000,000 = ${readableRate(entry.cache_read_input_token_cost)} / token`); }
+    const tierRows = [...document.querySelectorAll('.chat-tier-row')];
+    const tiers = tierRows.map(row => {
+      const thresholdInput = row.querySelector('.tier-threshold');
+      const inputPrice = row.querySelector('.tier-input');
+      const outputPrice = row.querySelector('.tier-output');
+      const cachePrice = row.querySelector('.tier-cache');
+      const hasAny = [thresholdInput, inputPrice, outputPrice, cachePrice].some(input => input.value.trim() !== '');
+      if (!hasAny) return null;
+      const threshold = Number(thresholdInput.value);
+      const inputRaw = inputPrice.value.trim();
+      const outputRaw = outputPrice.value.trim();
+      const inputRate = Number(inputRaw);
+      const outputRate = Number(outputRaw);
+      const cacheRate = cachePrice.value.trim() === '' ? null : Number(cachePrice.value);
+      if (!Number.isInteger(threshold) || threshold <= 0) { errors.push('Chat 分档阈值必须是正整数'); thresholdInput.classList.add('is-invalid'); }
+      if (!inputRaw || !Number.isFinite(inputRate) || inputRate < 0) { errors.push(`阈值 ${threshold || '?'} 的输入价不能为空且必须大于等于 0`); inputPrice.classList.add('is-invalid'); }
+      if (!outputRaw || !Number.isFinite(outputRate) || outputRate < 0) { errors.push(`阈值 ${threshold || '?'} 的输出价不能为空且必须大于等于 0`); outputPrice.classList.add('is-invalid'); }
+      if (cacheRate !== null && (!Number.isFinite(cacheRate) || cacheRate < 0)) { errors.push(`阈值 ${threshold || '?'} 的缓存价无效`); cachePrice.classList.add('is-invalid'); }
+      return { threshold, inputRate, outputRate, cacheRate };
+    }).filter(Boolean).sort((a, b) => a.threshold - b.threshold);
+    if (tiers.length && maxInput === null) errors.push('有 Chat 分档时必须填写最大输入 token');
+    if (new Set(tiers.map(tier => tier.threshold)).size !== tiers.length) errors.push('Chat 分档阈值不能重复');
+    if (maxInput !== null && tiers.some(tier => tier.threshold >= maxInput)) errors.push('Chat 分档阈值必须小于最大输入 token');
+    if (tiers.length && inputMillion !== null && outputMillion !== null) {
+      entry.tiered_pricing = [{ range: [0, tiers[0].threshold], input_cost_per_token: perMillion(inputMillion), output_cost_per_token: perMillion(outputMillion) }];
+      tiers.forEach((tier, index) => {
+        const suffix = `_above_${tier.threshold}_tokens`;
+        entry[`input_cost_per_token${suffix}`] = perMillion(tier.inputRate);
+        entry[`output_cost_per_token${suffix}`] = perMillion(tier.outputRate);
+        if (tier.cacheRate !== null) entry[`cache_read_input_token_cost${suffix}`] = perMillion(tier.cacheRate);
+        const end = index + 1 < tiers.length ? tiers[index + 1].threshold : maxInput;
+        entry.tiered_pricing.push({ range: [tier.threshold, end], input_cost_per_token: perMillion(tier.inputRate), output_cost_per_token: perMillion(tier.outputRate) });
+      });
+      conversions.push(`已生成 ${tiers.length + 1} 个 Chat 预算档和 ${tiers.length} 组实际计费 above 字段`);
+    }
+    entry.supports_function_calling = document.getElementById('gen-cap-function').checked;
+    entry.supports_tool_choice = document.getElementById('gen-cap-tool-choice').checked;
+    entry.supports_vision = document.getElementById('gen-cap-vision').checked;
+    entry.supports_reasoning = document.getElementById('gen-cap-reasoning').checked;
+    entry.supports_prompt_caching = document.getElementById('gen-cap-cache').checked;
+    entry.supports_assistant_prefill = document.getElementById('gen-cap-prefill').checked;
+  } else if (mode === 'image') {
+    const inputRate = numberFromInput('gen-image-input', '输入图片价格', false, errors);
+    const outputRate = numberFromInput('gen-image-output', '输出图片价格', true, errors);
+    if (inputRate !== null) entry.input_cost_per_image = inputRate;
+    if (outputRate !== null) entry.output_cost_per_image = outputRate;
+    document.querySelectorAll('.image-tier-row').forEach(row => {
+      const thresholdInput = row.querySelector('.image-tier-threshold');
+      const rateInput = row.querySelector('.image-tier-rate');
+      const hasAny = thresholdInput.value.trim() !== '' || rateInput.value.trim() !== '';
+      if (!hasAny) return;
+      const threshold = Number(thresholdInput.value);
+      const rateRaw = rateInput.value.trim();
+      const rate = Number(rateRaw);
+      if (!Number.isInteger(threshold) || threshold <= 0) { errors.push('图片分档阈值必须是正整数'); thresholdInput.classList.add('is-invalid'); }
+      if (!rateRaw || !Number.isFinite(rate) || rate < 0) { errors.push(`图片阈值 ${threshold || '?'} 的价格不能为空且必须大于等于 0`); rateInput.classList.add('is-invalid'); }
+      const key = `output_cost_per_image_above_${threshold}_tokens`;
+      if (Object.hasOwn(entry, key)) errors.push(`图片分档阈值 ${threshold} 不能重复`);
+      if (Number.isInteger(threshold) && threshold > 0 && rateRaw && Number.isFinite(rate) && rate >= 0) entry[key] = rate;
+    });
+    conversions.push('图片按元 / 张原样写入，无需单位换算');
+  } else if (mode === 'video') {
+    const noVideo = numberFromInput('gen-video-no', '无视频输入价格', false, errors);
+    const video = numberFromInput('gen-video-yes', '有视频输入价格', false, errors);
+    if (noVideo === null && video === null) {
+      errors.push('视频至少填写一个基础价格');
+      document.getElementById('gen-video-no').classList.add('is-invalid');
+      document.getElementById('gen-video-yes').classList.add('is-invalid');
+    }
+    const pricing = {};
+    if (noVideo !== null) pricing.no_video_input = perMillion(noVideo);
+    if (video !== null) pricing.video_input = perMillion(video);
+    document.querySelectorAll('.video-resolution-row').forEach(row => {
+      const resolutionInput = row.querySelector('.video-resolution');
+      const noInput = row.querySelector('.video-resolution-no');
+      const yesInput = row.querySelector('.video-resolution-yes');
+      const hasAny = [resolutionInput, noInput, yesInput].some(input => input.value.trim() !== '');
+      if (!hasAny) return;
+      const suffix = resolutionInput.value.toLowerCase().replace(/[^a-z0-9_]/g, '');
+      if (!suffix) { errors.push('视频分辨率后缀不能为空'); resolutionInput.classList.add('is-invalid'); return; }
+      const noRate = noInput.value.trim() === '' ? null : Number(noInput.value);
+      const yesRate = yesInput.value.trim() === '' ? null : Number(yesInput.value);
+      if (noRate === null && yesRate === null) { errors.push(`${suffix} 至少填写一个价格`); noInput.classList.add('is-invalid'); yesInput.classList.add('is-invalid'); }
+      if (noRate !== null && (!Number.isFinite(noRate) || noRate < 0)) { errors.push(`${suffix} 无视频输入价格无效`); noInput.classList.add('is-invalid'); }
+      if (yesRate !== null && (!Number.isFinite(yesRate) || yesRate < 0)) { errors.push(`${suffix} 有视频输入价格无效`); yesInput.classList.add('is-invalid'); }
+      const noKey = `no_video_input_${suffix}`;
+      const yesKey = `video_input_${suffix}`;
+      if (Object.hasOwn(pricing, noKey) || Object.hasOwn(pricing, yesKey)) errors.push(`视频分辨率 ${suffix} 不能重复`);
+      if (noRate !== null && Number.isFinite(noRate) && noRate >= 0) pricing[noKey] = perMillion(noRate);
+      if (yesRate !== null && Number.isFinite(yesRate) && yesRate >= 0) pricing[yesKey] = perMillion(yesRate);
+    });
+    entry.video_token_pricing = pricing;
+    entry.supported_modalities = ['text', 'image', 'video', 'audio'];
+    entry.supported_output_modalities = ['video'];
+    entry.supports_audio_input = document.getElementById('gen-video-audio-input').checked;
+    entry.supports_audio_output = document.getElementById('gen-video-audio-output').checked;
+    conversions.push('所有视频价格已从元 / 百万 token 自动除以 1,000,000');
+  } else if (mode === 'tts') {
+    const rate = numberFromInput('gen-tts-rate', 'TTS 价格', true, errors);
+    if (rate !== null) { entry.input_cost_per_character = rate / 10000; conversions.push(`${rate} ÷ 10,000 = ${readableRate(entry.input_cost_per_character)} / 字符`); }
+  } else {
+    const rate = numberFromInput('gen-stt-rate', 'STT 价格', true, errors);
+    if (rate !== null) { entry.input_cost_per_second = rate / 3600; conversions.push(`${rate} ÷ 3,600 = ${readableRate(entry.input_cost_per_second)} / 秒`); }
+  }
+  entry.supported_endpoints = [meta.endpoint];
+  if (source) entry.source = source;
+  const notes = document.getElementById('gen-notes').value.trim();
+  entry.metadata = { notes: notes || 'CN list prices recorded 1:1 as USD.' };
+  const output = document.getElementById('gen-output');
+  const status = document.getElementById('gen-status');
+  const key = modelId ? normalizedModelKey(modelId) : 'volcengine/model-id';
+  const fragment = fragmentFromEntry(key, entry);
+  const full = JSON.stringify({ [key]: entry }, null, 2);
+  output.textContent = fragment;
+  document.getElementById('gen-conversions').innerHTML = conversions.map(item => `<div>• ${item}</div>`).join('');
+  if (errors.length) {
+    status.classList.add('has-error');
+    status.textContent = `还不能使用：${[...new Set(errors)].join('；')}`;
+    latestGenerated = null;
+  } else {
+    status.classList.remove('has-error');
+    status.textContent = 'JSON 有效。复制条目后粘贴到价格表最外层对象中，并与相邻条目用逗号分隔。';
+    latestGenerated = { fragment, full, filename: `${key.replace(/[^a-zA-Z0-9._-]/g, '_')}.json` };
+  }
+}
+document.getElementById('gen-mode').addEventListener('change', event => loadGeneratorExample(event.target.value));
+document.getElementById('json-generator').addEventListener('input', event => {
+  if (event.target.id !== 'gen-mode') generatePriceJson();
+});
+document.getElementById('json-generator').addEventListener('change', generatePriceJson);
+document.getElementById('json-generator').addEventListener('click', event => {
+  const remove = event.target.closest('[data-remove-row]');
+  if (remove) { remove.closest('.repeat-row').remove(); generatePriceJson(); return; }
+  if (event.target.id === 'gen-add-chat-tier') { document.getElementById('gen-chat-tiers').insertAdjacentHTML('beforeend', chatTierMarkup()); generatePriceJson(); }
+  if (event.target.id === 'gen-add-image-tier') { document.getElementById('gen-image-tiers').insertAdjacentHTML('beforeend', imageTierMarkup()); generatePriceJson(); }
+  if (event.target.id === 'gen-add-video-resolution') { document.getElementById('gen-video-resolutions').insertAdjacentHTML('beforeend', videoResolutionMarkup()); generatePriceJson(); }
+});
+document.getElementById('gen-reset').addEventListener('click', () => loadGeneratorExample(document.getElementById('gen-mode').value));
+document.getElementById('gen-copy').addEventListener('click', async () => {
+  if (!latestGenerated) return;
+  await navigator.clipboard.writeText(latestGenerated.fragment);
+  document.getElementById('gen-copy').textContent = '已复制';
+  setTimeout(() => { document.getElementById('gen-copy').textContent = '复制条目'; }, 1200);
+});
+document.getElementById('gen-download').addEventListener('click', () => {
+  if (!latestGenerated) return;
+  const url = URL.createObjectURL(new Blob([latestGenerated.full], { type: 'application/json' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = latestGenerated.filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+});
+loadGeneratorExample('chat');
 
 const configs = {
   chat: {
