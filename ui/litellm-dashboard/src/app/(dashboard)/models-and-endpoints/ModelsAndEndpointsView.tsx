@@ -448,7 +448,7 @@ const ModelsAndEndpointsView: React.FC<ModelDashboardProps> = ({ premiumUser, te
                     ),
                   },
                   {
-                    tab: <Tab key="price-data-reload">Price Data Reload</Tab>,
+                    tab: <Tab key="price-data-reload">计费规则</Tab>,
                     panel: <PriceDataManagementTab key="price-data-reload" />,
                   },
                 );

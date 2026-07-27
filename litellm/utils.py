@@ -4922,10 +4922,13 @@ def _invalidate_model_cost_lowercase_map() -> None:
     global _model_cost_lowercase_map, _model_cost_mutation_generation
     _model_cost_lowercase_map = None
     _model_cost_mutation_generation += 1
-
     # Clear LRU caches that depend on model_cost data
     _cached_get_model_info.cache_clear()
     _cached_get_model_info_helper.cache_clear()
+
+
+def invalidate_model_cost_cache() -> None:
+    _invalidate_model_cost_lowercase_map()
 
 
 def _rebuild_model_cost_lowercase_map() -> Dict[str, str]:

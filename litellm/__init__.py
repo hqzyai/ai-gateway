@@ -39,6 +39,7 @@ from typing import (
     Tuple,
     overload,
     Type,
+    Mapping,
 )
 from litellm.types.integrations.datadog import DatadogInitParams
 from litellm.types.integrations.newrelic import NewRelicInitParams
@@ -695,7 +696,7 @@ def is_openai_finetune_model(key: str) -> bool:
     return key.startswith("ft:") and not key.count(":") > 1
 
 
-def add_known_models(model_cost_map: Optional[Dict] = None):
+def add_known_models(model_cost_map: Optional[Mapping[str, Mapping[str, object]]] = None) -> None:
     _map = model_cost_map if model_cost_map is not None else model_cost
     for key, value in _map.items():
         if value.get("litellm_provider") == "openai" and not is_openai_finetune_model(key):
