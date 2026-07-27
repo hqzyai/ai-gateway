@@ -33,6 +33,7 @@ def test_image_generation_uses_ark_endpoint_and_transforms_response():
         captured["body"] = json.loads(request.content)
         return httpx.Response(
             200,
+            headers={"x-request-id": "image-request-123"},
             json={
                 "model": "doubao-seedream-4-5-251128",
                 "created": 1750000000,
@@ -86,6 +87,7 @@ def test_image_generation_uses_ark_endpoint_and_transforms_response():
     assert response._hidden_params["model"] == "doubao-seedream-4-5-251128"
     assert response._hidden_params["generated_images"] == 2
     assert response._hidden_params["input_images"] == 0
+    assert response._hidden_params["additional_headers"]["llm_provider-x-request-id"] == "image-request-123"
 
 
 def test_image_generation_accepts_single_and_multiple_reference_images():
@@ -288,9 +290,7 @@ def _image_response(output_tokens: int, generated_images: int, input_images: int
     ("output_tokens", "expected_cost"),
     [(4096, 0.32), (4097, 0.47), (8192, 0.47), (8193, 0.62)],
 )
-def test_image_cost_honors_output_token_thresholds_other_than_16384(
-    output_tokens: int, expected_cost: float
-) -> None:
+def test_image_cost_honors_output_token_thresholds_other_than_16384(output_tokens: int, expected_cost: float) -> None:
     """Large-image tiers come from the price map, not a hard-coded 16384 boundary.
 
     Before this was generalized the calculator only ever read

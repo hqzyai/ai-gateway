@@ -312,3 +312,7 @@ def get_model_cost_map(url: str) -> dict:
     _cost_map_source_info.source = "remote"
     _cost_map_source_info.fallback_reason = None
     return _finalize_model_cost_map(content)
+
+
+def get_model_cost_map_for_validation(url: str) -> object:
+    return get_model_cost_map(url)

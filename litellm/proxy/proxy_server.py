@@ -413,6 +413,13 @@ from litellm.proxy.management_endpoints.model_management_endpoints import (
 from litellm.proxy.management_endpoints.model_management_endpoints import (
     router as model_management_router,
 )
+from litellm.proxy.management_endpoints.model_cost_map_endpoints import (
+    load_model_cost_map_overrides,
+    merge_model_cost_map,
+)
+from litellm.proxy.management_endpoints.model_cost_map_endpoints import (
+    router as model_cost_map_router,
+)
 from litellm.proxy.management_endpoints.organization_endpoints import (
     router as organization_router,
 )
@@ -6359,6 +6366,12 @@ class ProxyConfig:
         This function runs every 10 seconds as part of _init_non_llm_objects_in_db.
         """
         try:
+            model_cost_map_overrides = await load_model_cost_map_overrides(prisma_client)
+            if model_cost_map_overrides:
+                litellm.model_cost = merge_model_cost_map(litellm.model_cost, model_cost_map_overrides)
+                _invalidate_model_cost_lowercase_map()
+                litellm.add_known_models(model_cost_map=litellm.model_cost)
+
             # Get model cost map reload configuration from database
             config_record = await get_config_param(prisma_client, "model_cost_map_reload_config")
 
@@ -6410,7 +6423,10 @@ class ProxyConfig:
                 )
 
                 model_cost_map_url = litellm.model_cost_map_url
-                new_model_cost_map = get_model_cost_map(url=model_cost_map_url)
+                new_model_cost_map = merge_model_cost_map(
+                    get_model_cost_map(url=model_cost_map_url),
+                    model_cost_map_overrides,
+                )
                 litellm.model_cost = new_model_cost_map
                 # Invalidate case-insensitive lookup map since model_cost was replaced
                 _invalidate_model_cost_lowercase_map()
@@ -15588,7 +15604,11 @@ async def reload_model_cost_map(
         from litellm.litellm_core_utils.get_model_cost_map import get_model_cost_map
 
         model_cost_map_url = litellm.model_cost_map_url
-        new_model_cost_map = get_model_cost_map(url=model_cost_map_url)
+        model_cost_map_overrides = await load_model_cost_map_overrides(prisma_client)
+        new_model_cost_map = merge_model_cost_map(
+            get_model_cost_map(url=model_cost_map_url),
+            model_cost_map_overrides,
+        )
         litellm.model_cost = new_model_cost_map
         # Invalidate case-insensitive lookup map since model_cost was replaced
         _invalidate_model_cost_lowercase_map()
@@ -16270,6 +16290,7 @@ app.include_router(ui_crud_endpoints_router)
 app.include_router(team_callback_router)
 app.include_router(budget_management_router)
 app.include_router(model_management_router)
+app.include_router(model_cost_map_router)
 app.include_router(model_access_group_management_router)
 app.include_router(tag_management_router)
 app.include_router(workflow_management_router)

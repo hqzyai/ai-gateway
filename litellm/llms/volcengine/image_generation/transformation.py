@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 import httpx
 from pydantic import BaseModel, Field, ValidationError
 
+from litellm.litellm_core_utils.core_helpers import process_response_headers
 from litellm.llms.base_llm.chat.transformation import BaseLLMException
 from litellm.llms.base_llm.image_generation.transformation import (
     BaseImageGenerationConfig,
@@ -231,6 +232,7 @@ class VolcEngineImageGenerationConfig(BaseImageGenerationConfig):
                 "input_images": input_images,
                 "tools": response.tools,
                 "tool_usage": response.usage.tool_usage.model_dump(),
+                "additional_headers": process_response_headers(raw_response.headers),
             },
         )
 

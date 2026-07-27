@@ -7423,6 +7423,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/model/cost_map/overrides": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Model Cost Map Overrides */
+        get: operations["list_model_cost_map_overrides_model_cost_map_overrides_get"];
+        /** Upsert Model Cost Map Override */
+        put: operations["upsert_model_cost_map_override_model_cost_map_overrides_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/model/cost_map/overrides/{model_name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Model Cost Map Override */
+        delete: operations["delete_model_cost_map_override_model_cost_map_overrides__model_name__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/model/cost_map/source": {
         parameters: {
             query?: never;
@@ -24586,6 +24621,7 @@ export interface components {
             /** Updated By */
             updated_by?: string | null;
         };
+        JsonValue: unknown;
         /** KeyHealthResponse */
         KeyHealthResponse: {
             /**
@@ -27571,6 +27607,38 @@ export interface components {
              */
             tags: {
                 [key: string]: string | string[];
+            };
+        };
+        /** ModelCostMapOverrideListResponse */
+        ModelCostMapOverrideListResponse: {
+            /** Overrides */
+            overrides: components["schemas"]["ModelCostMapOverrideResponse"][];
+        };
+        /** ModelCostMapOverrideMutationResponse */
+        ModelCostMapOverrideMutationResponse: {
+            /** Model Name */
+            model_name: string;
+            /** Override Count */
+            override_count: number;
+            /** Status */
+            status: string;
+        };
+        /** ModelCostMapOverrideRequest */
+        ModelCostMapOverrideRequest: {
+            /** Model Name */
+            model_name: string;
+            /** Values */
+            values: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+        };
+        /** ModelCostMapOverrideResponse */
+        ModelCostMapOverrideResponse: {
+            /** Model Name */
+            model_name: string;
+            /** Values */
+            values: {
+                [key: string]: components["schemas"]["JsonValue"];
             };
         };
         /** ModelGroupInfoProxy */
@@ -43516,6 +43584,90 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LiteLLM_ProxyModelTable"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_model_cost_map_overrides_model_cost_map_overrides_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelCostMapOverrideListResponse"];
+                };
+            };
+        };
+    };
+    upsert_model_cost_map_override_model_cost_map_overrides_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModelCostMapOverrideRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelCostMapOverrideMutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_model_cost_map_override_model_cost_map_overrides__model_name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                model_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelCostMapOverrideMutationResponse"];
                 };
             };
             /** @description Validation Error */

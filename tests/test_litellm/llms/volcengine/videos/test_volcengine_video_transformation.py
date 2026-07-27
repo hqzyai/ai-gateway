@@ -69,7 +69,7 @@ def test_text_to_video_creates_ark_task_with_mapped_params() -> None:
             "generate_audio": True,
             "watermark": False,
         }
-        return httpx.Response(200, json={"id": "task-123"})
+        return httpx.Response(200, json={"id": "task-123"}, headers={"x-request-id": "video-create-request-123"})
 
     client = HTTPHandler(client=httpx.Client(transport=httpx.MockTransport(respond)))
     response = litellm.video_generation(
@@ -89,6 +89,7 @@ def test_text_to_video_creates_ark_task_with_mapped_params() -> None:
         "video_resolution": "720p",
         "has_video_input": False,
     }
+    assert response._hidden_params["additional_headers"]["llm_provider-x-request-id"] == "video-create-request-123"
     assert decode_video_id_with_provider(response.id) == {
         "custom_llm_provider": "volcengine",
         "model_id": "doubao-seedance-2-0-260128",
@@ -101,6 +102,7 @@ def test_video_status_maps_ark_task_to_openai_video() -> None:
     config = VolcEngineVideoConfig()
     response = httpx.Response(
         200,
+        headers={"x-request-id": "video-status-request-123"},
         json={
             "id": "task-123",
             "model": "doubao-seedance-2-0-260128",
@@ -128,6 +130,7 @@ def test_video_status_maps_ark_task_to_openai_video() -> None:
         "video_resolution": "720p",
         "has_video_input": False,
     }
+    assert video._hidden_params["additional_headers"]["llm_provider-x-request-id"] == "video-status-request-123"
 
 
 def test_video_input_billing_context_survives_status_retrieval() -> None:

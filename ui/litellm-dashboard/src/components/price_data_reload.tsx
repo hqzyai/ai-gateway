@@ -43,16 +43,18 @@ interface PriceDataReloadProps {
   size?: "small" | "middle" | "large";
   type?: "primary" | "default" | "dashed" | "link" | "text";
   className?: string;
+  compact?: boolean;
 }
 
 const PriceDataReload: React.FC<PriceDataReloadProps> = ({
   accessToken,
   onReloadSuccess,
-  buttonText = "Reload Price Data",
+  buttonText = "刷新价格数据",
   showIcon = true,
   size = "middle",
   type = "primary",
   className = "",
+  compact = false,
 }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [isScheduling, setIsScheduling] = useState(false);
@@ -115,7 +117,7 @@ const PriceDataReload: React.FC<PriceDataReloadProps> = ({
 
   const handleHardRefresh = async () => {
     if (!accessToken) {
-      NotificationsManager.fromBackend("No access token available");
+      NotificationsManager.fromBackend("没有可用的访问令牌");
       return;
     }
 
@@ -124,29 +126,29 @@ const PriceDataReload: React.FC<PriceDataReloadProps> = ({
       const response = await reloadModelCostMap(accessToken);
 
       if (response.status === "success") {
-        NotificationsManager.success(`Price data reloaded successfully! ${response.models_count || 0} models updated.`);
+        NotificationsManager.success(`价格数据刷新成功，已更新 ${response.models_count || 0} 个模型。`);
         onReloadSuccess?.();
         // Refresh status and source info after successful reload
         await fetchReloadStatus();
         await fetchSourceInfo();
       } else {
-        NotificationsManager.fromBackend("Failed to reload price data");
+        NotificationsManager.fromBackend("价格数据刷新失败");
       }
     } catch (error) {
       console.error("Error reloading price data:", error);
-      NotificationsManager.fromBackend("Failed to reload price data. Please try again.");
+      NotificationsManager.fromBackend("价格数据刷新失败，请重试。");
     } finally {
       setIsLoading(false);
     }
   };
   const handleScheduleReload = async () => {
     if (!accessToken) {
-      NotificationsManager.fromBackend("No access token available");
+      NotificationsManager.fromBackend("没有可用的访问令牌");
       return;
     }
 
     if (hours <= 0) {
-      NotificationsManager.fromBackend("Hours must be greater than 0");
+      NotificationsManager.fromBackend("刷新间隔必须大于 0 小时");
       return;
     }
 
@@ -155,15 +157,15 @@ const PriceDataReload: React.FC<PriceDataReloadProps> = ({
       const response = await scheduleModelCostMapReload(accessToken, hours);
 
       if (response.status === "success") {
-        NotificationsManager.success(`Periodic reload scheduled for every ${hours} hours`);
+        NotificationsManager.success(`已设置每 ${hours} 小时自动刷新一次`);
         setShowScheduleModal(false);
         await fetchReloadStatus();
       } else {
-        NotificationsManager.fromBackend("Failed to schedule periodic reload");
+        NotificationsManager.fromBackend("设置定时刷新失败");
       }
     } catch (error) {
       console.error("Error scheduling reload:", error);
-      NotificationsManager.fromBackend("Failed to schedule periodic reload. Please try again.");
+      NotificationsManager.fromBackend("设置定时刷新失败，请重试。");
     } finally {
       setIsScheduling(false);
     }
@@ -171,7 +173,7 @@ const PriceDataReload: React.FC<PriceDataReloadProps> = ({
 
   const handleCancelReload = async () => {
     if (!accessToken) {
-      NotificationsManager.fromBackend("No access token available");
+      NotificationsManager.fromBackend("没有可用的访问令牌");
       return;
     }
 
@@ -180,21 +182,21 @@ const PriceDataReload: React.FC<PriceDataReloadProps> = ({
       const response = await cancelModelCostMapReload(accessToken);
 
       if (response.status === "success") {
-        NotificationsManager.success("Periodic reload cancelled successfully");
+        NotificationsManager.success("已取消定时刷新");
         await fetchReloadStatus();
       } else {
-        NotificationsManager.fromBackend("Failed to cancel periodic reload");
+        NotificationsManager.fromBackend("取消定时刷新失败");
       }
     } catch (error) {
       console.error("Error cancelling reload:", error);
-      NotificationsManager.fromBackend("Failed to cancel periodic reload. Please try again.");
+      NotificationsManager.fromBackend("取消定时刷新失败，请重试。");
     } finally {
       setIsCancelling(false);
     }
   };
 
   const formatDateTime = (dateTimeString: string | null) => {
-    if (!dateTimeString) return "Never";
+    if (!dateTimeString) return "从未执行";
     try {
       return new Date(dateTimeString).toLocaleString();
     } catch {
@@ -203,9 +205,9 @@ const PriceDataReload: React.FC<PriceDataReloadProps> = ({
   };
 
   const getStatusText = () => {
-    if (!reloadStatus?.scheduled) return "Not scheduled";
-    if (!reloadStatus.last_run) return "Ready";
-    return "Active";
+    if (!reloadStatus?.scheduled) return "未设置";
+    if (!reloadStatus.last_run) return "就绪";
+    return "运行中";
   };
 
   const getStatusColor = () => {
@@ -217,14 +219,14 @@ const PriceDataReload: React.FC<PriceDataReloadProps> = ({
   return (
     <div className={className}>
       {/* Action Buttons */}
-      <Space direction="horizontal" size="middle" style={{ marginBottom: 16 }}>
+      <Space direction="horizontal" size="middle" style={{ marginBottom: compact ? 0 : 16 }}>
         {/* Hard Refresh Button - Always visible */}
         <Popconfirm
-          title="Hard Refresh Price Data"
-          description="This will immediately fetch the latest pricing information from the remote source. Continue?"
+          title="立即刷新价格数据"
+          description="系统将立即从远程数据源获取最新价格，是否继续？"
           onConfirm={handleHardRefresh}
-          okText="Yes"
-          cancelText="No"
+          okText="继续"
+          cancelText="取消"
           okButtonProps={{
             style: {
               backgroundColor: "#6366f1",
@@ -292,7 +294,7 @@ const PriceDataReload: React.FC<PriceDataReloadProps> = ({
               lineHeight: "1.25rem",
             }}
           >
-            Set Up Periodic Reload
+            设置定时刷新
           </Button>
         ) : (
           <Button
@@ -313,13 +315,13 @@ const PriceDataReload: React.FC<PriceDataReloadProps> = ({
               lineHeight: "1.25rem",
             }}
           >
-            Cancel Periodic Reload
+            取消定时刷新
           </Button>
         )}
       </Space>
 
       {/* Cost Map Source Info Card */}
-      {sourceInfo && (
+      {!compact && sourceInfo && (
         <Card
           size="small"
           style={{
@@ -338,13 +340,13 @@ const PriceDataReload: React.FC<PriceDataReloadProps> = ({
                 <DatabaseOutlined style={{ color: "#fa8c16", fontSize: 16 }} />
               )}
               <Text strong style={{ fontSize: "13px" }}>
-                Pricing Data Source
+                价格数据源
               </Text>
               <Tag
                 color={sourceInfo.source === "remote" ? "blue" : "orange"}
                 style={{ marginLeft: "auto", fontWeight: 600, textTransform: "uppercase", fontSize: "11px" }}
               >
-                {sourceInfo.source === "remote" ? "Remote" : "Local"}
+                {sourceInfo.source === "remote" ? "远程" : "本地"}
               </Tag>
             </div>
 
@@ -353,7 +355,7 @@ const PriceDataReload: React.FC<PriceDataReloadProps> = ({
             {/* Model count */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <Text type="secondary" style={{ fontSize: "12px" }}>
-                Models loaded:
+                已加载模型：
               </Text>
               <Text strong style={{ fontSize: "12px" }}>
                 {sourceInfo.model_count.toLocaleString()}
@@ -364,7 +366,7 @@ const PriceDataReload: React.FC<PriceDataReloadProps> = ({
             {sourceInfo.url && (
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
                 <Text type="secondary" style={{ fontSize: "12px", whiteSpace: "nowrap" }}>
-                  {sourceInfo.source === "remote" ? "Loaded from:" : "Attempted URL:"}
+                  {sourceInfo.source === "remote" ? "加载地址：" : "尝试地址："}
                 </Text>
                 <Tooltip title={sourceInfo.url}>
                   <Text
@@ -390,7 +392,7 @@ const PriceDataReload: React.FC<PriceDataReloadProps> = ({
               <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
                 <InfoCircleOutlined style={{ color: "#fa8c16", fontSize: 12 }} />
                 <Text type="secondary" style={{ fontSize: "11px" }}>
-                  Local mode forced via <code>LITELLM_LOCAL_MODEL_COST_MAP=True</code>
+                  已通过 <code>LITELLM_LOCAL_MODEL_COST_MAP=True</code> 强制使用本地模式
                 </Text>
               </div>
             )}
@@ -411,7 +413,7 @@ const PriceDataReload: React.FC<PriceDataReloadProps> = ({
               >
                 <WarningOutlined style={{ color: "#fa8c16", fontSize: 12, marginTop: 2 }} />
                 <Text style={{ fontSize: "11px", color: "#614700" }}>
-                  Fell back to local: {sourceInfo.fallback_reason}
+                  已回退到本地数据：{sourceInfo.fallback_reason}
                 </Text>
               </div>
             )}
@@ -420,7 +422,7 @@ const PriceDataReload: React.FC<PriceDataReloadProps> = ({
       )}
 
       {/* Reload Schedule Status Card */}
-      {reloadStatus && (
+      {!compact && reloadStatus && (
         <Card
           size="small"
           style={{
@@ -433,16 +435,16 @@ const PriceDataReload: React.FC<PriceDataReloadProps> = ({
             {reloadStatus.scheduled ? (
               <div>
                 <Tag color="green" icon={<ClockCircleOutlined />}>
-                  Scheduled every {reloadStatus.interval_hours} hours
+                  每 {reloadStatus.interval_hours} 小时自动刷新
                 </Tag>
               </div>
             ) : (
-              <Text type="secondary">No periodic reload scheduled</Text>
+              <Text type="secondary">未设置定时刷新</Text>
             )}
 
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <Text type="secondary" style={{ fontSize: "12px" }}>
-                Last run:
+                上次执行：
               </Text>
               <Text style={{ fontSize: "12px" }}>{formatDateTime(reloadStatus.last_run)}</Text>
             </div>
@@ -452,14 +454,14 @@ const PriceDataReload: React.FC<PriceDataReloadProps> = ({
                 {reloadStatus.next_run && (
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <Text type="secondary" style={{ fontSize: "12px" }}>
-                      Next run:
+                      下次执行：
                     </Text>
                     <Text style={{ fontSize: "12px" }}>{formatDateTime(reloadStatus.next_run)}</Text>
                   </div>
                 )}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <Text type="secondary" style={{ fontSize: "12px" }}>
-                    Status:
+                    状态：
                   </Text>
                   <Tag color={getStatusColor()}>{getStatusText()}</Tag>
                 </div>
@@ -471,13 +473,13 @@ const PriceDataReload: React.FC<PriceDataReloadProps> = ({
 
       {/* Schedule Modal */}
       <Modal
-        title="Set Up Periodic Reload"
+        title="设置定时刷新"
         open={showScheduleModal}
         onOk={handleScheduleReload}
         onCancel={() => setShowScheduleModal(false)}
         confirmLoading={isScheduling}
-        okText="Schedule"
-        cancelText="Cancel"
+        okText="设置"
+        cancelText="取消"
         okButtonProps={{
           style: {
             backgroundColor: "#6366f1",
@@ -487,7 +489,7 @@ const PriceDataReload: React.FC<PriceDataReloadProps> = ({
         }}
       >
         <div style={{ marginBottom: 16 }}>
-          <Text>Set up automatic reload of price data every:</Text>
+          <Text>设置价格数据的自动刷新间隔：</Text>
         </div>
         <div style={{ marginBottom: 16 }}>
           <InputNumber
@@ -495,14 +497,12 @@ const PriceDataReload: React.FC<PriceDataReloadProps> = ({
             max={168} // 1 week max
             value={hours}
             onChange={(value) => setHours(value || 6)}
-            addonAfter="hours"
+            addonAfter="小时"
             style={{ width: "100%" }}
           />
         </div>
         <div>
-          <Text type="secondary">
-            This will automatically fetch the latest pricing data from the remote source every {hours} hours.
-          </Text>
+          <Text type="secondary">系统将每 {hours} 小时从远程数据源自动获取一次最新价格。</Text>
         </div>
       </Modal>
     </div>

@@ -155,6 +155,7 @@ async def image_generation(
         api_base = hidden_params.get("api_base", None) or ""
         response_cost = hidden_params.get("response_cost", None) or ""
         litellm_call_id = hidden_params.get("litellm_call_id", None) or ""
+        additional_headers = hidden_params.get("additional_headers", None) or {}
 
         fastapi_response.headers.update(
             ProxyBaseLLMRequestProcessing.get_custom_headers(
@@ -168,6 +169,7 @@ async def image_generation(
                 call_id=litellm_call_id,
                 request_data=data,
                 hidden_params=hidden_params,
+                **additional_headers,
             )
         )
 

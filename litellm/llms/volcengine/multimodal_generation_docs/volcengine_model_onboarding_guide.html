@@ -1,0 +1,1307 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="paper">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>火山引擎模型接入与计费配置指南</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/lxgwwenkai-regular.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/lxgwwenkai-bold.css">
+<style>
+:root {
+  --paper: #faf7f0;
+  --paper-alt: #fffdf8;
+  --ink: #35322b;
+  --ink-soft: #6f6a5e;
+  --ink-faint: #a8a191;
+  --line: #cfc8b8;
+  --blue: #3b6ec9;
+  --teal: #0e9d84;
+  --amber: #d9930d;
+  --red: #d64550;
+  --purple: #8958d8;
+  --ease: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --font-hand: 'LXGW WenKai', 'Xiaolai SC', 'KaiTi', 'STKaiti', 'AR PL UKai CN', cursive;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, monospace;
+  --wobble-a: 255px 15px 225px 15px / 15px 225px 15px 255px;
+  --wobble-b: 15px 225px 15px 255px / 255px 15px 225px 15px;
+}
+[data-theme="chalk"] {
+  --paper: #232830;
+  --paper-alt: #2a303a;
+  --ink: #e9e4d8;
+  --ink-soft: #a8a294;
+  --ink-faint: #6f6a5e;
+  --line: #4a4f58;
+  --blue: #6f9ee8;
+  --teal: #3ec9ad;
+  --amber: #e8b34b;
+  --red: #e8707a;
+  --purple: #ab8ae8;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-hand);
+  font-size: 15px;
+  line-height: 1.7;
+  background-image: radial-gradient(var(--line) 0.8px, transparent 0.8px);
+  background-size: 26px 26px;
+}
+.container { max-width: 1120px; margin: 0 auto; padding: 40px 24px 72px; }
+h1 { margin: 0; font-size: 29px; line-height: 1.35; font-weight: 700; }
+h2 { margin: 0 0 6px; font-size: 21px; font-weight: 700; }
+h3 { margin: 0 0 8px; font-size: 16px; font-weight: 700; }
+h4 { margin: 0 0 5px; font-size: 14px; }
+p { margin: 0; }
+a { color: var(--blue); text-underline-offset: 3px; }
+code { font-family: var(--font-mono); font-size: 0.84em; background: color-mix(in srgb, var(--ink) 8%, transparent); padding: 1px 5px; border-radius: 4px; }
+pre { margin: 0; white-space: pre; overflow: auto; font-family: var(--font-mono); font-size: 12px; line-height: 1.65; tab-size: 2; }
+section { margin-top: 42px; scroll-margin-top: 24px; }
+.subtitle { margin-top: 10px; color: var(--ink-soft); max-width: 850px; }
+.eyebrow { color: var(--blue); font-size: 13px; font-weight: 700; letter-spacing: 0.08em; }
+.meta { margin-top: 12px; color: var(--ink-faint); font-size: 12.5px; }
+.section-head { display: flex; gap: 16px; align-items: end; justify-content: space-between; margin-bottom: 14px; }
+.section-head p { max-width: 720px; color: var(--ink-soft); font-size: 13.5px; }
+.card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+.layout-split { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 24px; align-items: start; }
+.layout-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.diagram, .card, .panel, .table-wrap, .code-shell, .callout {
+  background: var(--paper-alt);
+  border: 1.6px solid var(--ink);
+  border-radius: var(--wobble-a);
+}
+.card, .panel, .callout { padding: 16px; }
+.card:nth-child(even), .code-shell:nth-child(even) { border-radius: var(--wobble-b); }
+.card p, .panel p { color: var(--ink-soft); font-size: 13.5px; }
+.card .big { font-size: 24px; line-height: 1.2; font-weight: 700; color: var(--blue); }
+.card .label { font-size: 12px; color: var(--ink-faint); margin-top: 5px; }
+.metric-grid { margin-top: 22px; }
+.callout { margin-top: 18px; border-color: var(--red); display: flex; gap: 12px; align-items: flex-start; }
+.callout strong { color: var(--red); white-space: nowrap; }
+.callout p { color: var(--ink-soft); font-size: 13.5px; }
+.nav { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
+.pill, .filter-btn, .step-btn, .copy-btn, .theme-btn {
+  border: 1.6px solid var(--ink);
+  background: var(--paper-alt);
+  color: var(--ink-soft);
+  border-radius: var(--wobble-b);
+  font-family: var(--font-hand);
+  cursor: pointer;
+  transition: color 0.2s var(--ease), background-color 0.2s var(--ease), transform 0.2s var(--ease);
+}
+.pill { padding: 5px 12px; text-decoration: none; font-size: 13px; }
+.pill:hover, .filter-btn:hover, .step-btn:hover, .copy-btn:hover, .theme-btn:hover { color: var(--ink); transform: translateY(-1px); }
+.theme-btn { float: right; padding: 5px 11px; }
+.stepper, .filters { display: flex; gap: 8px; flex-wrap: wrap; }
+.step-btn, .filter-btn { padding: 6px 13px; font-size: 13.5px; }
+.step-btn.is-current, .filter-btn.is-current { background: var(--ink); border-color: var(--ink); color: var(--paper-alt); }
+.diagram { padding: 12px; margin-top: 12px; }
+.diagram svg { display: block; width: 100%; height: auto; }
+.panel .kv { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; margin-top: 7px; }
+.panel .k { color: var(--ink-faint); }
+.panel .v { color: var(--ink-soft); text-align: right; }
+.node .shape path, .node .shape rect { stroke: var(--c, var(--ink)); transition: stroke 0.2s var(--ease), stroke-width 0.2s var(--ease); }
+.node .shape rect { fill: none; stroke-width: 1.6; }
+.node .hfill path { stroke: var(--c, var(--ink-faint)); opacity: 0.3; }
+.node .node-label { fill: var(--ink); font-family: var(--font-hand); font-size: 14px; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+.node .node-sub { fill: var(--ink-soft); font-family: var(--font-hand); font-size: 11px; text-anchor: middle; dominant-baseline: central; }
+.node.is-active .shape path, .node.is-active .shape rect { stroke-width: 2.6; }
+.edge path, .edge line { stroke: var(--ink-soft); fill: none; transition: stroke 0.2s var(--ease); }
+.edge .shaft { stroke-width: 1.6; }
+.edge.is-active path { stroke: var(--c, var(--blue)); }
+.edge-label { fill: var(--ink-soft); font-family: var(--font-hand); font-size: 11.5px; text-anchor: middle; transition: fill 0.2s var(--ease); }
+.edge-label.is-active { fill: var(--c, var(--blue)); font-weight: 700; }
+.node, .edge, .edge-label { transition: opacity 0.3s var(--ease); }
+.is-dimmed { opacity: 0.22; }
+.flow-dot { display: none; }
+@supports (offset-path: path('M0 0L8 8')) {
+  .flow-dot { display: block; opacity: 0; offset-rotate: 0deg; animation: flow-move linear infinite; }
+}
+@keyframes flow-move {
+  0% { offset-distance: 0%; opacity: 0; }
+  12% { opacity: 0.9; }
+  88% { opacity: 0.9; }
+  100% { offset-distance: 100%; opacity: 0; }
+}
+.table-wrap { overflow: auto; padding: 4px; }
+table { width: 100%; border-collapse: collapse; min-width: 800px; }
+th, td { padding: 11px 12px; text-align: left; vertical-align: top; border-bottom: 1px dashed var(--line); }
+th { color: var(--ink); font-size: 12.5px; white-space: nowrap; }
+td { color: var(--ink-soft); font-size: 12.5px; }
+tr:last-child td { border-bottom: 0; }
+.model-name { color: var(--ink); font-family: var(--font-mono); font-size: 11.5px; overflow-wrap: anywhere; }
+.badge { display: inline-block; padding: 1px 7px; border: 1px solid currentColor; border-radius: 99px; font-size: 11px; white-space: nowrap; }
+.badge.ok { color: var(--teal); }
+.badge.warn { color: var(--red); }
+.billing-grid .card { min-height: 220px; }
+.formula { margin: 10px 0; padding: 8px; border-left: 3px solid var(--c, var(--blue)); background: color-mix(in srgb, var(--c, var(--blue)) 8%, transparent); font-family: var(--font-mono); font-size: 11.5px; overflow-wrap: anywhere; }
+.fields { margin-top: 10px; color: var(--ink-soft); font-family: var(--font-mono); font-size: 11.3px; line-height: 1.8; overflow-wrap: anywhere; }
+.code-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.code-shell { overflow: hidden; }
+.code-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 12px; border-bottom: 1px dashed var(--line); }
+.code-head span { color: var(--ink-soft); font-size: 12.5px; }
+.copy-btn { padding: 3px 10px; font-size: 12px; }
+.code-body { padding: 15px; background: color-mix(in srgb, var(--ink) 3%, var(--paper-alt)); }
+.field-guide { margin-top: 16px; }
+.guide-top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 0.8fr); gap: 16px; align-items: start; }
+.guide-top p { color: var(--ink-soft); font-size: 13.5px; }
+.minimum-box { padding: 12px; border: 1.4px dashed var(--line); border-radius: var(--wobble-b); background: color-mix(in srgb, var(--amber) 7%, var(--paper-alt)); }
+.minimum-box strong { color: var(--amber); }
+.minimum-box code { display: inline-block; margin: 3px 2px; }
+.legend { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
+.req { display: inline-block; padding: 1px 7px; border: 1px solid currentColor; border-radius: 99px; font-size: 11px; white-space: nowrap; }
+.req.must { color: var(--red); }
+.req.runtime { color: var(--amber); }
+.req.conditional { color: var(--purple); }
+.req.recommended { color: var(--blue); }
+.req.optional { color: var(--ink-faint); }
+.request-params { margin-top: 14px; padding: 13px; border-left: 4px solid var(--teal); background: color-mix(in srgb, var(--teal) 7%, var(--paper-alt)); }
+.request-params p { color: var(--ink-soft); font-size: 13px; }
+.request-params code { line-height: 2; }
+.param-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 7px 14px; }
+.param-item { color: var(--ink-soft); font-size: 12.5px; border-bottom: 1px dashed var(--line); padding-bottom: 5px; }
+.param-item code { color: var(--ink); }
+.field-note { margin-top: 10px; color: var(--ink-faint); font-size: 12.5px; }
+.generator-layout { display: grid; grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr); gap: 18px; align-items: start; }
+.generator-form { display: grid; gap: 15px; }
+.form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.form-field { display: grid; gap: 5px; align-content: start; }
+.form-field.full { grid-column: 1 / -1; }
+.form-field label, .form-title { color: var(--ink); font-size: 13px; font-weight: 700; }
+.form-field small { color: var(--ink-faint); font-size: 11.5px; line-height: 1.45; }
+.required-star { color: var(--red); }
+input, select, textarea {
+  width: 100%; border: 1.4px solid var(--ink); border-radius: var(--wobble-b);
+  background: var(--paper-alt); color: var(--ink); padding: 8px 10px;
+  font: 13px/1.45 var(--font-hand); outline: none;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--blue); box-shadow: 0 0 0 2px color-mix(in srgb, var(--blue) 16%, transparent); }
+input.is-invalid, select.is-invalid { border-color: var(--red); background: color-mix(in srgb, var(--red) 5%, var(--paper-alt)); }
+textarea { min-height: 68px; resize: vertical; }
+.sub-form { padding: 13px; border: 1.4px dashed var(--line); border-radius: var(--wobble-a); background: color-mix(in srgb, var(--teal) 4%, var(--paper-alt)); }
+.sub-form + .sub-form { margin-top: 10px; }
+.form-help { margin: 4px 0 10px; color: var(--ink-soft); font-size: 12px; }
+.repeat-list { display: grid; gap: 8px; }
+.repeat-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) auto; gap: 7px; align-items: end; }
+.repeat-row.image-tier-row { grid-template-columns: 1fr 1fr auto; }
+.repeat-row.video-row { grid-template-columns: minmax(90px, 0.7fr) 1fr 1fr auto; }
+.repeat-label { color: var(--ink-faint); font-size: 10.5px; margin-bottom: 2px; }
+.remove-row { padding: 7px 9px; border-color: var(--red); color: var(--red); }
+.add-row { margin-top: 9px; padding: 5px 11px; color: var(--teal); border-color: var(--teal); }
+.check-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.check-label { display: flex; gap: 7px; align-items: center; color: var(--ink-soft); font-size: 12.5px; }
+.check-label input { width: auto; accent-color: var(--blue); }
+.generator-output { position: sticky; top: 14px; }
+.generator-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.generator-actions .copy-btn { padding: 5px 11px; }
+.gen-status { margin-top: 10px; padding: 8px 10px; border-left: 3px solid var(--teal); color: var(--ink-soft); background: color-mix(in srgb, var(--teal) 7%, transparent); font-size: 12px; }
+.gen-status.has-error { border-color: var(--red); color: var(--red); background: color-mix(in srgb, var(--red) 7%, transparent); }
+.conversion-list { margin-top: 10px; display: grid; gap: 5px; color: var(--ink-faint); font-size: 11.5px; }
+.generator-output pre { min-height: 460px; max-height: 720px; }
+.checklist { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; counter-reset: steps; }
+.check { padding: 14px 14px 14px 48px; position: relative; background: var(--paper-alt); border-bottom: 1px dashed var(--line); }
+.check::before { counter-increment: steps; content: counter(steps); position: absolute; left: 14px; top: 15px; width: 24px; height: 24px; display: grid; place-items: center; border: 1.6px solid var(--blue); border-radius: 50%; color: var(--blue); font-weight: 700; }
+.check p { color: var(--ink-soft); font-size: 13px; }
+.decision { border-left: 4px solid var(--amber); }
+.decision strong { color: var(--amber); }
+.source-list { display: grid; gap: 9px; }
+.source-list a { overflow-wrap: anywhere; }
+.muted { color: var(--ink-faint); font-size: 12.5px; }
+.panel-swap { animation: fade-in-up 0.3s var(--ease) both; }
+.anim-in { opacity: 0; animation: fade-in-up 0.4s var(--ease) forwards; animation-delay: calc(var(--i, 0) * 60ms); }
+.draw-in { stroke-dasharray: 1; stroke-dashoffset: 1; animation: draw-on 0.55s var(--ease) both; animation-delay: calc(var(--di, 0) * 15ms); }
+.fade-el { opacity: 0; animation: fade-el-in 0.35s ease-out both; animation-delay: calc(var(--di, 0) * 15ms); }
+@keyframes fade-in-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes draw-on { to { stroke-dashoffset: 0; } }
+@keyframes fade-el-in { to { opacity: 1; } }
+@media (max-width: 860px) {
+  .layout-split, .layout-compare, .generator-layout { grid-template-columns: 1fr; }
+  .guide-top { grid-template-columns: 1fr; }
+  .checklist { grid-template-columns: 1fr; }
+  .section-head { display: block; }
+  .generator-output { position: static; }
+}
+@media (max-width: 620px) {
+  .form-grid, .check-grid { grid-template-columns: 1fr; }
+  .repeat-row, .repeat-row.image-tier-row, .repeat-row.video-row { grid-template-columns: 1fr 1fr; }
+  .remove-row { grid-column: 1 / -1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <header class="anim-in">
+    <button class="theme-btn" id="theme-btn">切换黑板主题</button>
+    <div class="eyebrow">AI GATEWAY · VOLCENGINE / ARK</div>
+    <h1>火山引擎模型接入与计费配置指南</h1>
+    <p class="subtitle">基于当前工作区代码与价格表梳理。覆盖文本对话、文生图/图生图、视频生成、TTS、STT，并补充 Embedding。重点回答三件事：现在登记了什么、每类如何计费、以后新增模型要改哪里。</p>
+    <p class="meta">快照日期：2026-07-24 · 数据源：当前仓库 <code>model_prices_and_context_window.json</code>、Provider 实现与回归测试</p>
+    <div class="card-grid metric-grid">
+      <div class="card"><div class="big">23</div><div class="label">价格表中登记的火山条目</div></div>
+      <div class="card"><div class="big">6</div><div class="label">已覆盖模式，含 Embedding</div></div>
+      <div class="card"><div class="big">5</div><div class="label">本指南重点业务类型</div></div>
+      <div class="card"><div class="big">2 层</div><div class="label">部署配置 + 全局价格登记</div></div>
+    </div>
+    <div class="callout">
+      <strong>先看口径</strong>
+      <p>“已登记”不等于“当前代理已启用”。价格表里有模型只表示 LiteLLM 能识别能力与默认成本；是否能从网关调用，要看 <code>model_list</code>、Admin UI 或数据库里是否创建了 deployment。价格为 <code>0</code> 表示尚未配置，不代表火山免费。</p>
+    </div>
+    <nav class="nav">
+      <a class="pill" href="#architecture">接入地图</a>
+      <a class="pill" href="#catalog">模型目录</a>
+      <a class="pill" href="#billing">计费能力</a>
+      <a class="pill" href="#generator">自动生成 JSON</a>
+      <a class="pill" href="#configuration">价格 JSON</a>
+      <a class="pill" href="#onboarding">新增流程</a>
+      <a class="pill" href="#limits">限制与验证</a>
+    </nav>
+  </header>
+
+  <section id="architecture">
+    <div class="section-head">
+      <div><h2>接入地图：一次请求如何被识别并计费</h2><p>点击步骤看每一层的职责。只新增私有部署通常做到第 3 步即可；要把模型贡献为项目默认能力，才需要改价格表和测试。</p></div>
+    </div>
+    <div class="layout-split">
+      <div>
+        <div class="stepper" id="stepper"></div>
+        <div class="diagram" id="diagram"></div>
+      </div>
+      <aside class="panel" id="step-panel"></aside>
+    </div>
+  </section>
+
+  <section id="catalog">
+    <div class="section-head">
+      <div><h2>当前登记的模型目录</h2><p>这里展示的是仓库价格注册表，不是火山官方全部可售模型。通过分类按钮筛选；“价格状态”会区分已配置与零价占位。</p></div>
+    </div>
+    <div class="filters" id="model-filters"></div>
+    <div class="table-wrap" style="margin-top:12px">
+      <table>
+        <thead><tr><th>类型</th><th>模型 ID</th><th>当前计费摘要</th><th>价格状态</th><th>调用入口</th></tr></thead>
+        <tbody id="model-body"></tbody>
+      </table>
+    </div>
+    <p class="muted" style="margin-top:9px">旧条目 <code>deepseek-*</code>、<code>glm-*</code>、<code>kimi-*</code> 和部分 Embedding 没有 <code>volcengine/</code> 前缀。新增条目不要沿用旧写法，统一使用 <code>volcengine/&lt;火山模型 ID&gt;</code>。</p>
+  </section>
+
+  <section id="billing">
+    <div class="section-head">
+      <div><h2>五种业务可以配置哪些计费</h2><p>下面只列当前代码实际会读取的字段。价格表中的数值最终按美元字段落库，但本仓库对火山采用“人民币数字 1:1 记入美元数字”的特殊对账口径，并未做汇率换算。</p></div>
+    </div>
+    <div class="card-grid billing-grid">
+      <article class="card" style="--c:var(--blue)"><h3>文本对话 / Responses</h3><div class="formula">费用 = 全部输入 token × 当前档输入价 + 全部输出 token × 当前档输出价 + 缓存命中 token × 当前档缓存价</div><p>按单次请求输入长度选一个档位，不是累进阶梯。当前边界是 32768 与 131072，判断条件为严格大于。</p><div class="fields">input_cost_per_token<br>output_cost_per_token<br>cache_read_input_token_cost<br>*_above_32768_tokens<br>*_above_131072_tokens<br>tiered_pricing</div></article>
+      <article class="card" style="--c:var(--teal)"><h3>文生图 / 图生图 / 图片编辑</h3><div class="formula">费用 = 输入图片数 × input_cost_per_image + 输出图片数 × 命中档输出图单价</div><p>输出图单价可按 <code>usage.output_tokens</code> 配任意多个阈值档；Seedream 5 Pro 当前以 16384 为普通/大图边界。</p><div class="fields">input_cost_per_image<br>output_cost_per_image<br>output_cost_per_image_above_{N}_tokens</div></article>
+      <article class="card" style="--c:var(--purple)"><h3>视频生成</h3><div class="formula">费用 = usage.completion_tokens × video_token_pricing[输入类型 + 分辨率]</div><p>先区分有无视频输入，再尝试分辨率后缀。当前 Seedance 用 token 计费；通用引擎还保留按视频秒数的兜底字段。</p><div class="fields">video_token_pricing.no_video_input<br>video_token_pricing.video_input<br>..._1080p / ..._4k<br>output_cost_per_video_per_second<br>output_cost_per_second</div></article>
+      <article class="card" style="--c:var(--amber)"><h3>TTS 文本转语音</h3><div class="formula">费用 = 输入字符数 × input_cost_per_character</div><p>当前登记 <code>seed-tts-2.0</code>，3 元/万字符，对应每字符 <code>0.0003</code>。支持 mp3、opus、wav、pcm。</p><div class="fields">input_cost_per_character<br>mode: audio_speech<br>endpoint: /v1/audio/speech</div></article>
+      <article class="card" style="--c:var(--red)"><h3>STT 语音转文字</h3><div class="formula">费用 = 音频时长秒数 × input_cost_per_second</div><p>当前登记录音识别极速版 <code>volc.bigasr.auc_turbo</code>，4.5 元/小时，对应每秒 <code>0.00125</code>。时长取火山响应并由毫秒换算为秒。</p><div class="fields">input_cost_per_second<br>mode: audio_transcription<br>endpoint: /v1/audio/transcriptions</div></article>
+      <article class="card" style="--c:var(--teal)"><h3>补充：多模态 Embedding</h3><div class="formula">费用 = 文本 token × input_cost_per_token + 图片/视频帧 token × input_cost_per_image_token</div><p>两个 Vision Embedding 条目已配置文本与图像 token 价格；五个旧纯文本条目仍是零价占位。</p><div class="fields">input_cost_per_token<br>input_cost_per_image_token<br>mode: embedding</div></article>
+    </div>
+    <div class="callout">
+      <strong>Chat 双配置</strong>
+      <p><code>tiered_pricing</code> 只用于请求前预算预留，不参与火山请求结束后的实际成本计算。实际落库依赖 <code>input/output/cache_*_above_{N}_tokens</code>。分档模型必须同时维护两套并保持一致。</p>
+    </div>
+  </section>
+
+  <section id="generator">
+    <div class="section-head">
+      <div><h2>可视化价格 JSON 生成器</h2><p>选择模型类型，按火山官网显示的单位填写价格，页面会自动换算并生成可粘贴到 <code>model_prices_and_context_window.json</code> 的条目。所有计算只在当前浏览器完成，不会上传数据。</p></div>
+    </div>
+    <div class="callout" style="border-color:var(--amber);margin-top:0;margin-bottom:14px">
+      <strong style="color:var(--amber)">填写规则</strong>
+      <p>模型 ID 可以只填 <code>doubao-xxx</code>，生成器会自动补 <code>volcengine/</code>。Chat/视频输入官网的“元/百万 token”，TTS 输入“元/万字符”，STT 输入“元/小时”；图片价格按“元/张”原样填写。</p>
+    </div>
+    <div class="generator-layout">
+      <form class="panel generator-form" id="json-generator" novalidate>
+        <div class="form-grid">
+          <div class="form-field">
+            <label for="gen-mode">模型类型 <span class="required-star">*</span></label>
+            <select id="gen-mode">
+              <option value="chat">文本对话 Chat</option>
+              <option value="image">图片生成 / 编辑</option>
+              <option value="video">视频生成</option>
+              <option value="tts">TTS 文本转语音</option>
+              <option value="stt">STT 语音转文字</option>
+            </select>
+            <small>切换类型会载入一份可修改的真实示例。</small>
+          </div>
+          <div class="form-field">
+            <label for="gen-model-id">火山模型 ID <span class="required-star">*</span></label>
+            <input id="gen-model-id" autocomplete="off" spellcheck="false">
+            <small>可带或不带 volcengine/ 前缀。</small>
+          </div>
+          <div class="form-field full">
+            <label for="gen-source">官方价格来源 URL <span class="required-star">*</span></label>
+            <input id="gen-source" type="url" autocomplete="off" spellcheck="false">
+          </div>
+          <div class="form-field full">
+            <label for="gen-notes">价格说明</label>
+            <textarea id="gen-notes" spellcheck="false"></textarea>
+            <small>留空时自动生成币种和换算说明。</small>
+          </div>
+        </div>
+        <div id="gen-dynamic-fields"></div>
+        <div class="generator-actions">
+          <button class="copy-btn" type="button" id="gen-reset">重新载入示例</button>
+        </div>
+      </form>
+      <aside class="code-shell generator-output">
+        <div class="code-head">
+          <span>生成结果：价格表单条记录</span>
+          <div class="generator-actions">
+            <button class="copy-btn" type="button" id="gen-copy">复制条目</button>
+            <button class="copy-btn" type="button" id="gen-download">下载单条 JSON</button>
+          </div>
+        </div>
+        <div class="code-body"><pre id="gen-output"></pre></div>
+        <div style="padding:0 12px 12px">
+          <div class="gen-status" id="gen-status"></div>
+          <div class="conversion-list" id="gen-conversions"></div>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <section id="configuration">
+    <div class="section-head">
+      <div><h2><code>model_prices_and_context_window.json</code> 可复制条目</h2><p>选择业务类型查看完整价格表 JSON 示例；所有字段说明都针对全局模型价格与能力注册表。</p></div>
+    </div>
+    <div class="code-tabs filters" id="config-tabs"></div>
+    <div class="code-shell">
+      <div class="code-head"><span id="code-title"></span><button class="copy-btn" id="copy-btn">复制 JSON 条目</button></div>
+      <div class="code-body"><pre id="code-block"></pre></div>
+    </div>
+    <div class="panel field-guide" id="field-guide">
+      <div class="guide-top">
+        <div>
+          <h3 id="guide-title"></h3>
+          <p id="guide-intro"></p>
+          <div class="legend">
+            <span class="req must">必填</span>
+            <span class="req conditional">条件必填</span>
+            <span class="req recommended">建议填写</span>
+            <span class="req optional">可选</span>
+          </div>
+        </div>
+        <div class="minimum-box">
+          <strong>价格表最小必填</strong>
+          <div id="minimum-fields" style="margin-top:6px"></div>
+          <p id="minimum-note" style="margin-top:6px"></p>
+        </div>
+      </div>
+      <div class="table-wrap" style="margin-top:14px">
+        <table>
+          <thead><tr><th>位置</th><th>字段</th><th>要求</th><th>它是干什么的</th><th>格式 / 单位</th></tr></thead>
+          <tbody id="field-body"></tbody>
+        </table>
+      </div>
+      <div class="request-params">
+        <h3 id="request-title"></h3>
+        <p id="request-intro"></p>
+        <div id="request-fields" style="margin-top:7px"></div>
+        <p class="field-note" id="request-note"></p>
+      </div>
+    </div>
+    <div class="layout-compare" style="margin-top:18px">
+      <div class="card decision"><h3>两份 JSON 必须同步</h3><p><strong>源文件：</strong><code>model_prices_and_context_window.json</code>。<strong>运行时本地备份：</strong><code>litellm/model_prices_and_context_window_backup.json</code>。新增或改价时两边使用同一个 Key 和同一组价格。</p></div>
+      <div class="card"><h3>自动映射条件</h3><p>界面创建的 deployment 底层模型必须与价格表 Key 完全一致，例如 <code>volcengine/doubao-seedream-5-0-pro-260628</code>。刷新成本表后，调用返回的 usage 才会按这条 JSON 计算。</p></div>
+    </div>
+  </section>
+
+  <section id="onboarding">
+    <div class="section-head">
+      <div><h2>新增一个火山模型的标准流程</h2><p>先判断是“部署接入”还是“代码库全局登记”，再按顺序执行。任何价格都要从官方页面或方舟模型信息读取，不凭旧配置猜。</p></div>
+    </div>
+    <div class="panel checklist">
+      <div class="check"><h4>确认 API 形态</h4><p>确定属于 chat、image_generation、video_generation、audio_speech、audio_transcription 或 embedding，并确认实际 endpoint。</p></div>
+      <div class="check"><h4>拿到准确模型 ID</h4><p>价格表 Key 统一写成 <code>volcengine/&lt;model-id&gt;</code>；界面 deployment 的底层 model 必须与这个 Key 完全一致，客户端别名可以不同。</p></div>
+      <div class="check"><h4>抄全官方价格档</h4><p>记录单位、输入/输出类型、上下文边界、分辨率、是否含参考视频、普通图/大图等条件，并保存官方 URL。</p></div>
+      <div class="check"><h4>换算为代码字段</h4><p>元/百万 token 除以 1,000,000；元/千 token 除以 1,000；元/张直接写；元/小时除以 3,600；元/万字符除以 10,000。</p></div>
+      <div class="check"><h4>配置 deployment</h4><p>在 YAML 或 Admin UI 填 model、api_key、mode。特殊档位优先放 <code>model_info</code>，避免字段没有从 <code>litellm_params</code> 透传。</p></div>
+      <div class="check"><h4>需要全局登记时同步两表</h4><p>改 <code>model_prices_and_context_window.json</code> 与 <code>litellm/model_prices_and_context_window_backup.json</code>，写明 source 与币种口径。</p></div>
+      <div class="check"><h4>补边界回归测试</h4><p>分档价格至少测阈值减一、阈值、阈值加一；视频覆盖输入类型和分辨率；音频覆盖字符数或时长。</p></div>
+      <div class="check"><h4>真实调用对账</h4><p>调用本地代理，比较火山返回 usage、LiteLLM completion_cost 和日志中的 spend。最后执行相关测试及 <code>make pre-commit</code>。</p></div>
+    </div>
+  </section>
+
+  <section id="limits">
+    <div class="section-head">
+      <div><h2>验证重点与已知限制</h2><p>这些是最容易出现“能调用但算错钱”的位置。</p></div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>检查项</th><th>当前行为</th><th>新增模型时怎么做</th></tr></thead>
+        <tbody>
+          <tr><td>人民币与美元字段</td><td>火山人民币价格数字 1:1 写进 USD 成本字段</td><td>保持现有口径并在 metadata.notes 写清楚；若要真正换汇，应先统一迁移策略</td></tr>
+          <tr><td>零价格条目</td><td>旧 Chat 与纯文本 Embedding 有 <code>0.0</code></td><td>不要当作免费；上线前补官方价格或 deployment 覆盖</td></tr>
+          <tr><td>Chat 分档边界</td><td><code>prompt_tokens &gt; N</code> 才进入 <code>above_N</code></td><td>火山边界是 32768/131072，不要缩写成 32k/128k</td></tr>
+          <tr><td>图片大图档</td><td>依据响应 <code>usage.output_tokens</code> 选择最高越过档</td><td>测 N、N+1，并确认火山响应确实返回 output_tokens</td></tr>
+          <tr><td>视频价格键</td><td>先找输入类型 + 分辨率，找不到回落到输入类型基础键</td><td>同时考虑 <code>no_video_input</code> 与 <code>video_input</code>，分辨率用小写后缀</td></tr>
+          <tr><td>Speech API Base</td><td>TTS/STT 默认走 <code>openspeech.bytedance.com</code>，不是 Ark Base</td><td>使用 <code>VOLCENGINE_SPEECH_API_KEY</code>；不要把 Ark Base 强塞给语音接口</td></tr>
+          <tr><td>路由状态</td><td>价格表不会自动创建 deployment</td><td>去 Admin UI 或读取实际 <code>model_list</code> 验证；历史报告中的启用列表不代表当前环境</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="sources">
+    <div class="section-head"><div><h2>证据与维护入口</h2><p>价格会变化，新增或改价前应重新核对官方来源。</p></div></div>
+    <div class="layout-compare">
+      <div class="card source-list">
+        <h3>仓库内证据</h3>
+        <span><code>model_prices_and_context_window.json</code></span>
+        <span><code>litellm/model_prices_and_context_window_backup.json</code></span>
+        <span><code>litellm/llms/volcengine/</code></span>
+        <span><code>tests/test_litellm/llms/volcengine/</code></span>
+        <span><code>litellm/llms/volcengine/multimodal_generation_docs/volcengine_billing_e2e_report_2026-07-22.md</code></span>
+      </div>
+      <div class="card source-list">
+        <h3>官方来源</h3>
+        <a href="https://www.volcengine.com/docs/82379/1544106">方舟模型价格</a>
+        <a href="https://www.volcengine.com/docs/82379/1330310">方舟模型与对话能力文档</a>
+        <a href="https://www.volcengine.com/docs/82379/1541523">图片生成 API</a>
+        <a href="https://www.volcengine.com/docs/82379/1520757">创建视频生成任务</a>
+        <a href="https://www.volcengine.com/docs/82379/1521309">查询视频生成任务</a>
+        <a href="https://www.volcengine.com/docs/6561/1359370">火山语音产品价格</a>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script type="module">
+const SKETCH = { seed: 7, roughness: 1.2, bowing: 1.1 };
+const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
+function loadScript(srcs, timeout = 6000) {
+  return new Promise(resolve => {
+    const timer = setTimeout(() => resolve(false), timeout);
+    let i = 0;
+    const next = () => {
+      if (i >= srcs.length) { clearTimeout(timer); resolve(false); return; }
+      const s = document.createElement('script');
+      s.src = srcs[i++];
+      s.onload = () => { clearTimeout(timer); resolve(true); };
+      s.onerror = () => { s.remove(); next(); };
+      document.head.appendChild(s);
+    };
+    next();
+  });
+}
+const hasRough = await loadScript([
+  'https://cdn.jsdelivr.net/npm/roughjs@4.6.6/bundled/rough.min.js',
+  'https://unpkg.com/roughjs@4.6.6/bundled/rough.js'
+]);
+const NS = 'http://www.w3.org/2000/svg';
+const svgEl = (tag, attrs = {}) => {
+  const el = document.createElementNS(NS, tag);
+  Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v));
+  return el;
+};
+let rcHolder = null;
+function hashId(s) { let h = 9; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) % 1000; return h; }
+function sketchRect(x, y, w, h, seed) {
+  if (!hasRough) return svgEl('rect', { x, y, width: w, height: h, rx: 8 });
+  return rcHolder.rectangle(x, y, w, h, { roughness: SKETCH.roughness, bowing: SKETCH.bowing, seed, strokeWidth: 1.6 });
+}
+function sketchPath(d, seed) {
+  if (!hasRough) return svgEl('path', { d, class: 'shaft' });
+  const g = rcHolder.path(d, { roughness: 1, bowing: 0.8, seed, strokeWidth: 1.6 });
+  g.classList.add('shaft');
+  return g;
+}
+function textEl(x, y, value, cls) {
+  const t = svgEl('text', { x, y, class: cls });
+  t.textContent = value;
+  return t;
+}
+const nodes = [
+  { id: 'source', x: 18, y: 78, w: 165, h: 64, label: '官方模型与价格', sub: '确认 ID / 档位 / 单位', color: 'var(--purple)' },
+  { id: 'registry', x: 224, y: 78, w: 165, h: 64, label: '价格与能力登记', sub: '全局表或部署覆盖', color: 'var(--teal)' },
+  { id: 'deployment', x: 430, y: 78, w: 165, h: 64, label: '创建 Deployment', sub: 'model_list / Admin UI', color: 'var(--amber)' },
+  { id: 'endpoint', x: 636, y: 78, w: 165, h: 64, label: 'LiteLLM 统一入口', sub: 'chat / image / video / audio', color: 'var(--blue)' },
+  { id: 'spend', x: 842, y: 78, w: 165, h: 64, label: 'Usage 与 Spend', sub: '公式选档并落库', color: 'var(--red)' }
+];
+const edges = [
+  { id: 'map', from: 'source', to: 'registry', label: '映射字段' },
+  { id: 'route', from: 'registry', to: 'deployment', label: '默认价/覆盖价' },
+  { id: 'call', from: 'deployment', to: 'endpoint', label: '暴露别名' },
+  { id: 'bill', from: 'endpoint', to: 'spend', label: '响应 usage' }
+];
+const steps = [
+  { label: '① 查官方', title: '确认模型与计费条件', desc: '先确定模型 ID、API 产品线、所有价格档与计费单位。不要从旧价格表复制猜测。', nodes: ['source'], edges: [], kv: [['输出', '模型 ID + 官方 URL'], ['语音注意', 'Speech 与 Ark 是不同 Base']] },
+  { label: '② 登价格', title: '把官方口径映射为 LiteLLM 字段', desc: '私有接入可在 model_info 覆盖；项目默认能力则登记两份价格表。分档模型需要记录完整阈值。', nodes: ['source', 'registry'], edges: ['map'], kv: [['全局表', '根目录 + litellm/ 备份'], ['私有覆盖', 'deployment.model_info']] },
+  { label: '③ 建路由', title: '创建可调用的 Deployment', desc: '设置客户端可见别名、volcengine/<model-id>、API Key 和 mode。价格登记本身不会自动创建路由。', nodes: ['registry', 'deployment'], edges: ['route'], kv: [['入口', 'config.yaml 或 Admin UI'], ['密钥', '环境变量引用']] },
+  { label: '④ 发请求', title: '调用对应的 OpenAI 兼容入口', desc: '不同模态走不同 API。Provider 负责将请求转换为 Ark 或 Speech 协议。', nodes: ['deployment', 'endpoint'], edges: ['call'], kv: [['Ark', 'Chat / Image / Video'], ['Speech', 'TTS / STT']] },
+  { label: '⑤ 对账', title: '根据 Usage 计算并记录 Spend', desc: '用真实火山响应验证 token、图片数、视频输入标记、分辨率、字符数或音频时长，再与日志 spend 对账。', nodes: ['endpoint', 'spend'], edges: ['bill'], kv: [['必须验证', '阈值边界 + 非零成本'], ['完成标准', '官方账单 = LiteLLM 成本']] }
+];
+function nodeBox(node) {
+  const g = svgEl('g', { class: 'node', 'data-id': node.id });
+  g.style.setProperty('--c', node.color);
+  if (hasRough) {
+    const hf = svgEl('g', { class: 'hfill' });
+    hf.appendChild(rcHolder.rectangle(node.x, node.y, node.w, node.h, { seed: hashId(node.id), stroke: 'none', fill: '#000', fillStyle: 'hachure', fillWeight: 0.5, hachureGap: 8, roughness: 1 }));
+    g.appendChild(hf);
+  }
+  const shape = svgEl('g', { class: 'shape' });
+  shape.appendChild(sketchRect(node.x, node.y, node.w, node.h, hashId(node.id)));
+  g.appendChild(shape);
+  g.appendChild(textEl(node.x + node.w / 2, node.y + 23, node.label, 'node-label'));
+  g.appendChild(textEl(node.x + node.w / 2, node.y + 45, node.sub, 'node-sub'));
+  return g;
+}
+function edgeLine(edge) {
+  const from = nodes.find(n => n.id === edge.from);
+  const to = nodes.find(n => n.id === edge.to);
+  const x1 = from.x + from.w + 4;
+  const y1 = from.y + from.h / 2;
+  const x2 = to.x - 4;
+  const y2 = to.y + to.h / 2;
+  const d = `M ${x1} ${y1} L ${x2} ${y2}`;
+  const g = svgEl('g', { class: 'edge', 'data-id': edge.id });
+  g.dataset.d = d;
+  const paths = svgEl('g');
+  paths.appendChild(sketchPath(d, hashId(edge.id)));
+  paths.appendChild(sketchPath(`M ${x2 - 10} ${y2 - 5} L ${x2} ${y2}`, hashId(edge.id) + 7));
+  paths.appendChild(sketchPath(`M ${x2 - 10} ${y2 + 5} L ${x2} ${y2}`, hashId(edge.id) + 9));
+  g.appendChild(paths);
+  const label = textEl((x1 + x2) / 2, y1 - 12, edge.label, 'edge-label');
+  label.dataset.id = edge.id;
+  g.appendChild(label);
+  return g;
+}
+function flowDots(d, color = 'var(--blue)') {
+  const g = svgEl('g', { class: 'flow' });
+  for (let i = 0; i < 2 && !REDUCED; i++) {
+    const c = svgEl('circle', { r: 3.5, fill: color, class: 'flow-dot' });
+    c.style.offsetPath = `path('${d}')`;
+    c.style.animationDuration = '2.2s';
+    c.style.animationDelay = `${-1.1 * i}s`;
+    g.appendChild(c);
+  }
+  return g;
+}
+function renderDiagram() {
+  const svg = svgEl('svg', { viewBox: '0 0 1025 220', role: 'img', 'aria-label': '火山模型从官方价格到 LiteLLM 计费落库的五步流程' });
+  if (hasRough) rcHolder = rough.svg(svg);
+  edges.forEach(e => svg.appendChild(edgeLine(e)));
+  nodes.forEach(n => svg.appendChild(nodeBox(n)));
+  document.getElementById('diagram').appendChild(svg);
+  return svg;
+}
+function syncFlows(step) {
+  const svg = document.querySelector('#diagram svg');
+  svg.querySelectorAll('.flow').forEach(f => f.remove());
+  step.edges.forEach(id => {
+    const edge = svg.querySelector(`.edge[data-id="${id}"]`);
+    if (edge?.dataset.d) svg.appendChild(flowDots(edge.dataset.d));
+  });
+}
+function renderPanel(step) {
+  const kv = step.kv.map(([k, v]) => `<div class="kv"><span class="k">${k}</span><span class="v">${v}</span></div>`).join('');
+  document.getElementById('step-panel').innerHTML = `<div class="panel-swap"><h3>${step.title}</h3><p>${step.desc}</p><div style="margin-top:12px;padding-top:10px;border-top:1.4px dashed var(--line)">${kv}</div></div>`;
+}
+let currentStep = 0;
+function goStep(i) {
+  currentStep = i;
+  const step = steps[i];
+  document.querySelectorAll('.step-btn').forEach((b, index) => b.classList.toggle('is-current', index === i));
+  document.querySelectorAll('.node').forEach(el => {
+    const active = step.nodes.includes(el.dataset.id);
+    el.classList.toggle('is-active', active);
+    el.classList.toggle('is-dimmed', !active);
+  });
+  document.querySelectorAll('.edge').forEach(el => {
+    const active = step.edges.includes(el.dataset.id);
+    el.classList.toggle('is-active', active);
+    el.classList.toggle('is-dimmed', !active);
+    el.querySelector('.edge-label')?.classList.toggle('is-active', active);
+  });
+  renderPanel(step);
+  syncFlows(step);
+}
+document.getElementById('stepper').innerHTML = steps.map((s, i) => `<button class="step-btn" data-step="${i}">${s.label}</button>`).join('');
+document.getElementById('stepper').addEventListener('click', e => {
+  const button = e.target.closest('[data-step]');
+  if (button) goStep(Number(button.dataset.step));
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight') goStep(Math.min(currentStep + 1, steps.length - 1));
+  if (e.key === 'ArrowLeft') goStep(Math.max(currentStep - 1, 0));
+});
+
+const models = [
+  ['chat','文本对话','volcengine/doubao-seed-2-0-pro-260215','0-32K：入3.2/出16/缓存0.64；32K-128K：4.8/24/0.96；128K+：9.6/48/1.92（每百万 token）','ok','/v1/chat/completions · /v1/responses'],
+  ['chat','文本对话','volcengine/doubao-seed-2-0-lite-260215','0-32K：入0.6/出3.6/缓存0.12；32K-128K：0.9/5.4/0.18；128K+：1.8/10.8/0.36（每百万 token）','ok','/v1/chat/completions · /v1/responses'],
+  ['chat','文本对话','volcengine/doubao-seed-2-0-mini-260215','0-32K：入0.2/出2/缓存0.04；32K-128K：0.4/4/0.08；128K+：0.8/8/0.16（每百万 token）','ok','/v1/chat/completions · /v1/responses'],
+  ['chat','文本对话','volcengine/doubao-seed-2-0-code-preview-260215','与 Pro 相同的三档 token 价格','ok','/v1/chat/completions · /v1/responses'],
+  ['chat','文本对话','deepseek-v3-2-251201','输入/输出均为 0，占位未计价','warn','/v1/chat/completions'],
+  ['chat','文本对话','glm-4-7-251222','输入/输出均为 0，占位未计价','warn','/v1/chat/completions'],
+  ['chat','文本对话','kimi-k2-thinking-251104','输入/输出均为 0，占位未计价','warn','/v1/chat/completions'],
+  ['image','图片','volcengine/doubao-seedream-5-0-260128','输入图 0；输出图 0.22/张','ok','/v1/images/generations · /v1/images/edits'],
+  ['image','图片','volcengine/doubao-seedream-5-0-pro-260628','输入图 0.02/张；普通输出 0.30/张；大图 0.60/张','ok','/v1/images/generations · /v1/images/edits'],
+  ['image','图片','volcengine/doubao-seedream-4-0-250828','输出图 0.20/张','ok','/v1/images/generations · /v1/images/edits'],
+  ['image','图片','volcengine/doubao-seedream-4-5-251128','输出图 0.25/张','ok','/v1/images/generations · /v1/images/edits'],
+  ['video','视频','volcengine/doubao-seedance-2-0-260128','无视频输入 46/百万 token，1080p 51，4K 26；有视频输入 28，1080p 31，4K 16','ok','/v1/videos'],
+  ['video','视频','volcengine/doubao-seedance-2-0-fast-260128','无视频输入 37/百万 token；有视频输入 22/百万 token','ok','/v1/videos'],
+  ['video','视频','volcengine/doubao-seedance-2-0-mini-260615','无视频输入 23/百万 token；有视频输入 14/百万 token','ok','/v1/videos'],
+  ['tts','TTS','volcengine/seed-tts-2.0','0.0003/字符，即 3/万字符','ok','/v1/audio/speech'],
+  ['stt','STT','volcengine/volc.bigasr.auc_turbo','0.00125/秒，即 4.5/小时','ok','/v1/audio/transcriptions'],
+  ['embedding','Embedding','volcengine/doubao-embedding-vision-250615','文本 0.70/百万 token；图像/视频帧 1.80/百万 token','ok','/v1/embeddings'],
+  ['embedding','Embedding','volcengine/doubao-embedding-vision-251215','文本 0.70/百万 token；图像/视频帧 1.80/百万 token','ok','/v1/embeddings'],
+  ['embedding','Embedding','doubao-embedding','价格为 0，占位未计价','warn','/v1/embeddings'],
+  ['embedding','Embedding','doubao-embedding-large','价格为 0，占位未计价','warn','/v1/embeddings'],
+  ['embedding','Embedding','doubao-embedding-large-text-240915','价格为 0，占位未计价','warn','/v1/embeddings'],
+  ['embedding','Embedding','doubao-embedding-large-text-250515','价格为 0，占位未计价','warn','/v1/embeddings'],
+  ['embedding','Embedding','doubao-embedding-text-240715','价格为 0，占位未计价','warn','/v1/embeddings']
+];
+const filterLabels = [['all','全部 23'],['chat','文本对话 7'],['image','图片 4'],['video','视频 3'],['tts','TTS 1'],['stt','STT 1'],['embedding','Embedding 7']];
+function renderModels(filter = 'all') {
+  const visible = filter === 'all' ? models : models.filter(m => m[0] === filter);
+  document.getElementById('model-body').innerHTML = visible.map(m => `<tr><td>${m[1]}</td><td class="model-name">${m[2]}</td><td>${m[3]}</td><td><span class="badge ${m[4]}">${m[4] === 'ok' ? '已配置' : '零价占位'}</span></td><td>${m[5]}</td></tr>`).join('');
+}
+document.getElementById('model-filters').innerHTML = filterLabels.map(([id, label], i) => `<button class="filter-btn ${i === 0 ? 'is-current' : ''}" data-filter="${id}">${label}</button>`).join('');
+document.getElementById('model-filters').addEventListener('click', e => {
+  const button = e.target.closest('[data-filter]');
+  if (!button) return;
+  document.querySelectorAll('#model-filters .filter-btn').forEach(b => b.classList.toggle('is-current', b === button));
+  renderModels(button.dataset.filter);
+});
+renderModels();
+
+const generatorDefaults = {
+  chat: {
+    modelId: 'doubao-seed-2-0-pro-260215',
+    source: 'https://www.volcengine.com/docs/82379/1330310',
+    notes: 'CN list prices recorded 1:1 as USD. Ark bills a request at one input-length tier.',
+    values: { maxInput: 262144, maxOutput: 131072, input: 3.2, output: 16, cache: 0.64 },
+    tiers: [[32768, 4.8, 24, 0.96], [131072, 9.6, 48, 1.92]],
+    capabilities: { functionCalling: true, toolChoice: false, vision: true, reasoning: true, promptCaching: false, assistantPrefill: false }
+  },
+  image: {
+    modelId: 'doubao-seedream-5-0-pro-260628',
+    source: 'https://console.volcengine.com/ark/region:cn-beijing/model?view=DEFAULT_VIEW&groupType=ModelGroups',
+    notes: 'CN list prices recorded 1:1 as USD.',
+    values: { input: 0.02, output: 0.30 },
+    tiers: [[16384, 0.60]]
+  },
+  video: {
+    modelId: 'doubao-seedance-2-0-260128',
+    source: 'https://www.volcengine.com/docs/82379/1544106',
+    notes: 'CN list prices recorded 1:1 as USD.',
+    values: { noVideo: 46, video: 28, audioInput: true, audioOutput: true },
+    resolutions: [['1080p', 51, 31], ['4k', 26, 16]]
+  },
+  tts: {
+    modelId: 'seed-tts-2.0',
+    source: 'https://www.volcengine.com/docs/6561/1359370',
+    notes: 'CN list price is CNY 3 per 10,000 characters; recorded 1:1 as USD.',
+    values: { perTenThousand: 3 }
+  },
+  stt: {
+    modelId: 'volc.bigasr.auc_turbo',
+    source: 'https://www.volcengine.com/docs/6561/1359370',
+    notes: 'CN list price is CNY 4.5 per hour; recorded 1:1 as USD.',
+    values: { perHour: 4.5 }
+  }
+};
+const generatorModeMeta = {
+  chat: { mode: 'chat', endpoint: '/v1/chat/completions' },
+  image: { mode: 'image_generation', endpoint: '/v1/images/generations' },
+  video: { mode: 'video_generation', endpoint: '/v1/videos' },
+  tts: { mode: 'audio_speech', endpoint: '/v1/audio/speech' },
+  stt: { mode: 'audio_transcription', endpoint: '/v1/audio/transcriptions' }
+};
+let latestGenerated = null;
+function chatTierMarkup(values = ['', '', '', '']) {
+  return `<div class="repeat-row chat-tier-row">
+    <div><div class="repeat-label">输入阈值 N</div><input class="tier-threshold" type="number" min="1" step="1" value="${values[0]}"></div>
+    <div><div class="repeat-label">输入价 / 百万 token</div><input class="tier-input" type="number" min="0" step="any" value="${values[1]}"></div>
+    <div><div class="repeat-label">输出价 / 百万 token</div><input class="tier-output" type="number" min="0" step="any" value="${values[2]}"></div>
+    <div><div class="repeat-label">缓存价 / 百万 token</div><input class="tier-cache" type="number" min="0" step="any" value="${values[3]}"></div>
+    <button class="copy-btn remove-row" type="button" data-remove-row>删除</button>
+  </div>`;
+}
+function imageTierMarkup(values = ['', '']) {
+  return `<div class="repeat-row image-tier-row">
+    <div><div class="repeat-label">输出 token 阈值 N</div><input class="image-tier-threshold" type="number" min="1" step="1" value="${values[0]}"></div>
+    <div><div class="repeat-label">越过阈值后的元 / 张</div><input class="image-tier-rate" type="number" min="0" step="any" value="${values[1]}"></div>
+    <button class="copy-btn remove-row" type="button" data-remove-row>删除</button>
+  </div>`;
+}
+function videoResolutionMarkup(values = ['', '', '']) {
+  return `<div class="repeat-row video-row video-resolution-row">
+    <div><div class="repeat-label">分辨率后缀</div><input class="video-resolution" value="${values[0]}" placeholder="1080p"></div>
+    <div><div class="repeat-label">无视频输入 / 百万 token</div><input class="video-resolution-no" type="number" min="0" step="any" value="${values[1]}"></div>
+    <div><div class="repeat-label">有视频输入 / 百万 token</div><input class="video-resolution-yes" type="number" min="0" step="any" value="${values[2]}"></div>
+    <button class="copy-btn remove-row" type="button" data-remove-row>删除</button>
+  </div>`;
+}
+function renderGeneratorFields(mode) {
+  const sample = generatorDefaults[mode];
+  const box = document.getElementById('gen-dynamic-fields');
+  if (mode === 'chat') {
+    box.innerHTML = `<div class="sub-form"><div class="form-title">基础价格与上下文</div><p class="form-help">价格直接填官网的“元 / 百万 token”，生成器会自动除以 1,000,000。</p><div class="form-grid">
+      <div class="form-field"><label for="gen-max-input">最大输入 token</label><input id="gen-max-input" type="number" min="1" step="1" value="${sample.values.maxInput}"></div>
+      <div class="form-field"><label for="gen-max-output">最大输出 token</label><input id="gen-max-output" type="number" min="1" step="1" value="${sample.values.maxOutput}"></div>
+      <div class="form-field"><label for="gen-chat-input">基础输入价 / 百万 token <span class="required-star">*</span></label><input id="gen-chat-input" type="number" min="0" step="any" value="${sample.values.input}"></div>
+      <div class="form-field"><label for="gen-chat-output">基础输出价 / 百万 token <span class="required-star">*</span></label><input id="gen-chat-output" type="number" min="0" step="any" value="${sample.values.output}"></div>
+      <div class="form-field"><label for="gen-chat-cache">缓存命中价 / 百万 token</label><input id="gen-chat-cache" type="number" min="0" step="any" value="${sample.values.cache}"></div>
+    </div></div>
+    <div class="sub-form"><div class="form-title">按输入长度分档</div><p class="form-help">没有分档可以删除全部行；N 表示 prompt_tokens 严格大于该值后换档。</p><div class="repeat-list" id="gen-chat-tiers">${sample.tiers.map(chatTierMarkup).join('')}</div><button class="copy-btn add-row" type="button" id="gen-add-chat-tier">增加分档</button></div>
+    <div class="sub-form"><div class="form-title">模型能力</div><p class="form-help">这些字段不参与算钱，用于 UI 和路由识别模型能力。</p><div class="check-grid">
+      <label class="check-label"><input id="gen-cap-function" type="checkbox" ${sample.capabilities.functionCalling ? 'checked' : ''}>函数 / 工具调用</label>
+      <label class="check-label"><input id="gen-cap-tool-choice" type="checkbox" ${sample.capabilities.toolChoice ? 'checked' : ''}>tool_choice</label>
+      <label class="check-label"><input id="gen-cap-vision" type="checkbox" ${sample.capabilities.vision ? 'checked' : ''}>视觉输入</label>
+      <label class="check-label"><input id="gen-cap-reasoning" type="checkbox" ${sample.capabilities.reasoning ? 'checked' : ''}>推理 / thinking</label>
+      <label class="check-label"><input id="gen-cap-cache" type="checkbox" ${sample.capabilities.promptCaching ? 'checked' : ''}>提示词缓存</label>
+      <label class="check-label"><input id="gen-cap-prefill" type="checkbox" ${sample.capabilities.assistantPrefill ? 'checked' : ''}>assistant prefill</label>
+    </div></div>`;
+  } else if (mode === 'image') {
+    box.innerHTML = `<div class="sub-form"><div class="form-title">按图片张数计费</div><p class="form-help">图片价格按官网“元 / 张”原样写入，不做除法换算。</p><div class="form-grid">
+      <div class="form-field"><label for="gen-image-input">输入图元 / 张</label><input id="gen-image-input" type="number" min="0" step="any" value="${sample.values.input}"></div>
+      <div class="form-field"><label for="gen-image-output">输出图元 / 张 <span class="required-star">*</span></label><input id="gen-image-output" type="number" min="0" step="any" value="${sample.values.output}"></div>
+    </div></div>
+    <div class="sub-form"><div class="form-title">输出图片 token 分档</div><p class="form-help">普通图片没有大图档时可以删除全部行。</p><div class="repeat-list" id="gen-image-tiers">${sample.tiers.map(imageTierMarkup).join('')}</div><button class="copy-btn add-row" type="button" id="gen-add-image-tier">增加分档</button></div>`;
+  } else if (mode === 'video') {
+    box.innerHTML = `<div class="sub-form"><div class="form-title">视频 token 基础价格</div><p class="form-help">填官网“元 / 百万 token”，至少填写一个基础价。</p><div class="form-grid">
+      <div class="form-field"><label for="gen-video-no">无视频输入 / 百万 token</label><input id="gen-video-no" type="number" min="0" step="any" value="${sample.values.noVideo}"></div>
+      <div class="form-field"><label for="gen-video-yes">有视频输入 / 百万 token</label><input id="gen-video-yes" type="number" min="0" step="any" value="${sample.values.video}"></div>
+    </div></div>
+    <div class="sub-form"><div class="form-title">分辨率专属价格</div><p class="form-help">没有专属价格的分辨率会自动回落到基础价。</p><div class="repeat-list" id="gen-video-resolutions">${sample.resolutions.map(videoResolutionMarkup).join('')}</div><button class="copy-btn add-row" type="button" id="gen-add-video-resolution">增加分辨率</button></div>
+    <div class="sub-form"><div class="form-title">视频能力</div><div class="check-grid">
+      <label class="check-label"><input id="gen-video-audio-input" type="checkbox" ${sample.values.audioInput ? 'checked' : ''}>支持音频输入</label>
+      <label class="check-label"><input id="gen-video-audio-output" type="checkbox" ${sample.values.audioOutput ? 'checked' : ''}>支持音频输出</label>
+    </div></div>`;
+  } else if (mode === 'tts') {
+    box.innerHTML = `<div class="sub-form"><div class="form-title">TTS 按字符计费</div><p class="form-help">填官网“元 / 10,000 字符”，生成器会自动除以 10,000。</p><div class="form-field"><label for="gen-tts-rate">元 / 10,000 字符 <span class="required-star">*</span></label><input id="gen-tts-rate" type="number" min="0" step="any" value="${sample.values.perTenThousand}"></div></div>`;
+  } else {
+    box.innerHTML = `<div class="sub-form"><div class="form-title">STT 按音频时长计费</div><p class="form-help">填官网“元 / 小时”，生成器会自动除以 3,600。</p><div class="form-field"><label for="gen-stt-rate">元 / 小时 <span class="required-star">*</span></label><input id="gen-stt-rate" type="number" min="0" step="any" value="${sample.values.perHour}"></div></div>`;
+  }
+}
+function loadGeneratorExample(mode) {
+  const sample = generatorDefaults[mode];
+  document.getElementById('gen-model-id').value = sample.modelId;
+  document.getElementById('gen-source').value = sample.source;
+  document.getElementById('gen-notes').value = sample.notes;
+  renderGeneratorFields(mode);
+  generatePriceJson();
+}
+function numberFromInput(id, label, required, errors) {
+  const input = document.getElementById(id);
+  if (!input) return null;
+  const raw = input.value.trim();
+  if (raw === '') {
+    if (required) { errors.push(`${label}不能为空`); input.classList.add('is-invalid'); }
+    return null;
+  }
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < 0) {
+    errors.push(`${label}必须是大于等于 0 的数字`);
+    input.classList.add('is-invalid');
+    return null;
+  }
+  return value;
+}
+function integerFromInput(id, label, required, errors) {
+  const value = numberFromInput(id, label, required, errors);
+  if (value !== null && (!Number.isInteger(value) || value <= 0)) {
+    errors.push(`${label}必须是正整数`);
+    document.getElementById(id).classList.add('is-invalid');
+    return null;
+  }
+  return value;
+}
+function normalizedModelKey(value) {
+  const trimmed = value.trim();
+  return trimmed.startsWith('volcengine/') ? trimmed : `volcengine/${trimmed}`;
+}
+function perMillion(value) { return value * 0.000001; }
+function readableRate(value) { return JSON.stringify(value); }
+function fragmentFromEntry(key, entry) {
+  const full = JSON.stringify({ [key]: entry }, null, 2);
+  return full.split('\n').slice(1, -1).map(line => line.startsWith('  ') ? line.slice(2) : line).join('\n');
+}
+function generatePriceJson() {
+  document.querySelectorAll('#json-generator .is-invalid').forEach(el => el.classList.remove('is-invalid'));
+  const errors = [];
+  const conversions = [];
+  const mode = document.getElementById('gen-mode').value;
+  const meta = generatorModeMeta[mode];
+  const modelInput = document.getElementById('gen-model-id');
+  const sourceInput = document.getElementById('gen-source');
+  const modelId = modelInput.value.trim();
+  const source = sourceInput.value.trim();
+  if (!modelId) { errors.push('火山模型 ID 不能为空'); modelInput.classList.add('is-invalid'); }
+  if (!source) { errors.push('官方价格来源 URL 不能为空'); sourceInput.classList.add('is-invalid'); }
+  if (source && !sourceInput.validity.valid) { errors.push('官方价格来源必须是完整 URL'); sourceInput.classList.add('is-invalid'); }
+  const entry = { litellm_provider: 'volcengine', mode: meta.mode };
+  if (mode === 'chat') {
+    const maxInput = integerFromInput('gen-max-input', '最大输入 token', false, errors);
+    const maxOutput = integerFromInput('gen-max-output', '最大输出 token', false, errors);
+    const inputMillion = numberFromInput('gen-chat-input', '基础输入价', true, errors);
+    const outputMillion = numberFromInput('gen-chat-output', '基础输出价', true, errors);
+    const cacheMillion = numberFromInput('gen-chat-cache', '缓存命中价', false, errors);
+    if (maxInput !== null) entry.max_input_tokens = maxInput;
+    if (maxOutput !== null) { entry.max_output_tokens = maxOutput; entry.max_tokens = maxOutput; }
+    if (inputMillion !== null) { entry.input_cost_per_token = perMillion(inputMillion); conversions.push(`输入：${inputMillion} ÷ 1,000,000 = ${readableRate(entry.input_cost_per_token)} / token`); }
+    if (outputMillion !== null) { entry.output_cost_per_token = perMillion(outputMillion); conversions.push(`输出：${outputMillion} ÷ 1,000,000 = ${readableRate(entry.output_cost_per_token)} / token`); }
+    if (cacheMillion !== null) { entry.cache_read_input_token_cost = perMillion(cacheMillion); conversions.push(`缓存：${cacheMillion} ÷ 1,000,000 = ${readableRate(entry.cache_read_input_token_cost)} / token`); }
+    const tierRows = [...document.querySelectorAll('.chat-tier-row')];
+    const tiers = tierRows.map(row => {
+      const thresholdInput = row.querySelector('.tier-threshold');
+      const inputPrice = row.querySelector('.tier-input');
+      const outputPrice = row.querySelector('.tier-output');
+      const cachePrice = row.querySelector('.tier-cache');
+      const hasAny = [thresholdInput, inputPrice, outputPrice, cachePrice].some(input => input.value.trim() !== '');
+      if (!hasAny) return null;
+      const threshold = Number(thresholdInput.value);
+      const inputRaw = inputPrice.value.trim();
+      const outputRaw = outputPrice.value.trim();
+      const inputRate = Number(inputRaw);
+      const outputRate = Number(outputRaw);
+      const cacheRate = cachePrice.value.trim() === '' ? null : Number(cachePrice.value);
+      if (!Number.isInteger(threshold) || threshold <= 0) { errors.push('Chat 分档阈值必须是正整数'); thresholdInput.classList.add('is-invalid'); }
+      if (!inputRaw || !Number.isFinite(inputRate) || inputRate < 0) { errors.push(`阈值 ${threshold || '?'} 的输入价不能为空且必须大于等于 0`); inputPrice.classList.add('is-invalid'); }
+      if (!outputRaw || !Number.isFinite(outputRate) || outputRate < 0) { errors.push(`阈值 ${threshold || '?'} 的输出价不能为空且必须大于等于 0`); outputPrice.classList.add('is-invalid'); }
+      if (cacheRate !== null && (!Number.isFinite(cacheRate) || cacheRate < 0)) { errors.push(`阈值 ${threshold || '?'} 的缓存价无效`); cachePrice.classList.add('is-invalid'); }
+      return { threshold, inputRate, outputRate, cacheRate };
+    }).filter(Boolean).sort((a, b) => a.threshold - b.threshold);
+    if (tiers.length && maxInput === null) errors.push('有 Chat 分档时必须填写最大输入 token');
+    if (new Set(tiers.map(tier => tier.threshold)).size !== tiers.length) errors.push('Chat 分档阈值不能重复');
+    if (maxInput !== null && tiers.some(tier => tier.threshold >= maxInput)) errors.push('Chat 分档阈值必须小于最大输入 token');
+    if (tiers.length && inputMillion !== null && outputMillion !== null) {
+      entry.tiered_pricing = [{ range: [0, tiers[0].threshold], input_cost_per_token: perMillion(inputMillion), output_cost_per_token: perMillion(outputMillion) }];
+      tiers.forEach((tier, index) => {
+        const suffix = `_above_${tier.threshold}_tokens`;
+        entry[`input_cost_per_token${suffix}`] = perMillion(tier.inputRate);
+        entry[`output_cost_per_token${suffix}`] = perMillion(tier.outputRate);
+        if (tier.cacheRate !== null) entry[`cache_read_input_token_cost${suffix}`] = perMillion(tier.cacheRate);
+        const end = index + 1 < tiers.length ? tiers[index + 1].threshold : maxInput;
+        entry.tiered_pricing.push({ range: [tier.threshold, end], input_cost_per_token: perMillion(tier.inputRate), output_cost_per_token: perMillion(tier.outputRate) });
+      });
+      conversions.push(`已生成 ${tiers.length + 1} 个 Chat 预算档和 ${tiers.length} 组实际计费 above 字段`);
+    }
+    entry.supports_function_calling = document.getElementById('gen-cap-function').checked;
+    entry.supports_tool_choice = document.getElementById('gen-cap-tool-choice').checked;
+    entry.supports_vision = document.getElementById('gen-cap-vision').checked;
+    entry.supports_reasoning = document.getElementById('gen-cap-reasoning').checked;
+    entry.supports_prompt_caching = document.getElementById('gen-cap-cache').checked;
+    entry.supports_assistant_prefill = document.getElementById('gen-cap-prefill').checked;
+  } else if (mode === 'image') {
+    const inputRate = numberFromInput('gen-image-input', '输入图片价格', false, errors);
+    const outputRate = numberFromInput('gen-image-output', '输出图片价格', true, errors);
+    if (inputRate !== null) entry.input_cost_per_image = inputRate;
+    if (outputRate !== null) entry.output_cost_per_image = outputRate;
+    document.querySelectorAll('.image-tier-row').forEach(row => {
+      const thresholdInput = row.querySelector('.image-tier-threshold');
+      const rateInput = row.querySelector('.image-tier-rate');
+      const hasAny = thresholdInput.value.trim() !== '' || rateInput.value.trim() !== '';
+      if (!hasAny) return;
+      const threshold = Number(thresholdInput.value);
+      const rateRaw = rateInput.value.trim();
+      const rate = Number(rateRaw);
+      if (!Number.isInteger(threshold) || threshold <= 0) { errors.push('图片分档阈值必须是正整数'); thresholdInput.classList.add('is-invalid'); }
+      if (!rateRaw || !Number.isFinite(rate) || rate < 0) { errors.push(`图片阈值 ${threshold || '?'} 的价格不能为空且必须大于等于 0`); rateInput.classList.add('is-invalid'); }
+      const key = `output_cost_per_image_above_${threshold}_tokens`;
+      if (Object.hasOwn(entry, key)) errors.push(`图片分档阈值 ${threshold} 不能重复`);
+      if (Number.isInteger(threshold) && threshold > 0 && rateRaw && Number.isFinite(rate) && rate >= 0) entry[key] = rate;
+    });
+    conversions.push('图片按元 / 张原样写入，无需单位换算');
+  } else if (mode === 'video') {
+    const noVideo = numberFromInput('gen-video-no', '无视频输入价格', false, errors);
+    const video = numberFromInput('gen-video-yes', '有视频输入价格', false, errors);
+    if (noVideo === null && video === null) {
+      errors.push('视频至少填写一个基础价格');
+      document.getElementById('gen-video-no').classList.add('is-invalid');
+      document.getElementById('gen-video-yes').classList.add('is-invalid');
+    }
+    const pricing = {};
+    if (noVideo !== null) pricing.no_video_input = perMillion(noVideo);
+    if (video !== null) pricing.video_input = perMillion(video);
+    document.querySelectorAll('.video-resolution-row').forEach(row => {
+      const resolutionInput = row.querySelector('.video-resolution');
+      const noInput = row.querySelector('.video-resolution-no');
+      const yesInput = row.querySelector('.video-resolution-yes');
+      const hasAny = [resolutionInput, noInput, yesInput].some(input => input.value.trim() !== '');
+      if (!hasAny) return;
+      const suffix = resolutionInput.value.toLowerCase().replace(/[^a-z0-9_]/g, '');
+      if (!suffix) { errors.push('视频分辨率后缀不能为空'); resolutionInput.classList.add('is-invalid'); return; }
+      const noRate = noInput.value.trim() === '' ? null : Number(noInput.value);
+      const yesRate = yesInput.value.trim() === '' ? null : Number(yesInput.value);
+      if (noRate === null && yesRate === null) { errors.push(`${suffix} 至少填写一个价格`); noInput.classList.add('is-invalid'); yesInput.classList.add('is-invalid'); }
+      if (noRate !== null && (!Number.isFinite(noRate) || noRate < 0)) { errors.push(`${suffix} 无视频输入价格无效`); noInput.classList.add('is-invalid'); }
+      if (yesRate !== null && (!Number.isFinite(yesRate) || yesRate < 0)) { errors.push(`${suffix} 有视频输入价格无效`); yesInput.classList.add('is-invalid'); }
+      const noKey = `no_video_input_${suffix}`;
+      const yesKey = `video_input_${suffix}`;
+      if (Object.hasOwn(pricing, noKey) || Object.hasOwn(pricing, yesKey)) errors.push(`视频分辨率 ${suffix} 不能重复`);
+      if (noRate !== null && Number.isFinite(noRate) && noRate >= 0) pricing[noKey] = perMillion(noRate);
+      if (yesRate !== null && Number.isFinite(yesRate) && yesRate >= 0) pricing[yesKey] = perMillion(yesRate);
+    });
+    entry.video_token_pricing = pricing;
+    entry.supported_modalities = ['text', 'image', 'video', 'audio'];
+    entry.supported_output_modalities = ['video'];
+    entry.supports_audio_input = document.getElementById('gen-video-audio-input').checked;
+    entry.supports_audio_output = document.getElementById('gen-video-audio-output').checked;
+    conversions.push('所有视频价格已从元 / 百万 token 自动除以 1,000,000');
+  } else if (mode === 'tts') {
+    const rate = numberFromInput('gen-tts-rate', 'TTS 价格', true, errors);
+    if (rate !== null) { entry.input_cost_per_character = rate / 10000; conversions.push(`${rate} ÷ 10,000 = ${readableRate(entry.input_cost_per_character)} / 字符`); }
+  } else {
+    const rate = numberFromInput('gen-stt-rate', 'STT 价格', true, errors);
+    if (rate !== null) { entry.input_cost_per_second = rate / 3600; conversions.push(`${rate} ÷ 3,600 = ${readableRate(entry.input_cost_per_second)} / 秒`); }
+  }
+  entry.supported_endpoints = [meta.endpoint];
+  if (source) entry.source = source;
+  const notes = document.getElementById('gen-notes').value.trim();
+  entry.metadata = { notes: notes || 'CN list prices recorded 1:1 as USD.' };
+  const output = document.getElementById('gen-output');
+  const status = document.getElementById('gen-status');
+  const key = modelId ? normalizedModelKey(modelId) : 'volcengine/model-id';
+  const fragment = fragmentFromEntry(key, entry);
+  const full = JSON.stringify({ [key]: entry }, null, 2);
+  output.textContent = fragment;
+  document.getElementById('gen-conversions').innerHTML = conversions.map(item => `<div>• ${item}</div>`).join('');
+  if (errors.length) {
+    status.classList.add('has-error');
+    status.textContent = `还不能使用：${[...new Set(errors)].join('；')}`;
+    latestGenerated = null;
+  } else {
+    status.classList.remove('has-error');
+    status.textContent = 'JSON 有效。复制条目后粘贴到价格表最外层对象中，并与相邻条目用逗号分隔。';
+    latestGenerated = { fragment, full, filename: `${key.replace(/[^a-zA-Z0-9._-]/g, '_')}.json` };
+  }
+}
+document.getElementById('gen-mode').addEventListener('change', event => loadGeneratorExample(event.target.value));
+document.getElementById('json-generator').addEventListener('input', event => {
+  if (event.target.id !== 'gen-mode') generatePriceJson();
+});
+document.getElementById('json-generator').addEventListener('change', generatePriceJson);
+document.getElementById('json-generator').addEventListener('click', event => {
+  const remove = event.target.closest('[data-remove-row]');
+  if (remove) { remove.closest('.repeat-row').remove(); generatePriceJson(); return; }
+  if (event.target.id === 'gen-add-chat-tier') { document.getElementById('gen-chat-tiers').insertAdjacentHTML('beforeend', chatTierMarkup()); generatePriceJson(); }
+  if (event.target.id === 'gen-add-image-tier') { document.getElementById('gen-image-tiers').insertAdjacentHTML('beforeend', imageTierMarkup()); generatePriceJson(); }
+  if (event.target.id === 'gen-add-video-resolution') { document.getElementById('gen-video-resolutions').insertAdjacentHTML('beforeend', videoResolutionMarkup()); generatePriceJson(); }
+});
+document.getElementById('gen-reset').addEventListener('click', () => loadGeneratorExample(document.getElementById('gen-mode').value));
+document.getElementById('gen-copy').addEventListener('click', async () => {
+  if (!latestGenerated) return;
+  await navigator.clipboard.writeText(latestGenerated.fragment);
+  document.getElementById('gen-copy').textContent = '已复制';
+  setTimeout(() => { document.getElementById('gen-copy').textContent = '复制条目'; }, 1200);
+});
+document.getElementById('gen-download').addEventListener('click', () => {
+  if (!latestGenerated) return;
+  const url = URL.createObjectURL(new Blob([latestGenerated.full], { type: 'application/json' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = latestGenerated.filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+});
+loadGeneratorExample('chat');
+
+const configs = {
+  chat: {
+    label: '文本对话', title: 'Chat 分档价格 JSON 条目', code: `"volcengine/doubao-seed-2-0-pro-260215": {
+  "litellm_provider": "volcengine",
+  "mode": "chat",
+  "max_input_tokens": 262144,
+  "max_output_tokens": 131072,
+  "max_tokens": 131072,
+  "input_cost_per_token": 0.0000032,
+  "output_cost_per_token": 0.000016,
+  "cache_read_input_token_cost": 0.00000064,
+  "input_cost_per_token_above_32768_tokens": 0.0000048,
+  "output_cost_per_token_above_32768_tokens": 0.000024,
+  "cache_read_input_token_cost_above_32768_tokens": 0.00000096,
+  "input_cost_per_token_above_131072_tokens": 0.0000096,
+  "output_cost_per_token_above_131072_tokens": 0.000048,
+  "cache_read_input_token_cost_above_131072_tokens": 0.00000192,
+  "tiered_pricing": [
+    {"range": [0, 32768], "input_cost_per_token": 0.0000032, "output_cost_per_token": 0.000016},
+    {"range": [32768, 131072], "input_cost_per_token": 0.0000048, "output_cost_per_token": 0.000024},
+    {"range": [131072, 262144], "input_cost_per_token": 0.0000096, "output_cost_per_token": 0.000048}
+  ],
+  "supports_function_calling": true,
+  "supports_tool_choice": false,
+  "supports_vision": true,
+  "supports_reasoning": true,
+  "source": "https://www.volcengine.com/docs/82379/1330310",
+  "metadata": {"notes": "CN list prices recorded 1:1 as USD"}
+}` },
+  image: {
+    label: '图片', title: 'Seedream Pro 图片价格 JSON 条目', code: `"volcengine/doubao-seedream-5-0-pro-260628": {
+  "litellm_provider": "volcengine",
+  "mode": "image_generation",
+  "input_cost_per_image": 0.02,
+  "output_cost_per_image": 0.30,
+  "output_cost_per_image_above_16384_tokens": 0.60,
+  "supported_endpoints": ["/v1/images/generations"],
+  "source": "https://console.volcengine.com/ark/region:cn-beijing/model?view=DEFAULT_VIEW&groupType=ModelGroups",
+  "metadata": {
+    "notes": "CN list prices are CNY 0.02 per input image, CNY 0.30 per standard output image, and CNY 0.60 per large output image; recorded 1:1 as USD"
+  }
+}` },
+  video: {
+    label: '视频', title: 'Seedance 视频价格 JSON 条目', code: `"volcengine/doubao-seedance-2-0-260128": {
+  "litellm_provider": "volcengine",
+  "mode": "video_generation",
+  "video_token_pricing": {
+    "no_video_input": 0.000046,
+    "no_video_input_1080p": 0.000051,
+    "no_video_input_4k": 0.000026,
+    "video_input": 0.000028,
+    "video_input_1080p": 0.000031,
+    "video_input_4k": 0.000016
+  },
+  "supported_endpoints": ["/v1/videos"],
+  "supported_modalities": ["text", "image", "video", "audio"],
+  "supported_output_modalities": ["video"],
+  "supports_audio_input": true,
+  "supports_audio_output": true,
+  "source": "https://www.volcengine.com/docs/82379/1544106",
+  "metadata": {"notes": "CN list prices recorded 1:1 as USD"}
+}` },
+  tts: {
+    label: 'TTS', title: 'Seed TTS 2.0 价格 JSON 条目', code: `"volcengine/seed-tts-2.0": {
+  "litellm_provider": "volcengine",
+  "mode": "audio_speech",
+  "input_cost_per_character": 0.0003,
+  "supported_endpoints": ["/v1/audio/speech"],
+  "source": "https://www.volcengine.com/docs/6561/1359370",
+  "metadata": {
+    "notes": "CN list price is CNY 3 per 10,000 characters; recorded 1:1 as USD"
+  }
+}` },
+  stt: {
+    label: 'STT', title: '大模型录音识别价格 JSON 条目', code: `"volcengine/volc.bigasr.auc_turbo": {
+  "litellm_provider": "volcengine",
+  "mode": "audio_transcription",
+  "input_cost_per_second": 0.00125,
+  "supported_endpoints": ["/v1/audio/transcriptions"],
+  "source": "https://www.volcengine.com/docs/6561/1359370",
+  "metadata": {
+    "notes": "CN list price is CNY 4.5 per hour; recorded 1:1 as USD"
+  }
+}` },
+  registry: {
+    label: '通用骨架', title: '价格表通用 JSON 条目骨架', code: `"volcengine/<火山模型 ID>": {
+  "litellm_provider": "volcengine",
+  "mode": "<chat | image_generation | video_generation | audio_speech | audio_transcription | embedding>",
+  "<当前 mode 的基础计费字段>": 0.0,
+  "supported_endpoints": ["<对应 endpoint>"],
+  "source": "<火山官方定价或模型文档 URL>",
+  "metadata": {
+    "notes": "CN list price ...; recorded 1:1 as USD"
+  }
+}` }
+};
+const basePriceFields = [
+  ['条目 Key', 'volcengine/<火山模型 ID>', 'must', '必填', '模型的唯一索引。界面中 deployment 的底层 model 必须与它完全一致，才能自动命中价格。', '字符串；统一带 volcengine/ 前缀'],
+  ['通用', 'litellm_provider', 'must', '必填', '告诉 LiteLLM 这条模型属于哪个 Provider，用于路由、能力查询和成本分发。', '固定填写 "volcengine"'],
+      ['通用', 'mode', 'must', '必填', '告诉 LiteLLM 这是哪类模型，决定调用入口、预算预留和计费分支。', 'chat / image_generation / video_generation / audio_speech / audio_transcription / embedding'],
+  ['元数据', 'supported_endpoints', 'recommended', '建议填写', '声明模型支持的 LiteLLM/OpenAI 兼容接口，主要用于 UI 和文档展示。', '字符串数组，例如 ["/v1/videos"]'],
+  ['元数据', 'source', 'recommended', '建议填写', '保存价格来源，方便以后审计和改价。', '火山官方定价或模型文档 URL'],
+  ['元数据', 'metadata.notes', 'recommended', '建议填写', '解释原始价格、币种和换算口径，避免后来的人误以为做过汇率转换。', '文字；注明 CNY 数字 1:1 记录为 USD']
+];
+const fieldGuides = {
+  chat: {
+    title: 'Chat 价格表字段说明',
+    intro: '基础 token 价格必须存在。只有官方按输入长度分档时才增加 above 字段；tiered_pricing 负责预算预留，above 字段负责请求结束后的真实 spend。',
+    minimum: ['条目 Key', 'litellm_provider', 'mode', 'input_cost_per_token', 'output_cost_per_token'],
+    minimumNote: '无分档、无缓存时，填这 5 项就能计算基础输入/输出成本。',
+    fields: [
+      ...basePriceFields,
+      ['上下文', 'max_input_tokens', 'recommended', '建议填写', '单次请求最多允许多少输入 token，供 UI、校验和路由参考。', '整数 token 数'],
+      ['上下文', 'max_output_tokens', 'recommended', '建议填写', '模型最多生成多少输出 token。', '整数 token 数'],
+      ['上下文', 'max_tokens', 'optional', '可选', '兼容旧逻辑使用的总生成上限，通常与 max_output_tokens 相同。', '整数 token 数'],
+      ['计费', 'input_cost_per_token', 'must', '必填', '基础档每个输入 token 的单价。', '每 token 单价；元/百万 token 要除以 1,000,000'],
+      ['计费', 'output_cost_per_token', 'must', '必填', '基础档每个输出 token 的单价。', '每 token 单价'],
+      ['计费', 'cache_read_input_token_cost', 'conditional', '条件必填', '缓存命中的输入 token 单价；官方有缓存命中价格时填写。', '每 token 单价'],
+      ['分档', 'input_cost_per_token_above_{N}_tokens', 'conditional', '条件必填', '当本次 prompt_tokens 严格大于 N 时，整个请求的输入 token 改用这个价格。', '每 token 单价；N 写完整数字，如 32768'],
+      ['分档', 'output_cost_per_token_above_{N}_tokens', 'conditional', '条件必填', '当输入长度越过同一 N 时，整个请求的输出 token 改用这个价格。', '每 token 单价；与 input 的 N 配对'],
+      ['分档', 'cache_read_input_token_cost_above_{N}_tokens', 'conditional', '条件必填', '输入长度越过 N 时的缓存命中单价。', '每 token 单价；有缓存分档才填'],
+      ['预算', 'tiered_pricing', 'conditional', '条件必填', '请求发送前预估和预留预算使用；它本身不负责最终实际成本。', '数组；分档 Chat 必须与 above 字段保持一致'],
+      ['预算', 'tiered_pricing[].range', 'conditional', '条件必填', '这一预算价格档覆盖的输入 token 区间。', '[起点, 终点]，例如 [0, 32768]'],
+      ['能力', 'supports_function_calling', 'optional', '可选', '模型是否能调用 tools/functions。', 'true / false'],
+      ['能力', 'supports_tool_choice', 'optional', '可选', '模型是否支持指定、强制或禁止某个工具。', 'true / false'],
+      ['能力', 'supports_vision', 'optional', '可选', 'Chat 是否允许消息中带图片。', 'true / false'],
+      ['能力', 'supports_reasoning', 'optional', '可选', '模型是否支持 thinking/reasoning 能力。', 'true / false'],
+      ['能力', 'supports_prompt_caching', 'optional', '可选', '是否支持提示词缓存能力。', 'true / false'],
+      ['能力', 'supports_assistant_prefill', 'optional', '可选', '是否允许预填 assistant 消息内容。', 'true / false']
+    ],
+    requestTitle: '调用 Chat 时可传的字段（不要写进价格 JSON）',
+    requestIntro: '下面是当前 VolcEngine Chat 适配器接受的主要请求字段。价格表只描述模型和计费，不保存每次调用参数。',
+    requestFields: [
+      ['model', '必填；填界面创建的模型别名'], ['messages', '必填；对话消息数组'],
+      ['max_tokens / max_completion_tokens', '限制本次最大输出 token'], ['temperature / top_p', '控制随机性，通常二选一调整'],
+      ['stream / stream_options', '是否流式返回及流式选项'], ['stop', '遇到指定文本停止生成'],
+      ['tools / tool_choice', '工具定义以及选择策略'], ['functions / function_call', '旧版函数调用字段'],
+      ['thinking', '推理开关；type 为 enabled、disabled 或 auto'], ['seed', '尽量复现相同采样结果'],
+      ['frequency_penalty / presence_penalty', '重复与话题惩罚'], ['logprobs / top_logprobs', '返回 token 概率信息'],
+      ['n', '一次生成几个候选结果'], ['extra_headers / max_retries', '额外请求头与重试次数']
+    ],
+    requestNote: '请求字段是否真正生效还受具体火山模型能力限制；价格表中的 supports_* 用来描述这些能力。'
+  },
+  image: {
+    title: '图片价格表字段说明',
+    intro: '火山图片使用专用计算器：输入图按张、输出图按张；大图或其他规格可依据响应 output_tokens 进入更高价格档。',
+    minimum: ['条目 Key', 'litellm_provider', 'mode', 'output_cost_per_image'],
+    minimumNote: '纯文生图至少填这 4 项；支持图生图时再明确填写 input_cost_per_image，即使输入图免费也建议写 0.0。',
+    fields: [
+      ...basePriceFields,
+      ['计费', 'input_cost_per_image', 'conditional', '条件必填', '每张输入参考图的单价；图生图模型使用。免费也建议显式写 0.0。', '每张输入图单价'],
+      ['计费', 'output_cost_per_image', 'must', '必填', '每张成功输出图片的基础单价。', '每张输出图单价'],
+      ['分档', 'output_cost_per_image_above_{N}_tokens', 'conditional', '条件必填', '响应 output_tokens 严格大于 N 时，每张输出图使用这个单价。', '每张输出图单价；可配置多个 N']
+    ],
+    requestTitle: '调用图片接口时可传的字段（不要写进价格 JSON）',
+    requestIntro: 'prompt 是正文输入；其余都是本次生成的控制项，不属于模型价格。',
+    requestFields: [
+      ['model', '必填；界面中的模型别名'], ['prompt', '必填；图片描述或编辑要求'],
+      ['image', '图生图时填写；图片 URL、data URL 或图片列表'], ['size', '输出尺寸'],
+      ['response_format', '返回 URL 或 base64 等格式'], ['seed', '随机种子'],
+      ['watermark', '是否添加水印'], ['optimize_prompt_options', '火山提示词优化选项'],
+      ['output_format', 'Seedream 5 系列输出格式'], ['sequential_image_generation', '是否连续生成组图'],
+      ['sequential_image_generation_options', '组图数量等选项'], ['tools', 'Seedream 5 Lite 支持的图片工具']
+    ],
+    requestNote: '图片编辑入口还要求上传 image；当前图片编辑额外接受 response_format 和 size。不同 Seedream 版本支持项略有差异。'
+  },
+  video: {
+    title: '视频价格表字段说明',
+    intro: '当前 Seedance 以 completion_tokens 计费，并先区分是否包含视频输入，再按分辨率选择价格；找不到分辨率专用键时回落到基础键。',
+    minimum: ['条目 Key', 'litellm_provider', 'mode', 'video_token_pricing'],
+    minimumNote: '至少配置实际业务会用到的 no_video_input 或 video_input 基础键；同时支持两类输入时，两项都填。',
+    fields: [
+      ...basePriceFields,
+      ['计费', 'video_token_pricing', 'conditional', '条件必填', '按视频生成 token 计费时的价格字典；当前 Seedance 使用这条路径。', '对象；内部数值都是每 token 单价'],
+      ['计费', 'video_token_pricing.no_video_input', 'conditional', '条件必填', '请求没有参考视频时的基础单价；480p/720p 没有专属键时也回落到这里。', '每 completion token 单价'],
+      ['计费', 'video_token_pricing.video_input', 'conditional', '条件必填', '请求包含参考视频时的基础单价。', '每 completion token 单价'],
+      ['分辨率', 'no_video_input_{resolution}', 'optional', '可选', '无视频输入且命中特定分辨率时的专属单价。', '例如 no_video_input_1080p、no_video_input_4k'],
+      ['分辨率', 'video_input_{resolution}', 'optional', '可选', '有视频输入且命中特定分辨率时的专属单价。', '例如 video_input_1080p、video_input_4k'],
+      ['按秒兜底', 'output_cost_per_video_per_second', 'optional', '可选', '如果官方不按 token 而按成片时长收费，可使用该字段。优先级低于 video_token_pricing。', '每输出视频秒单价'],
+      ['按秒兜底', 'output_cost_per_second', 'optional', '可选', '通用按秒计费的最后兜底。当前 Seedance 不使用。', '每秒单价'],
+      ['能力', 'supported_modalities', 'optional', '可选', '声明允许的输入模态。', '字符串数组，如 text、image、video、audio'],
+      ['能力', 'supported_output_modalities', 'optional', '可选', '声明模型输出模态。', '["video"]'],
+      ['能力', 'supports_audio_input / supports_audio_output', 'optional', '可选', '声明视频任务是否可带音频输入或生成音频。', 'true / false']
+    ],
+    requestTitle: '调用视频接口时可传的字段（不要写进价格 JSON）',
+    requestIntro: 'prompt 是必填正文；输入参考、时长和尺寸会影响生成任务以及最终计费档。',
+    requestFields: [
+      ['model', '必填；界面中的模型别名'], ['prompt', '必填；视频内容描述'],
+      ['input_reference', '可选；参考图片 URL 或 data URL'], ['seconds', '可选；生成时长，必须能转成整数'],
+      ['size', '可选；WIDTHxHEIGHT，例如 1920x1080'], ['user', '可选；映射为安全标识'],
+      ['extra_headers', '可选；额外请求头'], ['extra_body', '可选；透传火山的 resolution、ratio、seed、generate_audio 等参数']
+    ],
+    requestNote: '计费中的 has_video_input 来自任务内容是否真的含 video_url，不是只看模型名称。分辨率会归一化成小写价格键。'
+  },
+  tts: {
+    title: 'TTS 价格表字段说明',
+    intro: '当前 Seed TTS 2.0 按输入文本字符数计费。价格 JSON 不保存 speaker、音频格式或 API Key。',
+    minimum: ['条目 Key', 'litellm_provider', 'mode', 'input_cost_per_character'],
+    minimumNote: '这 4 项足够让成本计算器按字符数计算 TTS spend。',
+    fields: [
+      ...basePriceFields,
+      ['计费', 'input_cost_per_character', 'must', '必填', '每个输入字符的单价。当前实现按输入字符串字符数相乘。', '每字符单价；元/万字符除以 10,000']
+    ],
+    requestTitle: '调用 TTS 时可传的字段（不要写进价格 JSON）',
+    requestIntro: 'voice 是火山 speaker ID，不是随便写的中文名称。',
+    requestFields: [
+      ['model', '必填；界面中的模型别名'], ['input', '必填；需要合成的文本'],
+      ['voice', '必填；有效的火山 speaker ID'], ['response_format', '可选；mp3、opus、wav 或 pcm，默认 mp3']
+    ],
+    requestNote: '当前 VolcEngine TTS 不支持 OpenAI 的 speed 和 instructions 参数。API Key 使用运行环境配置，不写进 model_prices JSON。'
+  },
+  stt: {
+    title: 'STT 价格表字段说明',
+    intro: '当前大模型录音识别极速版按音频时长计费。火山响应给出毫秒时长，LiteLLM 转为秒后乘以单价。',
+    minimum: ['条目 Key', 'litellm_provider', 'mode', 'input_cost_per_second'],
+    minimumNote: '这 4 项足够让成本计算器按音频秒数计算 STT spend。',
+    fields: [
+      ...basePriceFields,
+      ['计费', 'input_cost_per_second', 'must', '必填', '每秒输入音频的单价。', '每秒单价；元/小时除以 3,600']
+    ],
+    requestTitle: '调用 STT 时可传的字段（不要写进价格 JSON）',
+    requestIntro: 'file 是真正的音频文件输入；language 和 response_format 只控制本次识别。',
+    requestFields: [
+      ['model', '必填；界面中的模型别名'], ['file', '必填；需要识别的音频文件'],
+      ['language', '可选；语言代码，会归一化为 BCP-47，例如 zh-CN'], ['response_format', '可选；json 或 text']
+    ],
+    requestNote: '要准确计费，火山响应必须带 audio_info.duration；当前适配器会从毫秒转换为秒。'
+  },
+  registry: {
+    title: '通用价格条目字段说明',
+    intro: '任何新模型先确定 Key、Provider、mode 和该 mode 的基础计费字段，再补来源、接口和能力元数据。',
+    minimum: ['条目 Key', 'litellm_provider', 'mode', '该 mode 的基础计费字段'],
+    minimumNote: '基础计费字段因 mode 不同：Chat 用 token，图片用 image，视频用 video_token_pricing，TTS 用 character，STT 用 second。',
+    fields: [
+      ...basePriceFields,
+      ['计费', '该 mode 的基础计费字段', 'must', '必填', '至少提供一条成本计算器能够读取的基础单价，否则模型调用成功也可能记录为 0。', '参考上面五个分类标签'],
+      ['能力', 'supports_*', 'optional', '可选', '声明工具、视觉、推理、缓存、音频等模型能力，帮助 UI 和路由做正确判断。', 'true / false'],
+      ['上下文', 'max_input_tokens / max_output_tokens', 'optional', '可选', '主要用于 Chat/Embedding 的上下文长度展示与校验。', '整数 token 数'],
+      ['向量', 'output_vector_size', 'optional', '可选', '仅 Embedding 模型使用，表示输出向量维度。', '正整数']
+    ],
+    requestTitle: '刷新与映射（不写进价格 JSON）',
+    requestIntro: 'JSON 写完后还必须让运行中的 Proxy 真正加载它，并保证 deployment 底层 model 与条目 Key 一致。',
+    requestFields: [
+      ['LITELLM_LOCAL_MODEL_COST_MAP=True', '本地开发时强制加载 litellm/ 下的备份价格表'],
+      ['POST /reload/model_cost_map', '管理员触发当前进程重新加载成本表'],
+      ['GET /model/cost_map/source', '检查当前来源是 local 还是 remote'],
+      ['GET /public/litellm_model_cost_map', '确认新模型 Key 已出现在当前成本表']
+    ],
+    requestNote: '默认刷新接口读取 LITELLM_MODEL_COST_MAP_URL 指向的远端文件；只改根目录 JSON 并点击刷新，不会自动读取本地根文件。'
+  }
+};
+function selectConfig(key) {
+  const config = configs[key];
+  const guide = fieldGuides[key];
+  document.querySelectorAll('#config-tabs .filter-btn').forEach(b => b.classList.toggle('is-current', b.dataset.config === key));
+  document.getElementById('code-title').textContent = config.title;
+  document.getElementById('code-block').textContent = config.code;
+  document.getElementById('copy-btn').textContent = '复制 JSON 条目';
+  document.getElementById('guide-title').textContent = guide.title;
+  document.getElementById('guide-intro').textContent = guide.intro;
+  document.getElementById('minimum-fields').innerHTML = guide.minimum.map(field => `<code>${field}</code>`).join(' ');
+  document.getElementById('minimum-note').textContent = guide.minimumNote;
+  document.getElementById('field-body').innerHTML = guide.fields.map(field => `<tr><td>${field[0]}</td><td class="model-name">${field[1]}</td><td><span class="req ${field[2]}">${field[3]}</span></td><td>${field[4]}</td><td>${field[5]}</td></tr>`).join('');
+  document.getElementById('request-title').textContent = guide.requestTitle;
+  document.getElementById('request-intro').textContent = guide.requestIntro;
+  document.getElementById('request-fields').innerHTML = `<div class="param-list">${guide.requestFields.map(field => `<div class="param-item"><code>${field[0]}</code> ${field[1]}</div>`).join('')}</div>`;
+  document.getElementById('request-note').textContent = guide.requestNote;
+}
+document.getElementById('config-tabs').innerHTML = Object.entries(configs).map(([key, value], i) => `<button class="filter-btn ${i === 0 ? 'is-current' : ''}" data-config="${key}">${value.label}</button>`).join('');
+document.getElementById('config-tabs').addEventListener('click', e => {
+  const button = e.target.closest('[data-config]');
+  if (button) selectConfig(button.dataset.config);
+});
+document.getElementById('copy-btn').addEventListener('click', async () => {
+  await navigator.clipboard.writeText(document.getElementById('code-block').textContent);
+  document.getElementById('copy-btn').textContent = '已复制';
+});
+selectConfig('chat');
+document.getElementById('theme-btn').addEventListener('click', () => {
+  const html = document.documentElement;
+  const chalk = html.dataset.theme === 'chalk';
+  html.dataset.theme = chalk ? 'paper' : 'chalk';
+  document.getElementById('theme-btn').textContent = chalk ? '切换黑板主题' : '切换纸面主题';
+});
+const svg = renderDiagram();
+let introIndex = 0;
+svg.querySelectorAll('.shape path, .shape rect, .edge path').forEach(path => {
+  path.setAttribute('pathLength', 1);
+  path.style.setProperty('--di', introIndex++);
+  path.classList.add('draw-in');
+});
+svg.querySelectorAll('text').forEach(t => {
+  t.style.setProperty('--di', introIndex + 4);
+  t.classList.add('fade-el');
+});
+goStep(0);
+</script>
+</body>
+</html>
