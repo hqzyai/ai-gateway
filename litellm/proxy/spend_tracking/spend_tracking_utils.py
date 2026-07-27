@@ -6,7 +6,7 @@ import secrets
 from datetime import datetime
 from datetime import datetime as dt
 from datetime import timezone
-from typing import Any, List, Literal, Optional, cast
+from typing import Any, List, Literal, Mapping, Optional, cast
 
 from pydantic import BaseModel
 
@@ -171,13 +171,28 @@ def generate_hash_from_response(response_obj: Any) -> str:
         return hashlib.md5(str(response_obj).encode()).hexdigest()
 
 
-def get_spend_logs_id(call_type: str, response_obj: dict, kwargs: dict) -> Optional[str]:
+def get_spend_logs_id(
+    call_type: str,
+    response_obj: Mapping[str, object],
+    kwargs: Mapping[str, object],
+) -> Optional[str]:
     if call_type == "aretrieve_batch" or call_type == "acreate_file":
-        # Generate a hash from the response object
-        id: Optional[str] = generate_hash_from_response(response_obj)
-    else:
-        id = cast(Optional[str], response_obj.get("id")) or cast(Optional[str], kwargs.get("litellm_call_id"))
-    return id
+        return generate_hash_from_response(response_obj)
+
+    litellm_params = kwargs.get("litellm_params")
+    nested_litellm_call_id: object | None = (
+        cast(Mapping[str, object], litellm_params).get("litellm_call_id")
+        if isinstance(litellm_params, Mapping)
+        else None
+    )
+    raw_litellm_call_id = kwargs.get("litellm_call_id") or nested_litellm_call_id
+    litellm_call_id = raw_litellm_call_id if isinstance(raw_litellm_call_id, str) else None
+    is_video_call = call_type.startswith(("video_", "avideo_")) or call_type in ("create_video", "acreate_video")
+    if is_video_call and litellm_call_id is not None:
+        return litellm_call_id
+
+    response_id = response_obj.get("id")
+    return response_id if isinstance(response_id, str) else litellm_call_id
 
 
 def _extract_usage_for_ocr_call(response_obj: Any, response_obj_dict: dict) -> dict:

@@ -2526,6 +2526,70 @@ def test_get_logging_payload_litellm_call_id_when_response_has_no_id():
     assert payload["request_id"] == trace_call_id
 
 
+def test_video_create_and_status_spend_logs_use_distinct_call_ids():
+    video_id = "video_same-provider-resource-id"
+    now = datetime.datetime.now(timezone.utc)
+    base_kwargs = {
+        "model": "volcengine/video-model",
+        "litellm_params": {"metadata": {"user_api_key": "sk-test"}},
+    }
+    create_payload = get_logging_payload(
+        kwargs={
+            **base_kwargs,
+            "call_type": "avideo_generation",
+            "litellm_call_id": "video-create-call-id",
+            "response_cost": 0.0,
+        },
+        response_obj={"id": video_id},
+        start_time=now,
+        end_time=now,
+    )
+    status_payload = get_logging_payload(
+        kwargs={
+            **base_kwargs,
+            "call_type": "avideo_status",
+            "litellm_call_id": "video-status-call-id",
+            "response_cost": 1.867324,
+        },
+        response_obj={
+            "id": video_id,
+            "usage": {
+                "prompt_tokens": 0,
+                "completion_tokens": 40594,
+                "total_tokens": 40594,
+            },
+        },
+        start_time=now,
+        end_time=now,
+    )
+
+    assert create_payload["request_id"] == "video-create-call-id"
+    assert status_payload["request_id"] == "video-status-call-id"
+    assert create_payload["request_id"] != status_payload["request_id"]
+    assert status_payload["spend"] == 1.867324
+    assert status_payload["completion_tokens"] == 40594
+
+
+def test_video_spend_log_call_id_falls_back_to_litellm_params():
+    now = datetime.datetime.now(timezone.utc)
+    payload = get_logging_payload(
+        kwargs={
+            "model": "volcengine/video-model",
+            "call_type": "avideo_status",
+            "litellm_params": {
+                "litellm_call_id": "nested-video-call-id",
+                "metadata": {"user_api_key": "sk-test"},
+            },
+        },
+        response_obj={"id": "video_provider-resource-id"},
+        start_time=now,
+        end_time=now,
+    )
+
+    assert payload["request_id"] == "nested-video-call-id"
+    assert json.loads(payload["metadata"])["litellm_call_id"] == "nested-video-call-id"
+
+
 def test_get_logging_payload_cache_hit_keeps_raw_litellm_call_id():
     """On a cache hit request_id is suffixed to stay unique, but the metadata
     litellm_call_id stays the raw trace id so the row still points at its trace.
