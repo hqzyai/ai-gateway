@@ -15,6 +15,21 @@ from litellm.utils import get_optional_params
 
 
 class TestVolcEngineConfig:
+    def test_reasoning_effort_passthrough(self):
+        model = "doubao-seed-2-0-pro-260215"
+        config = VolcEngineConfig()
+
+        assert "reasoning_effort" in config.get_supported_openai_params(model=model)
+
+        mapped_params = get_optional_params(
+            model=model,
+            custom_llm_provider="volcengine",
+            reasoning_effort="high",
+            drop_params=False,
+        )
+
+        assert mapped_params["reasoning_effort"] == "high"
+
     def test_get_optional_params(self):
         config = VolcEngineConfig()
         supported_params = config.get_supported_openai_params(model="doubao-seed-1.6")

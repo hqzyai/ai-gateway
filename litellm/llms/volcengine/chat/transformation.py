@@ -1,6 +1,7 @@
 from typing import Optional, Union
 
 from litellm.llms.openai_like.chat.transformation import OpenAILikeChatConfig
+from litellm.utils import supports_reasoning
 
 
 class VolcEngineChatConfig(OpenAILikeChatConfig):
@@ -44,7 +45,7 @@ class VolcEngineChatConfig(OpenAILikeChatConfig):
         return super().get_config()
 
     def get_supported_openai_params(self, model: str) -> list:
-        return [
+        supported_params = [
             "frequency_penalty",
             "logit_bias",
             "logprobs",
@@ -67,6 +68,9 @@ class VolcEngineChatConfig(OpenAILikeChatConfig):
             "extra_headers",
             "thinking",
         ]  # works across all models
+        if supports_reasoning(model=model, custom_llm_provider="volcengine"):
+            supported_params.append("reasoning_effort")
+        return supported_params
 
     def map_openai_params(
         self,
