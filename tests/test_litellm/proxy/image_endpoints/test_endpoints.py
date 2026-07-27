@@ -61,7 +61,11 @@ async def test_image_generation_prompt_rerouting(monkeypatch):
 
         async def _inner():
             class FakeResponse(dict):
-                _hidden_params = {}
+                _hidden_params = {
+                    "additional_headers": {
+                        "llm_provider-x-request-id": "provider-request-123"
+                    }
+                }
 
             return FakeResponse(result="ok")
 
@@ -95,10 +99,6 @@ async def test_image_generation_prompt_rerouting(monkeypatch):
     monkeypatch.setattr("litellm.proxy.proxy_server.user_model", None)
     monkeypatch.setattr("litellm.proxy.proxy_server.version", "test-version")
     monkeypatch.setattr(
-        "litellm.proxy.common_request_processing.ProxyBaseLLMRequestProcessing.get_custom_headers",
-        classmethod(lambda *args, **kwargs: {}),
-    )
-    monkeypatch.setattr(
         "litellm.proxy.image_endpoints.endpoints.route_request", fake_route_request
     )
 
@@ -114,4 +114,5 @@ async def test_image_generation_prompt_rerouting(monkeypatch):
     assert pre_call_input["messages"][0]["content"] == "original prompt"
     assert captured_route_request_data["prompt"] == "sanitized prompt"
     assert "messages" not in captured_route_request_data
+    assert response.headers.get("llm_provider-x-request-id") == "provider-request-123"
     assert response.headers.get("x-callback-test") == "value"

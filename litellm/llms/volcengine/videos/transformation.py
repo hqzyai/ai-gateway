@@ -7,6 +7,7 @@ import httpx
 from httpx._types import RequestFiles
 from pydantic import BaseModel, Field, ValidationError
 
+from litellm.litellm_core_utils.core_helpers import process_response_headers
 from litellm.litellm_core_utils.url_utils import encode_url_path_segment
 from litellm.llms.base_llm.chat.transformation import BaseLLMException
 from litellm.llms.base_llm.videos.transformation import BaseVideoConfig
@@ -262,7 +263,7 @@ class VolcEngineVideoConfig(BaseVideoConfig):
             **({"video_resolution": resolution} if isinstance(resolution, str) else {}),
             "has_video_input": has_video_input,
         }
-        return VideoObject(
+        video = VideoObject(
             id=encode_video_id_with_provider(
                 response.id,
                 provider,
@@ -275,6 +276,8 @@ class VolcEngineVideoConfig(BaseVideoConfig):
             model=model,
             usage=usage,
         )
+        video._hidden_params["additional_headers"] = process_response_headers(raw_response.headers)
+        return video
 
     def transform_video_status_retrieve_request(
         self,
@@ -293,11 +296,13 @@ class VolcEngineVideoConfig(BaseVideoConfig):
         custom_llm_provider: str | None = None,
     ) -> VideoObject:
         task = self._parse_response(raw_response, _VolcEngineVideoTask)
-        return self._task_to_video(
+        video = self._task_to_video(
             task,
             custom_llm_provider or LlmProviders.VOLCENGINE.value,
             has_video_input=self._has_video_input_from_logging_obj(logging_obj),
         )
+        video._hidden_params["additional_headers"] = process_response_headers(raw_response.headers)
+        return video
 
     def transform_video_content_request(
         self,

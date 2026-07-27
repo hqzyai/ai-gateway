@@ -3,6 +3,7 @@ from typing import List, Literal, Union
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, TypeAdapter
 
+from litellm.litellm_core_utils.core_helpers import process_response_headers
 from litellm.litellm_core_utils.litellm_logging import Logging as LiteLLMLoggingObj
 from litellm.llms.base_llm.chat.transformation import BaseLLMException
 from litellm.llms.base_llm.embedding.transformation import BaseEmbeddingConfig
@@ -221,11 +222,13 @@ class VolcEngineEmbeddingConfig(BaseEmbeddingConfig):
                 else None
             ),
         )
-        return EmbeddingResponse(
+        response = EmbeddingResponse(
             model=parsed_response.model or model,
             data=[item.model_dump(exclude_none=True) for item in response_data],
             usage=response_usage,
         )
+        response._hidden_params["additional_headers"] = process_response_headers(raw_response.headers)
+        return response
 
     def validate_environment(
         self,

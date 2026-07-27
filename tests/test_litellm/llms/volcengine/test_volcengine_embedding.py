@@ -378,7 +378,7 @@ def test_volcengine_vision_embedding_response_preserves_multimodal_data_and_usag
     }
     transformed = VolcEngineEmbeddingConfig().transform_embedding_response(
         model="doubao-embedding-vision-251215",
-        raw_response=httpx.Response(200, json=payload),
+        raw_response=httpx.Response(200, json=payload, headers={"x-request-id": "embedding-request-123"}),
         model_response=EmbeddingResponse(),
         logging_obj=MagicMock(),
         api_key="test-key",
@@ -398,6 +398,7 @@ def test_volcengine_vision_embedding_response_preserves_multimodal_data_and_usag
     ]
     assert transformed.usage.prompt_tokens_details.text_tokens == 60
     assert transformed.usage.prompt_tokens_details.image_tokens == 40
+    assert transformed._hidden_params["additional_headers"]["llm_provider-x-request-id"] == "embedding-request-123"
 
 
 def test_volcengine_vision_embedding_uses_separate_text_and_image_token_prices():
