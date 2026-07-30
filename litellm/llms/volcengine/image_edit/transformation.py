@@ -3,7 +3,7 @@ from __future__ import annotations
 import base64
 from os import PathLike
 from pathlib import Path
-from typing import TYPE_CHECKING, IO, Mapping, TypeAlias
+from typing import IO, TYPE_CHECKING, Mapping, TypeAlias
 
 import httpx
 from httpx._types import RequestFiles

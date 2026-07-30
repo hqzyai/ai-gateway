@@ -124,8 +124,47 @@ run(
 )
 PY
 
+{
+  IFS= read -r compression_backend
+  IFS= read -r configured_compression_url
+  IFS= read -r configured_compression_token
+  IFS= read -r headroom_proxy_port
+  IFS= read -r lean_ctx_proxy_port
+} < <(
+  uv run --env-file .env python - <<'PY'
+import os
+
+print(os.environ.get("COMPRESSION_BACKEND", "lean-ctx"))
+print(os.environ.get("COMPRESSION_PROXY_URL", ""))
+print(os.environ.get("COMPRESSION_PROXY_TOKEN", ""))
+print(os.environ.get("HEADROOM_PROXY_PORT", "8787"))
+print(os.environ.get("LEAN_CTX_PROXY_PORT", "4444"))
+PY
+)
+
+case "$compression_backend" in
+  headroom)
+    export COMPRESSION_PROXY_URL="${configured_compression_url:-http://127.0.0.1:${headroom_proxy_port}}"
+    export COMPRESSION_PROXY_TOKEN="${configured_compression_token:-}"
+    ;;
+  lean-ctx)
+    if ! command -v lean-ctx >/dev/null 2>&1; then
+      echo "lean-ctx is not installed" >&2
+      exit 1
+    fi
+    export COMPRESSION_PROXY_URL="${configured_compression_url:-http://127.0.0.1:${lean_ctx_proxy_port}}"
+    export COMPRESSION_PROXY_TOKEN="${configured_compression_token:-$(lean-ctx proxy token)}"
+    ;;
+  *)
+    echo "COMPRESSION_BACKEND must be 'headroom' or 'lean-ctx'" >&2
+    exit 1
+    ;;
+esac
+
+echo "Compression backend: ${compression_backend} (${COMPRESSION_PROXY_URL})"
 echo "LiteLLM Dashboard: http://localhost:4000/ui/"
 exec uv run --env-file .env python litellm/proxy/proxy_cli.py \
+  --config litellm/proxy/dev_config.yaml \
   --host 0.0.0.0 \
   --port 4000 \
   --use_v2_migration_resolver \

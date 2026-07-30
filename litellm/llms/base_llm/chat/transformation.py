@@ -10,7 +10,6 @@ from typing import (
     AsyncIterator,
     Iterator,
     List,
-    Optional,
     Tuple,
     Type,
     Union,
@@ -52,10 +51,10 @@ class BaseLLMException(Exception):
         self,
         status_code: int,
         message: str,
-        headers: Optional[Union[dict[str, str], httpx.Headers]] = None,
-        request: Optional[httpx.Request] = None,
-        response: Optional[httpx.Response] = None,
-        body: Optional[dict[str, object]] = None,
+        headers: Union[dict[str, str], httpx.Headers] | None = None,
+        request: httpx.Request | None = None,
+        response: httpx.Response | None = None,
+        body: dict[str, object] | None = None,
     ) -> None:
         self.status_code = status_code
         self.message: str = message
@@ -96,9 +95,7 @@ class BaseConfig(ABC):
             and not callable(v)  # Filter out any callable objects including mocks
         }
 
-    def get_json_schema_from_pydantic_object(
-        self, response_format: Optional[Union[Type[BaseModel], dict]]
-    ) -> Optional[dict]:
+    def get_json_schema_from_pydantic_object(self, response_format: Union[Type[BaseModel], dict] | None) -> dict | None:
         return type_to_response_format_param(response_format=response_format)
 
     def is_thinking_enabled(self, non_default_params: dict) -> bool:
@@ -130,9 +127,9 @@ class BaseConfig(ABC):
 
     def should_fake_stream(
         self,
-        model: Optional[str],
-        stream: Optional[bool],
-        custom_llm_provider: Optional[str] = None,
+        model: str | None,
+        stream: bool | None,
+        custom_llm_provider: str | None = None,
     ) -> bool:
         """
         Returns True if the model/provider should fake stream
@@ -211,7 +208,7 @@ class BaseConfig(ABC):
 
         This is used to translate response_format to a tool call, for models/APIs that don't support response_format directly.
         """
-        json_schema: Optional[dict] = None
+        json_schema: dict | None = None
         if "response_schema" in value:
             json_schema = value["response_schema"]
         elif "json_schema" in value:
@@ -256,8 +253,8 @@ class BaseConfig(ABC):
         messages: List[AllMessageValues],
         optional_params: dict,
         litellm_params: dict,
-        api_key: Optional[str] = None,
-        api_base: Optional[str] = None,
+        api_key: str | None = None,
+        api_base: str | None = None,
     ) -> dict:
         pass
 
@@ -267,11 +264,11 @@ class BaseConfig(ABC):
         optional_params: dict,
         request_data: dict,
         api_base: str,
-        api_key: Optional[str] = None,
-        model: Optional[str] = None,
-        stream: Optional[bool] = None,
-        fake_stream: Optional[bool] = None,
-    ) -> Tuple[dict, Optional[bytes]]:
+        api_key: str | None = None,
+        model: str | None = None,
+        stream: bool | None = None,
+        fake_stream: bool | None = None,
+    ) -> Tuple[dict, bytes | None]:
         """
         Some providers like Bedrock require signing the request. The sign request funtion needs access to `request_data` and `complete_url`
         Args:
@@ -288,12 +285,12 @@ class BaseConfig(ABC):
 
     def get_complete_url(
         self,
-        api_base: Optional[str],
-        api_key: Optional[str],
+        api_base: str | None,
+        api_key: str | None,
         model: str,
         optional_params: dict,
         litellm_params: dict,
-        stream: Optional[bool] = None,
+        stream: bool | None = None,
     ) -> str:
         """
         OPTIONAL
@@ -350,8 +347,8 @@ class BaseConfig(ABC):
         optional_params: dict,
         litellm_params: dict,
         encoding: Any,
-        api_key: Optional[str] = None,
-        json_mode: Optional[bool] = None,
+        api_key: str | None = None,
+        json_mode: bool | None = None,
     ) -> "ModelResponse":
         pass
 
@@ -376,7 +373,7 @@ class BaseConfig(ABC):
         self,
         streaming_response: Union[Iterator[str], AsyncIterator[str], "ModelResponse"],
         sync_stream: bool,
-        json_mode: Optional[bool] = False,
+        json_mode: bool | None = False,
     ) -> Any:
         pass
 
@@ -389,9 +386,9 @@ class BaseConfig(ABC):
         headers: dict,
         data: dict,
         messages: list,
-        client: Optional[AsyncHTTPHandler] = None,
-        json_mode: Optional[bool] = None,
-        signed_json_body: Optional[bytes] = None,
+        client: AsyncHTTPHandler | None = None,
+        json_mode: bool | None = None,
+        signed_json_body: bytes | None = None,
     ) -> "CustomStreamWrapper":
         raise NotImplementedError
 
@@ -404,14 +401,14 @@ class BaseConfig(ABC):
         headers: dict,
         data: dict,
         messages: list,
-        client: Optional[Union[HTTPHandler, AsyncHTTPHandler]] = None,
-        json_mode: Optional[bool] = None,
-        signed_json_body: Optional[bytes] = None,
+        client: Union[HTTPHandler, AsyncHTTPHandler] | None = None,
+        json_mode: bool | None = None,
+        signed_json_body: bytes | None = None,
     ) -> "CustomStreamWrapper":
         raise NotImplementedError
 
     @property
-    def custom_llm_provider(self) -> Optional[str]:
+    def custom_llm_provider(self) -> str | None:
         return None
 
     @property
@@ -439,7 +436,7 @@ class BaseConfig(ABC):
         """Hook for providers to merge chunk metadata into assembled streaming responses."""
         return None
 
-    def calculate_additional_costs(self, model: str, prompt_tokens: int, completion_tokens: int) -> Optional[dict]:
+    def calculate_additional_costs(self, model: str, prompt_tokens: int, completion_tokens: int) -> dict | None:
         """
         Calculate any additional costs beyond standard token costs.
 

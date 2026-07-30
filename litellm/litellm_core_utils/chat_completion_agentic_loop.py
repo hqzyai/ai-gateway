@@ -1,6 +1,9 @@
 # this is a patch to allow for agentic loops covering llm_http_handler.py and openai sdk based calling flows for the .completion() api
 
 import json
+from collections.abc import Awaitable, Callable
+from contextvars import ContextVar, Token
+from dataclasses import dataclass
 from typing import cast
 
 from litellm._logging import verbose_logger
@@ -12,7 +15,7 @@ from litellm.types.integrations.custom_logger import (
     AgenticLoopRequestPatch,
     is_interception_internal_key,
 )
-from litellm.types.utils import ModelResponse
+from litellm.types.utils import Choices, Message, ModelResponse
 from litellm.utils import CustomStreamWrapper
 
 _FOLLOWUP_INTERNAL_PARAMS = frozenset(
@@ -26,6 +29,105 @@ _FOLLOWUP_INTERNAL_PARAMS = frozenset(
         "_agentic_loop_api_surface",
     )
 )
+
+_PROXY_OWNED_TOOL_NAMES = frozenset({"headroom_retrieve"})
+_ROUTER_DEPLOYMENT_PARAMS = frozenset(
+    {
+        "api_base",
+        "api_key",
+        "api_version",
+        "base_url",
+        "client",
+        "deployment_id",
+        "model_info",
+        "model_list",
+        "specific_deployment",
+    }
+)
+
+
+@dataclass(frozen=True, slots=True)
+class AgenticLoopRoutingContext:
+    model_group: str
+    acompletion: Callable[..., Awaitable[object]]
+
+
+_AGENTIC_LOOP_ROUTING_CONTEXT: ContextVar[AgenticLoopRoutingContext | None] = ContextVar(
+    "litellm_agentic_loop_routing_context",
+    default=None,
+)
+
+
+def set_agentic_loop_routing_context(
+    model_group: str,
+    acompletion: Callable[..., Awaitable[object]],
+) -> Token[AgenticLoopRoutingContext | None]:
+    return _AGENTIC_LOOP_ROUTING_CONTEXT.set(
+        AgenticLoopRoutingContext(model_group=model_group, acompletion=acompletion)
+    )
+
+
+def reset_agentic_loop_routing_context(token: Token[AgenticLoopRoutingContext | None]) -> None:
+    _AGENTIC_LOOP_ROUTING_CONTEXT.reset(token)
+
+
+def get_agentic_loop_routing_context() -> AgenticLoopRoutingContext | None:
+    return _AGENTIC_LOOP_ROUTING_CONTEXT.get()
+
+
+def _tool_call_name(tool_call: object) -> str | None:
+    if isinstance(tool_call, dict):
+        function = tool_call.get("function")
+        if isinstance(function, dict):
+            name = function.get("name")
+            return name if isinstance(name, str) else None
+        name = tool_call.get("name")
+        return name if isinstance(name, str) else None
+    function = getattr(tool_call, "function", None)
+    name = getattr(function, "name", None) if function is not None else getattr(tool_call, "name", None)
+    return name if isinstance(name, str) else None
+
+
+def sanitize_response_hiding_proxy_owned_tools(response: ModelResponse) -> ModelResponse | None:
+    """
+    Strip proxy-owned tool calls (e.g. headroom_retrieve) so clients that do not
+    implement them never see a leaked tool_call when the agentic follow-up fails.
+    Returns None when there is nothing to strip.
+    """
+    choices = getattr(response, "choices", None)
+    if not isinstance(choices, list) or not choices:
+        return None
+    message = getattr(choices[0], "message", None)
+    if message is None:
+        return None
+    tool_calls = getattr(message, "tool_calls", None)
+    if not isinstance(tool_calls, list) or not tool_calls:
+        return None
+
+    kept = [tc for tc in tool_calls if _tool_call_name(tc) not in _PROXY_OWNED_TOOL_NAMES]
+    stripped = [tc for tc in tool_calls if _tool_call_name(tc) in _PROXY_OWNED_TOOL_NAMES]
+    if not stripped:
+        return None
+
+    content = getattr(message, "content", None)
+    if not kept:
+        notice = (
+            "[LiteLLM] Proxy-owned tool call(s) could not be completed (agentic follow-up failed). Retry the request."
+        )
+        new_content = notice if not content else f"{content}\n{notice}"
+        new_message = Message(content=new_content, role="assistant")
+        finish_reason = "stop"
+    else:
+        new_message = Message(content=content, role="assistant", tool_calls=kept)
+        finish_reason = "tool_calls"
+
+    return ModelResponse(
+        id=getattr(response, "id", "chatcmpl-sanitized"),
+        choices=[Choices(finish_reason=finish_reason, index=0, message=new_message)],
+        created=getattr(response, "created", 0),
+        model=getattr(response, "model", None),
+        object="chat.completion",
+    )
 
 
 def _gate_overridden(callback: CustomLogger) -> bool:
@@ -123,16 +225,13 @@ async def _execute_chat_completion_agentic_plan(
     max_loops: int,
     fingerprints: list[str],
     fingerprint: str,
+    routing_context: AgenticLoopRoutingContext | None,
 ) -> object:
     import litellm
 
     patch = plan.request_patch or AgenticLoopRequestPatch()
     if patch.messages is None:
         raise ValueError("Agentic loop plan missing patched messages")
-
-    full_model_name = patch.model or model
-    if "/" not in full_model_name:
-        full_model_name = f"{custom_llm_provider}/{full_model_name}"
 
     optional_params_for_followup = {**optional_params, **patch.optional_params}
     if patch.tools is not None:
@@ -149,8 +248,24 @@ async def _execute_chat_completion_agentic_plan(
     kwargs_for_followup["_agentic_loop_fingerprints"] = fingerprints + [fingerprint]
     _add_agentic_loop_metadata(kwargs_for_followup)
 
+    followup: Callable[..., Awaitable[object]]
+    if routing_context is None:
+        full_model_name = patch.model or model
+        if "/" not in full_model_name:
+            full_model_name = f"{custom_llm_provider}/{full_model_name}"
+        followup = litellm.acompletion
+    else:
+        full_model_name = patch.model or routing_context.model_group
+        followup = routing_context.acompletion
+        optional_params_for_followup = {
+            key: value for key, value in optional_params_for_followup.items() if key not in _ROUTER_DEPLOYMENT_PARAMS
+        }
+        kwargs_for_followup = {
+            key: value for key, value in kwargs_for_followup.items() if key not in _ROUTER_DEPLOYMENT_PARAMS
+        }
+
     try:
-        response_followup = await litellm.acompletion(
+        response_followup = await followup(
             model=full_model_name,
             messages=patch.messages,
             **optional_params_for_followup,
@@ -196,6 +311,7 @@ async def maybe_run_chat_completion_agentic_loop(
     logging_obj: object,
     custom_llm_provider: str,
     stream: bool,
+    routing_context: AgenticLoopRoutingContext | None = None,
 ) -> ModelResponse | CustomStreamWrapper | None:
     import litellm
 
@@ -288,16 +404,25 @@ async def maybe_run_chat_completion_agentic_loop(
                 max_loops=max_loops,
                 fingerprints=fingerprints,
                 fingerprint=fingerprint,
+                routing_context=routing_context or get_agentic_loop_routing_context(),
             )
         except Exception as e:
             verbose_logger.exception(
                 "LiteLLM.AgenticHookError: Exception in chat completion agentic hooks: %s",
                 str(e),
             )
+            if isinstance(response, ModelResponse):
+                sanitized = sanitize_response_hiding_proxy_owned_tools(response)
+                if sanitized is not None:
+                    return sanitized
 
     if kwargs.get("_code_interpreter_interception_converted_stream") and not depth and hasattr(response, "choices"):
         return cast(
             "ModelResponse | CustomStreamWrapper",
             _wrap_response_as_fake_stream(response),
         )
+    if isinstance(response, ModelResponse):
+        sanitized = sanitize_response_hiding_proxy_owned_tools(response)
+        if sanitized is not None:
+            return sanitized
     return None

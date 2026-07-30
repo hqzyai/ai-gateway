@@ -2,11 +2,13 @@ import json
 from unittest.mock import patch
 
 import httpx
+import pytest
 
 import litellm
 from litellm.llms.custom_httpx.http_handler import HTTPHandler
 from litellm.llms.siliconflow.common_utils import get_siliconflow_api_base
 from litellm.llms.siliconflow.embedding.transformation import SiliconFlowEmbeddingConfig
+from litellm.litellm_core_utils.llm_cost_calc.utils import generic_cost_per_token
 from litellm.types.utils import LlmProviders
 from litellm.utils import ProviderConfigManager
 
@@ -83,7 +85,7 @@ def test_siliconflow_vl_embedding_preserves_mixed_input() -> None:
             json={
                 "data": [{"object": "embedding", "embedding": [0.3, 0.4], "index": 0}],
                 "model": "Qwen/Qwen3-VL-Embedding-8B",
-                "usage": {"prompt_tokens": 3, "total_tokens": 3},
+                "usage": {"prompt_tokens": 51, "completion_tokens": 1260, "total_tokens": 1311},
             },
         )
 
@@ -100,3 +102,17 @@ def test_siliconflow_vl_embedding_preserves_mixed_input() -> None:
         "input": [{"text": "describe the image"}, {"image": "https://example.com/source.png"}],
     }
     assert response.data[0]["embedding"] == [0.3, 0.4]
+    assert response.usage.prompt_tokens == 1311
+    assert response.usage.completion_tokens == 0
+    assert response.usage.total_tokens == 1311
+    assert response.usage.prompt_tokens_details.text_tokens == 51
+    assert response.usage.prompt_tokens_details.image_tokens == 1260
+
+    input_cost, output_cost = generic_cost_per_token(
+        model="Qwen/Qwen3-VL-Embedding-8B",
+        usage=response.usage,
+        custom_llm_provider="siliconflow",
+    )
+
+    assert input_cost == pytest.approx((51 * 0.7e-6) + (1260 * 1.8e-6))
+    assert output_cost == 0

@@ -7,8 +7,10 @@ from unittest.mock import patch
 sys.path.insert(0, os.path.abspath("../../../../.."))
 
 import litellm
+import pytest
 from litellm import get_llm_provider, get_supported_openai_params
 from litellm.llms.siliconflow.chat.transformation import SiliconFlowConfig
+from litellm.utils import get_optional_params
 
 
 class TestSiliconFlowConfig:
@@ -64,6 +66,78 @@ class TestSiliconFlowConfig:
         params = self.config.get_supported_openai_params(model="deepseek-ai/DeepSeek-V3")
         for expected in ("temperature", "stream", "tools", "tool_choice"):
             assert expected in params
+
+    def test_reasoning_effort_is_supported_for_siliconflow_reasoning_models(self):
+        v4_params = self.config.get_supported_openai_params(model="deepseek-ai/DeepSeek-V4-Flash")
+        qwen_params = self.config.get_supported_openai_params(model="Qwen/Qwen3.6-27B")
+        unsupported_params = self.config.get_supported_openai_params(model="deepseek-ai/DeepSeek-V3")
+
+        assert "reasoning_effort" in v4_params
+        assert "reasoning_effort" in qwen_params
+        assert "reasoning_effort" not in unsupported_params
+
+    @pytest.mark.parametrize(
+        ("reasoning_effort", "expected"),
+        (("low", "high"), ("medium", "high"), ("high", "high"), ("xhigh", "max"), ("max", "max")),
+    )
+    def test_reasoning_effort_is_normalized(self, reasoning_effort, expected):
+        optional_params = get_optional_params(
+            model="deepseek-ai/DeepSeek-V4-Flash",
+            custom_llm_provider="siliconflow",
+            reasoning_effort=reasoning_effort,
+        )
+
+        assert optional_params["reasoning_effort"] == expected
+
+    def test_default_reasoning_effort_uses_provider_default(self):
+        optional_params = get_optional_params(
+            model="deepseek-ai/DeepSeek-V4-Flash",
+            custom_llm_provider="siliconflow",
+            reasoning_effort="default",
+        )
+
+        assert "reasoning_effort" not in optional_params
+
+    @pytest.mark.parametrize("reasoning_effort", ("none", "minimal"))
+    def test_unsupported_reasoning_effort_is_rejected(self, reasoning_effort):
+        with pytest.raises(litellm.BadRequestError, match="supports reasoning_effort values"):
+            get_optional_params(
+                model="deepseek-ai/DeepSeek-V4-Flash",
+                custom_llm_provider="siliconflow",
+                reasoning_effort=reasoning_effort,
+            )
+
+    @pytest.mark.parametrize(
+        ("reasoning_effort", "expected"),
+        (
+            ("minimal", {"enable_thinking": True, "thinking_budget": 128}),
+            ("low", {"enable_thinking": True, "thinking_budget": 1024}),
+            ("medium", {"enable_thinking": True, "thinking_budget": 2048}),
+            ("high", {"enable_thinking": True, "thinking_budget": 4096}),
+            ("xhigh", {"enable_thinking": True, "thinking_budget": 8192}),
+            ("max", {"enable_thinking": True, "thinking_budget": 16384}),
+            ("none", {"enable_thinking": False}),
+        ),
+    )
+    def test_qwen_reasoning_effort_maps_to_thinking_params(self, reasoning_effort, expected):
+        optional_params = get_optional_params(
+            model="Qwen/Qwen3.6-27B",
+            custom_llm_provider="siliconflow",
+            reasoning_effort=reasoning_effort,
+        )
+
+        assert optional_params["extra_body"] == expected
+        assert "reasoning_effort" not in optional_params
+
+    def test_qwen_default_reasoning_effort_uses_provider_default(self):
+        optional_params = get_optional_params(
+            model="Qwen/Qwen3.6-27B",
+            custom_llm_provider="siliconflow",
+            reasoning_effort="default",
+        )
+
+        assert optional_params.get("extra_body", {}) == {}
+        assert "reasoning_effort" not in optional_params
 
 
 class TestSiliconFlowProviderResolution:

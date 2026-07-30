@@ -202,4 +202,26 @@ describe("GuardrailViewer", () => {
     expect(screen.getByText("Outputs")).toBeInTheDocument();
     expect(screen.getByText("ok")).toBeInTheDocument();
   });
+
+  it('renders HeadroomDetails when provider="headroom"', async () => {
+    const data = makeGuardrailInformation({
+      guardrail_name: "lean-ctx-compression",
+      guardrail_provider: "headroom",
+      guardrail_response: {
+        tokens_before: 1000,
+        tokens_after: 400,
+        tokens_saved: 600,
+        compression_ratio: 0.4,
+        messages_before: [{ role: "user", content: "before text" }],
+        messages_after: [{ role: "user", content: "after text" }],
+      },
+    });
+    renderWithProviders(<GuardrailViewer data={data} />);
+
+    const user = userEvent.setup();
+    await user.click(screen.getByText("lean-ctx-compression"));
+    expect(screen.getByText("Tokens before")).toBeInTheDocument();
+    expect(screen.getByText(/before text/)).toBeInTheDocument();
+    expect(screen.getByText(/after text/)).toBeInTheDocument();
+  });
 });

@@ -2689,9 +2689,14 @@
     "default_model_placeholder": "siliconflow/Qwen/Qwen3-8B",
     "models": [
       "siliconflow/Qwen/Qwen3-8B",
+      "siliconflow/Qwen/Qwen3.6-27B",
+      "siliconflow/deepseek-ai/DeepSeek-V4-Flash",
       "siliconflow/BAAI/bge-m3",
+      "siliconflow/Qwen/Qwen3-VL-Embedding-8B",
       "siliconflow/Kwai-Kolors/Kolors",
       "siliconflow/Qwen/Qwen-Image-Edit-2509",
+      "siliconflow/Wan-AI/Wan2.2-I2V-A14B",
+      "siliconflow/TeleAI/TeleSpeechASR",
       "siliconflow/Wan-AI/Wan2.2-T2V-A14B"
     ]
   },

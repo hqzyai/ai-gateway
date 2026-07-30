@@ -1,0 +1,9 @@
+crush_verbatim_json = true
+compression_level = "standard"
+reference_results = true
+
+[archive]
+enabled = true
+ephemeral = true
+ephemeral_min_tokens = 600
+threshold_chars = 400

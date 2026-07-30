@@ -3,23 +3,22 @@ import json
 import os
 import re
 import secrets
-from datetime import datetime
+from datetime import datetime, timezone
 from datetime import datetime as dt
-from datetime import timezone
-from typing import Any, List, Literal, Mapping, Optional, cast
+from typing import Any, List, Literal, Mapping, cast
 
-from pydantic import BaseModel
+from pydantic import BaseModel, TypeAdapter, ValidationError
 
 import litellm
 from litellm._logging import verbose_proxy_logger
 from litellm.constants import (
     LITELLM_TRUNCATED_PAYLOAD_FIELD,
     LITELLM_TRUNCATION_DB_SAFEGUARD_NOTE,
+    REDACTED_BY_LITELM_STRING,
 )
 from litellm.constants import (
     MAX_STRING_LENGTH_PROMPT_IN_DB as DEFAULT_MAX_STRING_LENGTH_PROMPT_IN_DB,
 )
-from litellm.constants import REDACTED_BY_LITELM_STRING
 from litellm.litellm_core_utils.core_helpers import (
     get_litellm_metadata_from_kwargs,
     reconstruct_model_name,
@@ -62,7 +61,7 @@ def _hash_api_key_for_spend_log(api_key: str) -> str:
     return stripped
 
 
-def _is_master_key(api_key: Optional[str], _master_key: Optional[str]) -> bool:
+def _is_master_key(api_key: str | None, _master_key: str | None) -> bool:
     """
     Raw-only constant-time master-key comparison. The hashed form is never
     considered equivalent — only the raw master-key string matches.
@@ -73,18 +72,18 @@ def _is_master_key(api_key: Optional[str], _master_key: Optional[str]) -> bool:
 
 
 def _get_spend_logs_metadata(
-    metadata: Optional[dict],
-    applied_guardrails: Optional[List[str]] = None,
-    batch_models: Optional[List[str]] = None,
-    mcp_tool_call_metadata: Optional[StandardLoggingMCPToolCall] = None,
-    vector_store_request_metadata: Optional[List[StandardLoggingVectorStoreRequest]] = None,
-    guardrail_information: Optional[List[StandardLoggingGuardrailInformation]] = None,
-    usage_object: Optional[dict] = None,
-    model_map_information: Optional[StandardLoggingModelInformation] = None,
-    cold_storage_object_key: Optional[str] = None,
-    litellm_overhead_time_ms: Optional[float] = None,
-    cost_breakdown: Optional[CostBreakdown] = None,
-    litellm_call_id: Optional[str] = None,
+    metadata: dict | None,
+    applied_guardrails: List[str] | None = None,
+    batch_models: List[str] | None = None,
+    mcp_tool_call_metadata: StandardLoggingMCPToolCall | None = None,
+    vector_store_request_metadata: List[StandardLoggingVectorStoreRequest] | None = None,
+    guardrail_information: List[StandardLoggingGuardrailInformation] | None = None,
+    usage_object: dict | None = None,
+    model_map_information: StandardLoggingModelInformation | None = None,
+    cold_storage_object_key: str | None = None,
+    litellm_overhead_time_ms: float | None = None,
+    cost_breakdown: CostBreakdown | None = None,
+    litellm_call_id: str | None = None,
 ) -> SpendLogsMetadata:
     if metadata is None:
         return SpendLogsMetadata(
@@ -166,7 +165,7 @@ def generate_hash_from_response(response_obj: Any) -> str:
         # Generate a hash of the response object
         unique_hash = hashlib.md5(json_str.encode()).hexdigest()
         return unique_hash
-    except Exception:
+    except (RecursionError, TypeError, ValueError):
         # Return a fallback hash if serialization fails
         return hashlib.md5(str(response_obj).encode()).hexdigest()
 
@@ -175,15 +174,13 @@ def get_spend_logs_id(
     call_type: str,
     response_obj: Mapping[str, object],
     kwargs: Mapping[str, object],
-) -> Optional[str]:
+) -> str | None:
     if call_type == "aretrieve_batch" or call_type == "acreate_file":
         return generate_hash_from_response(response_obj)
 
     litellm_params = kwargs.get("litellm_params")
     nested_litellm_call_id: object | None = (
-        cast(Mapping[str, object], litellm_params).get("litellm_call_id")
-        if isinstance(litellm_params, Mapping)
-        else None
+        litellm_params.get("litellm_call_id") if isinstance(litellm_params, Mapping) else None
     )
     raw_litellm_call_id = kwargs.get("litellm_call_id") or nested_litellm_call_id
     litellm_call_id = raw_litellm_call_id if isinstance(raw_litellm_call_id, str) else None
@@ -250,7 +247,9 @@ def _extract_usage_for_ocr_call(response_obj: Any, response_obj_dict: dict) -> d
         return {}
 
 
-def get_logging_payload(kwargs, response_obj, start_time, end_time) -> SpendLogsPayload:
+def get_logging_payload(  # noqa: C901  # payload assembly preserves compatibility across request types
+    kwargs, response_obj, start_time, end_time
+) -> SpendLogsPayload:
     if kwargs is None:
         kwargs = {}
 
@@ -293,7 +292,7 @@ def get_logging_payload(kwargs, response_obj, start_time, end_time) -> SpendLogs
         usage = _combined_usage.model_dump()
 
     id = get_spend_logs_id(call_type or "acompletion", response_obj_dict, kwargs)
-    standard_logging_payload = cast(Optional[StandardLoggingPayload], kwargs.get("standard_logging_object", None))
+    standard_logging_payload = cast(StandardLoggingPayload | None, kwargs.get("standard_logging_object", None))
 
     end_user_id = get_end_user_id_for_cost_tracking(litellm_params)
 
@@ -377,7 +376,7 @@ def get_logging_payload(kwargs, response_obj, start_time, end_time) -> SpendLogs
             standard_logging_payload.get("cost_breakdown", None) if standard_logging_payload is not None else None
         ),
         litellm_call_id=cast(
-            Optional[str],
+            str | None,
             kwargs.get("litellm_call_id") or litellm_params.get("litellm_call_id"),
         ),
     )
@@ -407,12 +406,12 @@ def get_logging_payload(kwargs, response_obj, start_time, end_time) -> SpendLogs
         id = f"{id}_cache_hit{time.time()}"  # SpendLogs does not allow duplicate request_id
 
     mcp_namespaced_tool_name = None
-    mcp_tool_call_metadata: Optional[StandardLoggingMCPToolCall] = clean_metadata.get("mcp_tool_call_metadata")
+    mcp_tool_call_metadata: StandardLoggingMCPToolCall | None = clean_metadata.get("mcp_tool_call_metadata")
     if mcp_tool_call_metadata is not None:
         mcp_namespaced_tool_name = mcp_tool_call_metadata.get("namespaced_tool_name", None)
 
     # Extract agent_id for A2A requests (set directly on model_call_details)
-    agent_id: Optional[str] = kwargs.get("agent_id") or metadata.get("agent_id")
+    agent_id: str | None = kwargs.get("agent_id") or metadata.get("agent_id")
     custom_llm_provider = kwargs.get("custom_llm_provider")
     raw_model = cast(str, kwargs.get("model") or "")
     model_name = reconstruct_model_name(raw_model, custom_llm_provider, metadata or {})
@@ -480,7 +479,7 @@ def get_logging_payload(kwargs, response_obj, start_time, end_time) -> SpendLogs
 
 def _get_session_id_for_spend_log(
     kwargs: dict,
-    standard_logging_payload: Optional[StandardLoggingPayload],
+    standard_logging_payload: StandardLoggingPayload | None,
 ) -> str:
     """
     Get the session id for the spend log.
@@ -501,7 +500,7 @@ def _get_session_id_for_spend_log(
     return str(uuid.uuid4())
 
 
-def _get_request_duration_ms(start_time: datetime, end_time: datetime) -> Optional[int]:
+def _get_request_duration_ms(start_time: datetime, end_time: datetime) -> int | None:
     """Compute request duration in milliseconds from start and end times."""
     try:
         return int((end_time - start_time).total_seconds() * 1000)
@@ -518,7 +517,7 @@ def _ensure_datetime_utc(timestamp: datetime) -> datetime:
 async def get_spend_by_team(
     start_date: dt,
     end_date: dt,
-    team_id: Optional[str],
+    team_id: str | None,
     prisma_client: PrismaClient,
 ):
     sql_query = """
@@ -659,8 +658,8 @@ async def get_spend_by_team_and_customer(
 
 
 def _get_messages_for_spend_logs_payload(
-    standard_logging_payload: Optional[StandardLoggingPayload],
-    metadata: Optional[dict] = None,
+    standard_logging_payload: StandardLoggingPayload | None,
+    metadata: dict | None = None,
 ) -> str:
     if _should_store_prompts_and_responses_in_spend_logs():
         if standard_logging_payload is not None:
@@ -680,8 +679,8 @@ _SENSITIVE_REQUEST_BODY_KEYS = frozenset({"secret_fields"})
 
 def _sanitize_request_body_for_spend_logs_payload(
     request_body: dict,
-    visited: Optional[set] = None,
-    max_string_length_prompt_in_db: Optional[int] = None,
+    visited: set | None = None,
+    max_string_length_prompt_in_db: int | None = None,
 ) -> dict:
     """
     Recursively sanitize request body to prevent logging large base64 strings or other large values.
@@ -791,7 +790,7 @@ def _scan_quoted_string_end(text: str, start: int, quote: str) -> int:
     return -1
 
 
-def _scan_balanced_value_end(text: str, start: int) -> int:
+def _scan_balanced_value_end(text: str, start: int) -> int:  # noqa: C901  # single-pass JSON scanner tracks nesting and quotes
     """
     Given ``text[start]`` is ``[``, ``{``, ``'`` or ``"``, return the index
     just past the matching close, accounting for nested brackets and
@@ -891,8 +890,8 @@ def _redact_prompt_leaks_in_error_string(text: str) -> str:
 
 
 def _sanitize_guardrail_information_for_spend_logs(
-    guardrail_information: Optional[List[StandardLoggingGuardrailInformation]],
-) -> Optional[List[StandardLoggingGuardrailInformation]]:
+    guardrail_information: List[StandardLoggingGuardrailInformation] | None,
+) -> List[StandardLoggingGuardrailInformation] | None:
     """
     When ``store_prompts_in_spend_logs`` is False, redact prompt-carrying fields
     (``guardrail_request``, ``guardrail_response``, ``match_details``,
@@ -930,20 +929,46 @@ _NUMERIC_COMPRESSION_STAT_KEYS = (
     "tokens_after",
     "tokens_saved",
     "compression_ratio",
+    "ccr_hashes_issued",
+    "ccr_hashes_requested",
+    "ccr_hashes_retrieved",
+    "ccr_retrieved_chars",
 )
 
+_STRING_CCR_TELEMETRY_KEYS = (
+    "ccr_status",
+    "ccr_followup_model",
+    "ccr_error",
+)
 
-def _numeric_compression_stats_from_guardrail_response(
+_BOOLEAN_CCR_TELEMETRY_KEYS = (
+    "ccr_enabled",
+    "ccr_fallback_used",
+)
+
+_STRING_OBJECT_DICT_ADAPTER = TypeAdapter(dict[str, object])
+
+
+def _safe_compression_telemetry_from_guardrail_response(
     guardrail_response: object,
-) -> dict[str, int | float] | None:
-    if not isinstance(guardrail_response, dict):
+) -> dict[str, int | float | str | bool] | None:
+    try:
+        response = _STRING_OBJECT_DICT_ADAPTER.validate_python(guardrail_response)
+    except ValidationError:
         return None
-    stats = {
+    numeric_values = {
         key: value
-        for key, value in guardrail_response.items()
+        for key, value in response.items()
         if key in _NUMERIC_COMPRESSION_STAT_KEYS and isinstance(value, (int, float)) and not isinstance(value, bool)
     }
-    return stats or None
+    string_values = {
+        key: value for key, value in response.items() if key in _STRING_CCR_TELEMETRY_KEYS and isinstance(value, str)
+    }
+    boolean_values = {
+        key: value for key, value in response.items() if key in _BOOLEAN_CCR_TELEMETRY_KEYS and isinstance(value, bool)
+    }
+    telemetry = {**numeric_values, **string_values, **boolean_values}
+    return telemetry or None
 
 
 def _redact_prompt_fields_in_guardrail_entry(
@@ -956,7 +981,7 @@ def _redact_prompt_fields_in_guardrail_entry(
     stats-only dict; spend aggregation reads them via
     ``extract_compression_saved_tokens``.
     """
-    preserved_stats = _numeric_compression_stats_from_guardrail_response(entry.get("guardrail_response"))
+    preserved_stats = _safe_compression_telemetry_from_guardrail_response(entry.get("guardrail_response"))
     redacted: StandardLoggingGuardrailInformation = {
         **entry,
         **{key: REDACTED_BY_LITELM_STRING for key in _PROMPT_CARRYING_GUARDRAIL_FIELDS if key in entry},
@@ -967,8 +992,8 @@ def _redact_prompt_fields_in_guardrail_entry(
 
 
 def _sanitize_error_information_for_spend_logs(
-    error_information: Optional[StandardLoggingPayloadErrorInformation],
-) -> Optional[StandardLoggingPayloadErrorInformation]:
+    error_information: StandardLoggingPayloadErrorInformation | None,
+) -> StandardLoggingPayloadErrorInformation | None:
     """
     Sanitize ``error_information`` before it lands in ``LiteLLM_SpendLogs.metadata``.
 
@@ -1001,7 +1026,7 @@ def _sanitize_error_information_for_spend_logs(
     return cast(StandardLoggingPayloadErrorInformation, sanitized)
 
 
-def _convert_to_json_serializable_dict(obj: Any, visited: Optional[set] = None, max_depth: int = 20) -> Any:
+def _convert_to_json_serializable_dict(obj: Any, visited: set | None = None, max_depth: int = 20) -> Any:
     """
     Convert object to JSON-serializable dict, handling Pydantic models safely.
 
@@ -1058,7 +1083,7 @@ def _convert_to_json_serializable_dict(obj: Any, visited: Optional[set] = None, 
 def _get_proxy_server_request_for_spend_logs_payload(
     metadata: dict,
     litellm_params: dict,
-    kwargs: Optional[dict] = None,
+    kwargs: dict | None = None,
 ) -> str:
     """
     Only store if _should_store_prompts_and_responses_in_spend_logs() is True
@@ -1066,7 +1091,7 @@ def _get_proxy_server_request_for_spend_logs_payload(
     If turn_off_message_logging is enabled, redact messages in the request body.
     """
     if _should_store_prompts_and_responses_in_spend_logs():
-        _proxy_server_request = cast(Optional[dict], litellm_params.get("proxy_server_request", {}))
+        _proxy_server_request = cast(dict | None, litellm_params.get("proxy_server_request", {}))
         if _proxy_server_request is not None:
             _request_body = _proxy_server_request.get("body", {}) or {}
 
@@ -1106,8 +1131,8 @@ def _get_proxy_server_request_for_spend_logs_payload(
 
 
 def _get_vector_store_request_for_spend_logs_payload(
-    vector_store_request_metadata: Optional[List[StandardLoggingVectorStoreRequest]],
-) -> Optional[List[StandardLoggingVectorStoreRequest]]:
+    vector_store_request_metadata: List[StandardLoggingVectorStoreRequest] | None,
+) -> List[StandardLoggingVectorStoreRequest] | None:
     """
     If user does not want to store prompts and responses, then remove the content from the vector store request metadata
     """
@@ -1130,8 +1155,8 @@ def _get_vector_store_request_for_spend_logs_payload(
 
 
 def _get_response_for_spend_logs_payload(
-    payload: Optional[StandardLoggingPayload],
-    kwargs: Optional[dict] = None,
+    payload: StandardLoggingPayload | None,
+    kwargs: dict | None = None,
 ) -> str:
     if payload is None:
         return "{}"
@@ -1210,7 +1235,7 @@ def _get_status_for_spend_log(
 
     It's only a failure if metadata.get("status") is "failure"
     """
-    _status: Optional[str] = metadata.get("status", None)
+    _status: str | None = metadata.get("status", None)
     if _status == "failure":
         return "failure"
     return "success"

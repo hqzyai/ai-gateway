@@ -1931,6 +1931,15 @@ class Router:
         stream: bool = False,
         **kwargs,
     ):
+        from litellm.litellm_core_utils.chat_completion_agentic_loop import (
+            reset_agentic_loop_routing_context,
+            set_agentic_loop_routing_context,
+        )
+
+        routing_token = set_agentic_loop_routing_context(
+            model_group=model,
+            acompletion=self.acompletion,
+        )
         try:
             kwargs["model"] = model
             kwargs["messages"] = messages
@@ -1976,6 +1985,8 @@ class Router:
                 )
             )
             raise e
+        finally:
+            reset_agentic_loop_routing_context(routing_token)
 
     @staticmethod
     def _combine_fallback_usage(

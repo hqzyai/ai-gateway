@@ -197,8 +197,20 @@ model_list:
       model: openai/gpt-4o-mini
       api_key: os.environ/OPENAI_API_KEY
 
+guardrails:
+  - guardrail_name: context-compression
+    litellm_params:
+      guardrail: headroom
+      mode: pre_call
+      api_base: os.environ/COMPRESSION_PROXY_URL
+      api_key: os.environ/COMPRESSION_PROXY_TOKEN
+      default_on: true
+      unreachable_fallback: fail_open
+      enable_ccr: true
+
 general_settings:
   master_key: sk-1234
+  store_prompts_in_spend_logs: true
   # Opt-in: let CheckBatchCost track cost for unmanaged batches created with a raw
   # gs:// (Vertex) or s3:// (Bedrock) input_file_id. Requires a matching deployment
   # configured for the batched model. Defaults to false.

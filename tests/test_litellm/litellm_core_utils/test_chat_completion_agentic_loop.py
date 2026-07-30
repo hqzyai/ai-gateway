@@ -35,7 +35,11 @@ from litellm.integrations.code_interpreter_interception.handler import (
     CodeInterpreterInterceptionLogger,
 )
 from litellm.litellm_core_utils.chat_completion_agentic_loop import (
+    AgenticLoopRoutingContext,
+    get_agentic_loop_routing_context,
     maybe_run_chat_completion_agentic_loop,
+    reset_agentic_loop_routing_context,
+    set_agentic_loop_routing_context,
 )
 from litellm.types.integrations.custom_logger import (
     AgenticLoopPlan,
@@ -256,6 +260,32 @@ class _GateOnlyLogger(CustomLogger):
         self.cleanup_calls += 1
 
 
+class _ToolCallOnlyLogger(_GateOnlyLogger):
+    async def async_should_run_agentic_loop(
+        self,
+        response: Any,
+        model: str,
+        messages: List[Dict[str, Any]],
+        tools: Optional[List[Dict[str, Any]]],
+        stream: bool,
+        custom_llm_provider: str,
+        kwargs: Dict[str, Any],
+    ) -> Tuple[bool, Dict[str, Any]]:
+        choices = getattr(response, "choices", None)
+        finish_reason = getattr(choices[0], "finish_reason", None) if isinstance(choices, list) and choices else None
+        if finish_reason != "tool_calls":
+            return False, {}
+        return await super().async_should_run_agentic_loop(
+            response=response,
+            model=model,
+            messages=messages,
+            tools=tools,
+            stream=stream,
+            custom_llm_provider=custom_llm_provider,
+            kwargs=kwargs,
+        )
+
+
 def _patched_messages() -> List[Dict[str, Any]]:
     return [
         {"role": "user", "content": "what is 6*7?"},
@@ -344,6 +374,138 @@ async def test_dispatcher_runs_followup_with_incremented_depth_and_patched_messa
     assert "_agentic_loop_api_surface" not in call_kwargs
     # Cleanup hook always runs.
     assert logger.cleanup_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_routes_followup_through_original_router_model_group(
+    restore_callbacks,
+):
+    followup = _plain_model_response("fallback answer")
+    plan = AgenticLoopPlan(
+        run_agentic_loop=True,
+        request_patch=AgenticLoopRequestPatch(messages=_patched_messages()),
+    )
+    logger = _GateOnlyLogger(plan=plan, tool_calls={"tool_calls": [{"id": "call_abc"}]})
+    litellm.callbacks = [logger]
+    router_acompletion = AsyncMock(return_value=followup)
+    direct_acompletion = AsyncMock()
+    routing_token = set_agentic_loop_routing_context(
+        model_group="primary-model-group",
+        acompletion=router_acompletion,
+    )
+
+    try:
+        with patch.object(litellm, "acompletion", direct_acompletion):
+            result = await maybe_run_chat_completion_agentic_loop(
+                response=_tool_call_model_response(),
+                model="provider/deployment-model",
+                messages=[{"role": "user", "content": "what is 6*7?"}],
+                optional_params={
+                    "api_key": "deployment-secret",
+                    "base_url": "https://deployment.invalid",
+                    "temperature": 0.1,
+                },
+                kwargs={"client": object(), "model_info": {"id": "deployment-id"}},
+                logging_obj=_LoggingStub(),
+                custom_llm_provider="provider",
+                stream=False,
+            )
+    finally:
+        reset_agentic_loop_routing_context(routing_token)
+
+    assert result is followup
+    direct_acompletion.assert_not_awaited()
+    router_acompletion.assert_awaited_once()
+    call_kwargs = router_acompletion.await_args.kwargs
+    assert call_kwargs["model"] == "primary-model-group"
+    assert call_kwargs["messages"] == _patched_messages()
+    assert call_kwargs["temperature"] == 0.1
+    assert "api_key" not in call_kwargs
+    assert "base_url" not in call_kwargs
+    assert "client" not in call_kwargs
+    assert "model_info" not in call_kwargs
+
+
+@pytest.mark.asyncio
+async def test_router_sets_and_clears_agentic_followup_context():
+    router = litellm.Router(model_list=[])
+    response = _plain_model_response("done")
+    observed_contexts: list[AgenticLoopRoutingContext | None] = []
+
+    async def routed_call(**kwargs: object) -> ModelResponse:
+        observed_contexts.append(get_agentic_loop_routing_context())
+        return response
+
+    try:
+        with patch.object(router, "async_function_with_fallbacks", side_effect=routed_call):
+            result = await router.acompletion(
+                model="primary-model-group",
+                messages=[{"role": "user", "content": "hi"}],
+            )
+    finally:
+        router.discard()
+
+    assert result is response
+    assert len(observed_contexts) == 1
+    assert observed_contexts[0] is not None
+    assert observed_contexts[0].model_group == "primary-model-group"
+    assert get_agentic_loop_routing_context() is None
+
+
+@pytest.mark.asyncio
+async def test_agentic_followup_uses_router_fallback_after_primary_rate_limit(
+    restore_callbacks,
+):
+    router = litellm.Router(
+        model_list=[
+            {
+                "model_name": "primary-model-group",
+                "litellm_params": {
+                    "model": "openai/gpt-4o-mini",
+                    "api_key": "primary-key",
+                    "mock_response": "litellm.RateLimitError",
+                },
+            },
+            {
+                "model_name": "fallback-model-group",
+                "litellm_params": {
+                    "model": "openai/gpt-4o-mini",
+                    "api_key": "fallback-key",
+                    "mock_response": "fallback answer",
+                },
+            },
+        ],
+        fallbacks=[{"primary-model-group": ["fallback-model-group"]}],
+        num_retries=0,
+    )
+    plan = AgenticLoopPlan(
+        run_agentic_loop=True,
+        request_patch=AgenticLoopRequestPatch(messages=_patched_messages()),
+    )
+    logger = _ToolCallOnlyLogger(plan=plan, tool_calls={"tool_calls": [{"id": "call_abc"}]})
+    litellm.callbacks = [logger]
+    routing_token = set_agentic_loop_routing_context(
+        model_group="primary-model-group",
+        acompletion=router.acompletion,
+    )
+
+    try:
+        result = await maybe_run_chat_completion_agentic_loop(
+            response=_tool_call_model_response(),
+            model="openai/gpt-4o-mini",
+            messages=[{"role": "user", "content": "what is 6*7?"}],
+            optional_params={"api_key": "stale-deployment-key"},
+            kwargs={},
+            logging_obj=_LoggingStub(),
+            custom_llm_provider="openai",
+            stream=False,
+        )
+    finally:
+        reset_agentic_loop_routing_context(routing_token)
+        router.discard()
+
+    assert isinstance(result, ModelResponse)
+    assert result.choices[0].message.content == "fallback answer"
 
 
 @pytest.mark.asyncio

@@ -5,6 +5,7 @@ import BedrockGuardrailDetails, {
   BedrockGuardrailResponse,
 } from "@/components/view_logs/GuardrailViewer/BedrockGuardrailDetails";
 import ContentFilterDetails from "./ContentFilterDetails";
+import HeadroomDetails from "./HeadroomDetails";
 import CompliancePanel from "./CompliancePanel";
 
 // ── Interfaces ──────────────────────────────────────────────────────────────
@@ -71,7 +72,7 @@ interface GuardrailViewerProps {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-const PROVIDERS_WITH_CUSTOM_RENDERERS = new Set(["presidio", "bedrock", "litellm_content_filter"]);
+const PROVIDERS_WITH_CUSTOM_RENDERERS = new Set(["presidio", "bedrock", "litellm_content_filter", "headroom"]);
 
 /**
  * Extracts a plain string from guardrail_mode for display purposes.
@@ -618,6 +619,11 @@ const EvaluationCard = ({ entry }: { entry: GuardrailInformation }) => {
           {guardrailProvider === "litellm_content_filter" && guardrailResponse && (
             <div className="mt-3">
               <ContentFilterDetails response={guardrailResponse} />
+            </div>
+          )}
+          {guardrailProvider === "headroom" && guardrailResponse && (
+            <div className="mt-3">
+              <HeadroomDetails response={guardrailResponse} />
             </div>
           )}
           {guardrailProvider && !PROVIDERS_WITH_CUSTOM_RENDERERS.has(guardrailProvider) && guardrailResponse && (

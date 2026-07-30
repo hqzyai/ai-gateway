@@ -87,6 +87,9 @@ from litellm.litellm_core_utils.audio_utils.utils import (
 from litellm.litellm_core_utils.chat_completion_agentic_loop import (
     maybe_run_chat_completion_agentic_loop,
 )
+from litellm.litellm_core_utils.chat_completion_agentic_streaming import (
+    maybe_wrap_chat_completion_stream,
+)
 from litellm.litellm_core_utils.completion_timeout import CompletionTimeout
 from litellm.litellm_core_utils.dd_tracing import tracer
 from litellm.litellm_core_utils.get_litellm_params import (
@@ -703,6 +706,29 @@ async def acompletion(
             response.set_logging_event_loop(
                 loop=loop
             )  # sets the logging event loop if the user does sync streaming (e.g. on proxy for sagemaker calls)
+            optional_params = {
+                k: v
+                for k, v in completion_kwargs.items()
+                if v is not None
+                and k
+                not in (
+                    "model",
+                    "messages",
+                    "stream",
+                    "acompletion",
+                    "deployment_id",
+                )
+            }
+            response = maybe_wrap_chat_completion_stream(
+                response,
+                model=model,
+                messages=messages,
+                optional_params=optional_params,
+                kwargs=kwargs,
+                logging_obj=kwargs.get("litellm_logging_obj"),
+                custom_llm_provider=custom_llm_provider or "openai",
+                stream=bool(stream),
+            )
         return response
     except Exception as e:
         custom_llm_provider = custom_llm_provider or "openai"

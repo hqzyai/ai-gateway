@@ -66,6 +66,8 @@ const AddModelForm: React.FC<AddModelFormProps> = ({
   const { data: guardrailsData } = useGuardrails();
   const guardrailsList = guardrailsData?.guardrails.map((g) => g.guardrail_name);
   const { data: tagsList, isLoading: isTagsLoading, error: tagsError } = useTags();
+  const formProvider = Form.useWatch("custom_llm_provider", form) as Providers | undefined;
+  const activeProvider = formProvider ?? selectedProvider;
 
   const handleTestConnection = async () => {
     setIsTestingConnection(true);
@@ -94,8 +96,8 @@ const AddModelForm: React.FC<AddModelFormProps> = ({
   }, [providerMetadata]);
 
   const visibleProviderModels = useMemo(
-    () => getConfiguredProviderModels(selectedProvider, providerMetadata, providerModels),
-    [selectedProvider, providerMetadata, providerModels],
+    () => getConfiguredProviderModels(activeProvider, providerMetadata, providerModels),
+    [activeProvider, providerMetadata, providerModels],
   );
 
   const providerMetadataErrorText = providerMetadataError
@@ -199,7 +201,7 @@ const AddModelForm: React.FC<AddModelFormProps> = ({
                   </AntdSelect>
                 </Form.Item>
                 <LiteLLMModelNameField
-                  selectedProvider={selectedProvider}
+                  selectedProvider={activeProvider}
                   providerModels={visibleProviderModels}
                   getPlaceholder={getPlaceholder}
                 />
@@ -270,7 +272,7 @@ const AddModelForm: React.FC<AddModelFormProps> = ({
                             <span className="px-4 text-gray-500 text-sm">OR</span>
                             <div className="grow border-t border-gray-200"></div>
                           </div>
-                          <ProviderSpecificFields selectedProvider={selectedProvider} uploadProps={uploadProps} />
+                          <ProviderSpecificFields selectedProvider={activeProvider} uploadProps={uploadProps} />
                         </>
                       );
                     }

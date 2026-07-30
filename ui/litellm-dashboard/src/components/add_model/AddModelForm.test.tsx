@@ -1,4 +1,4 @@
-import { renderHook, screen, waitFor, renderWithProviders } from "../../../tests/test-utils";
+import { renderHook, screen, waitFor, renderWithProviders, within } from "../../../tests/test-utils";
 import userEvent from "@testing-library/user-event";
 import { Form } from "antd";
 import type { UploadProps } from "antd/es/upload";
@@ -41,6 +41,14 @@ vi.mock("../networking", async () => {
         default_model_placeholder: "gpt-3.5-turbo",
         credential_fields: [],
       },
+      {
+        provider: "SiliconFlow",
+        provider_display_name: "SiliconFlow",
+        litellm_provider: "siliconflow",
+        default_model_placeholder: "siliconflow/Qwen/Qwen3-8B",
+        models: ["siliconflow/deepseek-ai/DeepSeek-V4-Flash", "siliconflow/TeleAI/TeleSpeechASR"],
+        credential_fields: [],
+      },
     ]),
   };
 });
@@ -53,6 +61,14 @@ vi.mock("@/app/(dashboard)/hooks/providers/useProviderFields", () => ({
         provider_display_name: "OpenAI",
         litellm_provider: "openai",
         default_model_placeholder: "gpt-3.5-turbo",
+        credential_fields: [],
+      },
+      {
+        provider: "SiliconFlow",
+        provider_display_name: "SiliconFlow",
+        litellm_provider: "siliconflow",
+        default_model_placeholder: "siliconflow/Qwen/Qwen3-8B",
+        models: ["siliconflow/deepseek-ai/DeepSeek-V4-Flash", "siliconflow/TeleAI/TeleSpeechASR"],
         credential_fields: [],
       },
     ],
@@ -185,6 +201,22 @@ describe("AddModelForm", () => {
     renderWithProviders(<AddModelForm {...props} />);
 
     expect(await screen.findByRole("heading", { name: "Add Model" })).toBeInTheDocument();
+  });
+
+  it("should use the provider stored in the form to render its model dropdown", async () => {
+    const mockUseAuthorized = vi.mocked(await import("@/app/(dashboard)/hooks/useAuthorized"));
+    mockUseAuthorized.default.mockReturnValue(mockAuthorizedUser("proxy_admin", "user-1", true));
+
+    const props = createTestProps();
+    props.form.setFieldsValue({ custom_llm_provider: Providers.SiliconFlow });
+
+    renderWithProviders(<AddModelForm {...props} providerModels={[]} />);
+
+    const modelSelect = await screen.findByTestId("model-name-select");
+    await userEvent.click(within(modelSelect).getByRole("combobox"));
+
+    expect(await screen.findByText("siliconflow/deepseek-ai/DeepSeek-V4-Flash")).toBeInTheDocument();
+    expect(screen.getByText("siliconflow/TeleAI/TeleSpeechASR")).toBeInTheDocument();
   });
 
   it("should show proxy admin only (not team admin) - should not see Select Team dropdown unless switch is toggled", async () => {

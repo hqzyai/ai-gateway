@@ -26,6 +26,14 @@ class HeadroomGuardrailConfigModel(GuardrailConfigModel[BaseModel]):
             "forwards the request uncompressed instead of blocking it."
         ),
     )
+    enable_ccr: bool = Field(
+        default=True,
+        description=(
+            "When true (default), inject headroom_retrieve and run the CCR agentic loop "
+            "when compressed messages contain hash= markers. Set false for compress-only "
+            "mode (e.g. Hermes owns recall via lean-ctx MCP ctx_expand)."
+        ),
+    )
 
     @staticmethod
     def ui_friendly_name() -> str:

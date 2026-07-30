@@ -65,9 +65,14 @@ def test_get_provider_create_fields():
     assert siliconflow["default_model_placeholder"].startswith("siliconflow/")
     assert siliconflow["models"] == [
         "siliconflow/Qwen/Qwen3-8B",
+        "siliconflow/Qwen/Qwen3.6-27B",
+        "siliconflow/deepseek-ai/DeepSeek-V4-Flash",
         "siliconflow/BAAI/bge-m3",
+        "siliconflow/Qwen/Qwen3-VL-Embedding-8B",
         "siliconflow/Kwai-Kolors/Kolors",
         "siliconflow/Qwen/Qwen-Image-Edit-2509",
+        "siliconflow/Wan-AI/Wan2.2-I2V-A14B",
+        "siliconflow/TeleAI/TeleSpeechASR",
         "siliconflow/Wan-AI/Wan2.2-T2V-A14B",
     ]
     assert {field["key"] for field in siliconflow["credential_fields"]} == {

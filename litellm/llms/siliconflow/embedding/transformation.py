@@ -9,7 +9,7 @@ from litellm.llms.base_llm.chat.transformation import BaseLLMException
 from litellm.llms.base_llm.embedding.transformation import BaseEmbeddingConfig
 from litellm.secret_managers.main import get_secret_str
 from litellm.types.llms.openai import AllEmbeddingInputValues, AllMessageValues
-from litellm.types.utils import EmbeddingResponse, Usage
+from litellm.types.utils import EmbeddingResponse, PromptTokensDetailsWrapper, Usage
 
 from ..common_utils import SiliconFlowError, get_siliconflow_api_base, get_siliconflow_headers
 
@@ -25,6 +25,7 @@ class _SiliconFlowEmbeddingData(BaseModel):
 
 class _SiliconFlowEmbeddingUsage(BaseModel):
     prompt_tokens: int = 0
+    completion_tokens: int = 0
     total_tokens: int = 0
 
 
@@ -36,6 +37,29 @@ class _SiliconFlowEmbeddingResponse(BaseModel):
 
 
 class SiliconFlowEmbeddingConfig(BaseEmbeddingConfig):
+    VL_EMBEDDING_MODEL = "Qwen/Qwen3-VL-Embedding-8B"
+
+    @classmethod
+    def _transform_usage(cls, model: str, usage: _SiliconFlowEmbeddingUsage) -> Usage:
+        if model.removeprefix("siliconflow/") != cls.VL_EMBEDDING_MODEL:
+            return Usage(
+                prompt_tokens=usage.prompt_tokens,
+                completion_tokens=0,
+                total_tokens=usage.total_tokens,
+            )
+
+        image_tokens = max(usage.completion_tokens, usage.total_tokens - usage.prompt_tokens, 0)
+        input_tokens = max(usage.total_tokens, usage.prompt_tokens + image_tokens)
+        return Usage(
+            prompt_tokens=input_tokens,
+            completion_tokens=0,
+            total_tokens=input_tokens,
+            prompt_tokens_details=PromptTokensDetailsWrapper(
+                text_tokens=usage.prompt_tokens,
+                image_tokens=image_tokens,
+            ),
+        )
+
     def get_supported_openai_params(self, model: str) -> list[str]:
         return ["encoding_format", "dimensions", "user", "truncate", "extra_headers"]
 
@@ -115,11 +139,7 @@ class SiliconFlowEmbeddingConfig(BaseEmbeddingConfig):
             object=response.object,
             data=[item.model_dump() for item in response.data],
             model=response.model or model,
-            usage=Usage(
-                prompt_tokens=response.usage.prompt_tokens,
-                completion_tokens=0,
-                total_tokens=response.usage.total_tokens,
-            ),
+            usage=self._transform_usage(model=model, usage=response.usage),
         )
 
     def validate_environment(
