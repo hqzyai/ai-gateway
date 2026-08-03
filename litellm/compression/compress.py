@@ -3,19 +3,19 @@ Main compress() function — normalizes input messages, orchestrates BM25/embedd
 scoring, message stubbing, and retrieval tool injection.
 """
 
+import math
 from typing import Any, Dict, List, Optional, Set, Tuple, Union, cast
 
 from litellm.caching.dual_cache import DualCache
 from litellm.compression.message_stubbing import (
     extract_key,
     stub_message,
-    truncate_message,
 )
 from litellm.compression.retrieval_tool import build_retrieval_tool
 from litellm.compression.scoring.bm25 import bm25_score_messages
 from litellm.litellm_core_utils.token_counter import token_counter
 from litellm.types.compression import CompressedResult
-from litellm.types.utils import CallTypes
+from litellm.types.utils import CallTypes, SelectTokenizerResponse
 
 # CallTypes that produce Anthropic-shaped messages (structured content blocks).
 # Everything else is treated as OpenAI chat-completions shape.
@@ -255,6 +255,60 @@ def _combine_scores(
     return [bm25_weight * b + emb_weight * e for b, e in zip(norm_bm25, norm_emb)]
 
 
+def _count_message_tokens(
+    model: str,
+    messages: List[Any],
+    custom_tokenizer: Optional[SelectTokenizerResponse],
+    token_count_multiplier: float,
+) -> int:
+    if custom_tokenizer is None:
+        token_count = token_counter(model=model, messages=messages)
+    else:
+        token_count = token_counter(model=model, messages=messages, custom_tokenizer=custom_tokenizer)
+    return math.ceil(token_count * token_count_multiplier)
+
+
+def _truncate_message_to_budget(
+    message: dict,
+    max_tokens: int,
+    model: str,
+    custom_tokenizer: Optional[SelectTokenizerResponse],
+    token_count_multiplier: float,
+) -> Optional[dict]:
+    source = _content_to_text(message.get("content", ""))
+    if not source:
+        return None
+
+    marker = "\n...[truncated for context window]...\n"
+    lower = 0
+    upper = len(source)
+    best: Optional[dict] = None
+
+    while lower <= upper:
+        retained_chars = (lower + upper) // 2
+        if retained_chars >= len(source):
+            truncated_content = source
+        else:
+            prefix_chars = retained_chars * 7 // 10
+            suffix_chars = retained_chars - prefix_chars
+            suffix = source[-suffix_chars:] if suffix_chars > 0 else ""
+            truncated_content = source[:prefix_chars] + marker + suffix
+        candidate = {**message, "content": truncated_content}
+        candidate_tokens = _count_message_tokens(
+            model=model,
+            messages=[candidate],
+            custom_tokenizer=custom_tokenizer,
+            token_count_multiplier=token_count_multiplier,
+        )
+        if candidate_tokens <= max_tokens:
+            best = candidate
+            lower = retained_chars + 1
+        else:
+            upper = retained_chars - 1
+
+    return best
+
+
 def _select_kept_indices_for_budget(
     normalized_messages: List[dict],
     original_messages: List[dict],
@@ -263,13 +317,17 @@ def _select_kept_indices_for_budget(
     model: str,
     initial_kept_indices: Set[int],
     tool_exchange_spans: List[Set[int]],
+    custom_tokenizer: Optional[SelectTokenizerResponse],
+    token_count_multiplier: float,
 ) -> Tuple[Set[int], Dict[int, dict]]:
     kept_indices = set(initial_kept_indices)
     current_tokens = 0
     for i in kept_indices:
-        current_tokens += token_counter(
+        current_tokens += _count_message_tokens(
             model=model,
-            text=cast(str, normalized_messages[i].get("content", "") or ""),
+            messages=[original_messages[i]],
+            custom_tokenizer=custom_tokenizer,
+            token_count_multiplier=token_count_multiplier,
         )
 
     # Fill token budget from highest-scoring units.
@@ -305,9 +363,11 @@ def _select_kept_indices_for_budget(
             continue
         msg_tokens = 0
         for idx in indices:
-            msg_tokens += token_counter(
+            msg_tokens += _count_message_tokens(
                 model=model,
-                text=cast(str, normalized_messages[idx].get("content", "") or ""),
+                messages=[original_messages[idx]],
+                custom_tokenizer=custom_tokenizer,
+                token_count_multiplier=token_count_multiplier,
             )
         remaining = compression_target - current_tokens
 
@@ -321,14 +381,23 @@ def _select_kept_indices_for_budget(
         elif can_truncate and len(indices) == 1 and remaining >= 100:
             # Too large to fit whole single message, but we have budget — truncate it.
             idx = indices[0]
-            truncated = truncate_message(original_messages[idx], remaining)
-            truncated_tokens = token_counter(
+            truncated = _truncate_message_to_budget(
+                message=original_messages[idx],
+                max_tokens=remaining,
                 model=model,
-                text=truncated.get("content", "") or "",
+                custom_tokenizer=custom_tokenizer,
+                token_count_multiplier=token_count_multiplier,
             )
-            truncated_overrides[idx] = truncated
-            kept_indices.add(idx)
-            current_tokens += truncated_tokens
+            if truncated is not None:
+                truncated_tokens = _count_message_tokens(
+                    model=model,
+                    messages=[truncated],
+                    custom_tokenizer=custom_tokenizer,
+                    token_count_multiplier=token_count_multiplier,
+                )
+                truncated_overrides[idx] = truncated
+                kept_indices.add(idx)
+                current_tokens += truncated_tokens
 
     return kept_indices, truncated_overrides
 
@@ -350,6 +419,8 @@ def compress(
     embedding_model: Optional[str] = None,
     embedding_model_params: Optional[Dict[str, Any]] = None,
     compression_cache: Optional[DualCache] = None,
+    custom_tokenizer: Optional[SelectTokenizerResponse] = None,
+    token_count_multiplier: float = 1.0,
 ) -> CompressedResult:
     """
     Compress a list of messages by replacing low-relevance content with stubs.
@@ -378,6 +449,10 @@ def compress(
             ``litellm.embedding()`` when ``embedding_model`` is set.
         compression_cache: Passed through to ``litellm.embedding()`` for
             cross-turn caching of embedding vectors.
+        custom_tokenizer: Resolved tokenizer used consistently for message
+            selection and compression accounting.
+        token_count_multiplier: Model-specific calibration applied to every
+            compression token count.
 
     Returns:
         A ``CompressedResult`` dict containing compressed messages, token
@@ -392,9 +467,12 @@ def compress(
     if compression_target is None:
         compression_target = compression_trigger * 7 // 10
 
-    original_tokens = token_counter(
+    effective_token_count_multiplier = max(token_count_multiplier, 1.0)
+    original_tokens = _count_message_tokens(
         model=model,
         messages=cast(List[Any], original_messages),
+        custom_tokenizer=custom_tokenizer,
+        token_count_multiplier=effective_token_count_multiplier,
     )
 
     # Pass through if below trigger
@@ -462,6 +540,8 @@ def compress(
         model=model,
         initial_kept_indices=kept_indices,
         tool_exchange_spans=tool_exchange_spans,
+        custom_tokenizer=custom_tokenizer,
+        token_count_multiplier=effective_token_count_multiplier,
     )
 
     # Build compressed messages and cache
@@ -487,9 +567,11 @@ def compress(
     # Build retrieval tool in the target request schema
     tools = _build_retrieval_tools(list(cache.keys()), call_type=call_type_str)
 
-    compressed_tokens = token_counter(
+    compressed_tokens = _count_message_tokens(
         model=model,
         messages=cast(List[Any], compressed_messages),
+        custom_tokenizer=custom_tokenizer,
+        token_count_multiplier=effective_token_count_multiplier,
     )
 
     return CompressedResult(
@@ -500,3 +582,4 @@ def compress(
         cache=cache,
         tools=tools,
     )
+

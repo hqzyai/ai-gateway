@@ -15,6 +15,8 @@ class CompressionInterceptionConfig(TypedDict, total=False):
             enabled: true
             compression_trigger: 100000
             compression_target: 70000
+            context_window_tokens: 131072
+            safety_buffer_tokens: 4096
             embedding_model: "text-embedding-3-small"
             embedding_model_params:
               dimensions: 512
@@ -23,6 +25,8 @@ class CompressionInterceptionConfig(TypedDict, total=False):
     enabled: bool
     compression_trigger: int
     compression_target: Optional[int]
+    context_window_tokens: Optional[int]
+    safety_buffer_tokens: int
     embedding_model: Optional[str]
     embedding_model_params: Optional[Dict[str, Any]]
 

@@ -5,25 +5,78 @@ CustomLogger that compresses inbound Anthropic Messages requests and fulfills
 litellm_content_retrieve tool calls server-side via the typed agentic loop plan.
 """
 
+import json
+import math
 import time
 import uuid
+from functools import lru_cache
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, cast
 
+import litellm
+from tokenizers import Tokenizer
 from litellm._logging import verbose_logger
 from litellm.compression import compress
 from litellm.integrations.custom_logger import CustomLogger
+from litellm.litellm_core_utils.prompt_templates.factory import (
+    get_tool_calls_from_response,
+)
+from litellm.litellm_core_utils.token_counter import token_counter
 from litellm.types.integrations.compression_interception import (
     CompressionInterceptionConfig,
     CompressionSavingsMetadata,
 )
 from litellm.types.integrations.custom_logger import (
+    CHAT_COMPLETION_AGENTIC_SURFACE,
     AgenticLoopPlan,
     AgenticLoopRequestPatch,
 )
-from litellm.types.utils import CallTypes
+from litellm.types.utils import (
+    CallTypes,
+    CustomHuggingfaceTokenizer,
+    SelectTokenizerResponse,
+)
+from litellm.utils import _select_tokenizer
 
 LITELLM_CONTENT_RETRIEVE_TOOL_NAME = "litellm_content_retrieve"
 _CACHE_TTL_SECONDS = 15 * 60
+_SUPPORTED_CALL_TYPES = frozenset(
+    {
+        CallTypes.completion,
+        CallTypes.acompletion,
+        CallTypes.anthropic_messages,
+    }
+)
+
+
+def _positive_int(value: object) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        return None
+    return value
+
+
+def _compression_token_count_multiplier(kwargs: Dict[str, Any]) -> float:
+    model_info = kwargs.get("model_info")
+    if not isinstance(model_info, dict):
+        return 1.0
+    value = model_info.get("compression_token_count_multiplier")
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return 1.0
+    return max(float(value), 1.0)
+
+
+@lru_cache(maxsize=32)
+def _load_local_tokenizer(tokenizer_json_path: str) -> SelectTokenizerResponse:
+    tokenizer = Tokenizer.from_file(tokenizer_json_path)
+    return {"type": "huggingface_tokenizer", "tokenizer": tokenizer}
+
+
+def _local_tokenizer_path(tokenizer_json_path: str) -> Path:
+    configured_path = Path(tokenizer_json_path).expanduser()
+    if configured_path.is_absolute():
+        return configured_path.resolve()
+    package_root = Path(litellm.__file__).resolve().parent
+    return (package_root / configured_path).resolve()
 
 
 def _compression_savings_from_counts(
@@ -77,6 +130,8 @@ class CompressionInterceptionLogger(CustomLogger):
         enabled: bool = True,
         compression_trigger: int = 200_000,
         compression_target: Optional[int] = None,
+        context_window_tokens: Optional[int] = None,
+        safety_buffer_tokens: int = 4096,
         embedding_model: Optional[str] = None,
         embedding_model_params: Optional[Dict[str, Any]] = None,
     ):
@@ -84,6 +139,8 @@ class CompressionInterceptionLogger(CustomLogger):
         self.enabled = enabled
         self.compression_trigger = compression_trigger
         self.compression_target = compression_target
+        self.context_window_tokens = context_window_tokens
+        self.safety_buffer_tokens = safety_buffer_tokens
         self.embedding_model = embedding_model
         self.embedding_model_params = embedding_model_params
         self._compression_cache_by_call_id: Dict[str, Tuple[Dict[str, str], float]] = {}
@@ -94,6 +151,8 @@ class CompressionInterceptionLogger(CustomLogger):
             enabled=bool(config.get("enabled", True)),
             compression_trigger=int(config.get("compression_trigger", 200_000)),
             compression_target=config.get("compression_target"),
+            context_window_tokens=config.get("context_window_tokens"),
+            safety_buffer_tokens=int(config.get("safety_buffer_tokens", 4096)),
             embedding_model=config.get("embedding_model"),
             embedding_model_params=config.get("embedding_model_params"),
         )
@@ -120,7 +179,8 @@ class CompressionInterceptionLogger(CustomLogger):
     ) -> Optional[dict]:
         if not self.enabled:
             return None
-        if call_type is not None and call_type != CallTypes.anthropic_messages:
+        compression_call_type = call_type or CallTypes.anthropic_messages
+        if compression_call_type not in _SUPPORTED_CALL_TYPES:
             return None
         if int(kwargs.get("_agentic_loop_depth", 0) or 0) > 0:
             return None
@@ -134,38 +194,51 @@ class CompressionInterceptionLogger(CustomLogger):
             return None
 
         self._prune_expired_cache()
+        custom_tokenizer = self._resolve_custom_tokenizer(kwargs=kwargs, model=model)
+        token_count_multiplier = _compression_token_count_multiplier(kwargs)
+        compression_trigger, compression_target = self._compression_limits(
+            kwargs=kwargs,
+            model=model,
+            custom_tokenizer=custom_tokenizer,
+            token_count_multiplier=token_count_multiplier,
+        )
 
         compressed = compress(  # type: ignore
             messages=messages,
             model=model,
-            call_type=CallTypes.anthropic_messages,
-            compression_trigger=self.compression_trigger,
-            compression_target=self.compression_target,
+            call_type=compression_call_type,
+            compression_trigger=compression_trigger,
+            compression_target=compression_target,
             embedding_model=self.embedding_model,
             embedding_model_params=self.embedding_model_params,
+            custom_tokenizer=custom_tokenizer,
+            token_count_multiplier=token_count_multiplier,
         )
 
         cache = cast(Dict[str, str], compressed.get("cache", {}))
         skip_reason = cast(Optional[str], compressed.get("compression_skipped_reason"))
         compressed_tools = cast(List[Dict[str, Any]], compressed.get("tools", []))
+        compressed_messages = cast(List[Dict[str, Any]], compressed.get("messages", messages))
+        compression_applied = skip_reason is None and compressed_messages != messages
 
         # Only mutate kwargs when compression actually produced a result.
         # If compression was a no-op (below trigger, invalid tool sequence, etc.),
         # leave ``messages`` and ``tools`` untouched — injecting an empty
         # ``tools: []`` onto a request that originally had no tools breaks
         # Anthropic Messages requests.
-        if cache:
-            kwargs["messages"] = compressed["messages"]
+        if compression_applied:
+            kwargs["messages"] = compressed_messages
             if compressed_tools:
                 kwargs["tools"] = self._merge_tools(
                     existing_tools=cast(Optional[List[Dict[str, Any]]], kwargs.get("tools")),
                     compressed_tools=compressed_tools,
                 )
             call_id = cast(Optional[str], kwargs.get("litellm_call_id"))
-            if not call_id:
-                call_id = str(uuid.uuid4())
-                kwargs["litellm_call_id"] = call_id
-            self._compression_cache_by_call_id[call_id] = (cache, time.time())
+            if cache:
+                if not call_id:
+                    call_id = str(uuid.uuid4())
+                    kwargs["litellm_call_id"] = call_id
+                self._compression_cache_by_call_id[call_id] = (cache, time.time())
             savings = _compression_savings_from_counts(
                 original_tokens=compressed.get("original_tokens"),
                 compressed_tokens=compressed.get("compressed_tokens"),
@@ -188,6 +261,109 @@ class CompressionInterceptionLogger(CustomLogger):
             )
 
         return kwargs
+
+    def _compression_limits(
+        self,
+        kwargs: Dict[str, Any],
+        model: str,
+        custom_tokenizer: Optional[SelectTokenizerResponse] = None,
+        token_count_multiplier: float = 1.0,
+    ) -> Tuple[int, Optional[int]]:
+        requested_output_tokens = next(
+            (
+                value
+                for key in ("max_tokens", "max_completion_tokens", "max_output_tokens")
+                if (value := _positive_int(kwargs.get(key))) is not None
+            ),
+            None,
+        )
+        context_window_tokens = (
+            self.context_window_tokens or self._model_info_context_window(kwargs) or self._model_context_window(model)
+        )
+        if requested_output_tokens is None or context_window_tokens is None:
+            return self.compression_trigger, self.compression_target
+
+        tool_schema_tokens = self._tool_schema_tokens(
+            model=model,
+            tools=kwargs.get("tools"),
+            custom_tokenizer=custom_tokenizer,
+            token_count_multiplier=token_count_multiplier,
+        )
+        budget_target = max(
+            context_window_tokens - requested_output_tokens - tool_schema_tokens - max(self.safety_buffer_tokens, 0),
+            1,
+        )
+        compression_target = (
+            min(self.compression_target, budget_target) if self.compression_target is not None else budget_target
+        )
+        return min(self.compression_trigger, compression_target), compression_target
+
+    @staticmethod
+    def _model_info_context_window(kwargs: Dict[str, Any]) -> int | None:
+        model_info = kwargs.get("model_info")
+        if not isinstance(model_info, dict):
+            return None
+        return _positive_int(model_info.get("max_input_tokens"))
+
+    @staticmethod
+    def _model_context_window(model: str) -> int | None:
+        try:
+            model_info = litellm.get_model_info(model=model)
+        except Exception:
+            return None
+        return _positive_int(model_info.get("max_input_tokens"))
+
+    @staticmethod
+    def _tool_schema_tokens(
+        model: str,
+        tools: object,
+        custom_tokenizer: Optional[SelectTokenizerResponse] = None,
+        token_count_multiplier: float = 1.0,
+    ) -> int:
+        if not isinstance(tools, list) or not tools:
+            return 0
+        try:
+            serialized_tools = json.dumps(tools, ensure_ascii=False, separators=(",", ":"), default=str)
+            if custom_tokenizer is None:
+                token_count = token_counter(model=model, text=serialized_tools)
+            else:
+                token_count = token_counter(model=model, text=serialized_tools, custom_tokenizer=custom_tokenizer)
+            return math.ceil(token_count * max(token_count_multiplier, 1.0))
+        except Exception:
+            return 0
+
+    @staticmethod
+    def _resolve_custom_tokenizer(
+        kwargs: Dict[str, Any],
+        model: str,
+    ) -> Optional[SelectTokenizerResponse]:
+        model_info = kwargs.get("model_info")
+        if not isinstance(model_info, dict):
+            return None
+        tokenizer_config = model_info.get("custom_tokenizer")
+        if not isinstance(tokenizer_config, dict):
+            return None
+        try:
+            tokenizer_json_path = tokenizer_config.get("tokenizer_json_path")
+            if isinstance(tokenizer_json_path, str) and tokenizer_json_path:
+                return _load_local_tokenizer(str(_local_tokenizer_path(tokenizer_json_path)))
+            if not isinstance(tokenizer_config.get("identifier"), str):
+                return None
+            if not isinstance(tokenizer_config.get("revision"), str):
+                return None
+            auth_token = tokenizer_config.get("auth_token")
+            if auth_token is not None and not isinstance(auth_token, str):
+                return None
+            return _select_tokenizer(
+                model=model,
+                custom_tokenizer=cast(CustomHuggingfaceTokenizer, tokenizer_config),
+            )
+        except Exception:
+            verbose_logger.exception(
+                "CompressionInterception: failed to load model_info.custom_tokenizer for model=%s",
+                model,
+            )
+            return None
 
     async def async_should_run_agentic_loop(
         self,
@@ -234,31 +410,56 @@ class CompressionInterceptionLogger(CustomLogger):
         cache = self._get_cache(call_id=call_id)
         retrieval_results = [self._resolve_retrieval_content(tc, cache) for tc in tool_calls]
 
-        assistant_message = {
-            "role": "assistant",
-            "content": thinking_blocks
-            + [
+        if kwargs.get("_agentic_loop_api_surface") == CHAT_COMPLETION_AGENTIC_SURFACE:
+            assistant_message = {
+                "role": "assistant",
+                "tool_calls": [
+                    {
+                        "id": tc.get("id"),
+                        "type": "function",
+                        "function": {
+                            "name": tc.get("name", LITELLM_CONTENT_RETRIEVE_TOOL_NAME),
+                            "arguments": json.dumps(tc.get("input", {}), ensure_ascii=False),
+                        },
+                    }
+                    for tc in tool_calls
+                ],
+            }
+            tool_messages = [
                 {
-                    "type": "tool_use",
-                    "id": tc.get("id"),
-                    "name": tc.get("name", LITELLM_CONTENT_RETRIEVE_TOOL_NAME),
-                    "input": tc.get("input", {}),
-                }
-                for tc in tool_calls
-            ],
-        }
-        user_message = {
-            "role": "user",
-            "content": [
-                {
-                    "type": "tool_result",
-                    "tool_use_id": tool_calls[i].get("id"),
+                    "role": "tool",
+                    "tool_call_id": tool_calls[i].get("id"),
                     "content": retrieval_results[i],
                 }
                 for i in range(len(tool_calls))
-            ],
-        }
-        follow_up_messages = messages + [assistant_message, user_message]
+            ]
+            follow_up_messages = messages + [assistant_message] + tool_messages
+        else:
+            assistant_message = {
+                "role": "assistant",
+                "content": thinking_blocks
+                + [
+                    {
+                        "type": "tool_use",
+                        "id": tc.get("id"),
+                        "name": tc.get("name", LITELLM_CONTENT_RETRIEVE_TOOL_NAME),
+                        "input": tc.get("input", {}),
+                    }
+                    for tc in tool_calls
+                ],
+            }
+            user_message = {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": tool_calls[i].get("id"),
+                        "content": retrieval_results[i],
+                    }
+                    for i in range(len(tool_calls))
+                ],
+            }
+            follow_up_messages = messages + [assistant_message, user_message]
 
         max_tokens = cast(
             Optional[int],
@@ -326,35 +527,34 @@ class CompressionInterceptionLogger(CustomLogger):
         return f"[compressed content key '{key}' not found]"
 
     def _extract_retrieval_tool_calls(self, response: Any) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        tool_calls = [
+            {
+                "id": tool_call["id"],
+                "type": "tool_use",
+                "name": LITELLM_CONTENT_RETRIEVE_TOOL_NAME,
+                "input": tool_call["arguments"],
+            }
+            for tool_call in get_tool_calls_from_response(response)
+            if tool_call["name"] == LITELLM_CONTENT_RETRIEVE_TOOL_NAME
+        ]
+
         if isinstance(response, dict):
             content = response.get("content", [])
         else:
             content = getattr(response, "content", []) or []
 
         if not isinstance(content, list):
-            return [], []
+            return tool_calls, []
 
-        tool_calls: List[Dict[str, Any]] = []
         thinking_blocks: List[Dict[str, Any]] = []
 
         for block in content:
             if isinstance(block, dict):
                 block_type = block.get("type")
-                block_name = block.get("name")
                 if block_type in ("thinking", "redacted_thinking"):
                     thinking_blocks.append(block)
-                if block_type == "tool_use" and block_name == LITELLM_CONTENT_RETRIEVE_TOOL_NAME:
-                    tool_calls.append(
-                        {
-                            "id": block.get("id"),
-                            "type": "tool_use",
-                            "name": block_name,
-                            "input": block.get("input", {}),
-                        }
-                    )
             else:
                 block_type = getattr(block, "type", None)
-                block_name = getattr(block, "name", None)
                 if block_type == "thinking":
                     thinking_blocks.append(
                         {
@@ -368,15 +568,6 @@ class CompressionInterceptionLogger(CustomLogger):
                         {
                             "type": "redacted_thinking",
                             "data": getattr(block, "data", ""),
-                        }
-                    )
-                if block_type == "tool_use" and block_name == LITELLM_CONTENT_RETRIEVE_TOOL_NAME:
-                    tool_calls.append(
-                        {
-                            "id": getattr(block, "id", None),
-                            "type": "tool_use",
-                            "name": block_name,
-                            "input": getattr(block, "input", {}) or {},
                         }
                     )
 
