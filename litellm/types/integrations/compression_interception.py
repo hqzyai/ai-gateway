@@ -2,7 +2,7 @@
 Type definitions for Compression Interception integration.
 """
 
-from typing import Any, Dict, Literal, Optional, TypedDict
+from typing import Any, Literal, Optional, TypedDict
 
 
 class CompressionInterceptionConfig(TypedDict, total=False):
@@ -28,7 +28,7 @@ class CompressionInterceptionConfig(TypedDict, total=False):
     context_window_tokens: Optional[int]
     safety_buffer_tokens: int
     embedding_model: Optional[str]
-    embedding_model_params: Optional[Dict[str, Any]]
+    embedding_model_params: Optional[dict[str, Any]]
 
 
 class CompressionSavingsMetadata(TypedDict):
@@ -41,3 +41,12 @@ class CompressionSavingsMetadata(TypedDict):
     tokens_after: int
     tokens_saved: int
     source: Literal["compression_interception"]
+
+
+class CompressionRetrievalMetadata(TypedDict):
+    source: Literal["compression_interception"]
+    retrieval_requested: bool
+    requested_keys: int
+    cache_hits: int
+    cache_misses: int
+    second_call_success: bool

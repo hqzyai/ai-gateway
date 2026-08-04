@@ -134,7 +134,7 @@ PY
   uv run --env-file .env python - <<'PY'
 import os
 
-print(os.environ.get("COMPRESSION_BACKEND", "lean-ctx"))
+print(os.environ.get("COMPRESSION_BACKEND", "none"))
 print(os.environ.get("COMPRESSION_PROXY_URL", ""))
 print(os.environ.get("COMPRESSION_PROXY_TOKEN", ""))
 print(os.environ.get("HEADROOM_PROXY_PORT", "8787"))
@@ -143,6 +143,8 @@ PY
 )
 
 case "$compression_backend" in
+  none)
+    ;;
   headroom)
     export COMPRESSION_PROXY_URL="${configured_compression_url:-http://127.0.0.1:${headroom_proxy_port}}"
     export COMPRESSION_PROXY_TOKEN="${configured_compression_token:-}"
@@ -156,12 +158,16 @@ case "$compression_backend" in
     export COMPRESSION_PROXY_TOKEN="${configured_compression_token:-$(lean-ctx proxy token)}"
     ;;
   *)
-    echo "COMPRESSION_BACKEND must be 'headroom' or 'lean-ctx'" >&2
+    echo "COMPRESSION_BACKEND must be 'none', 'headroom', or 'lean-ctx'" >&2
     exit 1
     ;;
 esac
 
-echo "Compression backend: ${compression_backend} (${COMPRESSION_PROXY_URL})"
+if [[ "$compression_backend" == "none" ]]; then
+  echo "Compression backend: disabled"
+else
+  echo "Compression backend: ${compression_backend} (${COMPRESSION_PROXY_URL})"
+fi
 echo "LiteLLM Dashboard: http://localhost:4000/ui/"
 exec uv run --env-file .env python litellm/proxy/proxy_cli.py \
   --config litellm/proxy/dev_config.yaml \

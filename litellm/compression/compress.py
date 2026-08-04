@@ -4,7 +4,9 @@ scoring, message stubbing, and retrieval tool injection.
 """
 
 import math
-from typing import Any, Dict, List, Optional, Set, Tuple, Union, cast
+import re
+from collections.abc import Mapping, Sequence, Set as AbstractSet
+from typing import Any, Optional, Union, cast
 
 from litellm.caching.dual_cache import DualCache
 from litellm.compression.message_stubbing import (
@@ -30,6 +32,15 @@ _SUPPORTED_CALL_TYPES = frozenset(
         CallTypes.anthropic_messages.value,
     }
 )
+_RECENT_WORKING_SET_UNITS = 4
+_HISTORY_COVERAGE_BUCKETS = 4
+_HISTORY_COVERAGE_BUDGET_RATIO = 0.2
+_RECENT_WORKING_SET_BUDGET_RATIO = 0.4
+_RELEVANCE_WEIGHT = 0.45
+_RECENCY_WEIGHT = 0.35
+_CONVERSATIONAL_ROLE_WEIGHT = 0.2
+
+CandidateUnit = tuple[float, tuple[int, ...], bool]
 
 
 def _normalize_call_type(call_type: Union[CallTypes, str]) -> str:
@@ -43,7 +54,7 @@ def _is_anthropic_call_type(call_type: str) -> bool:
     return call_type in _ANTHROPIC_CALL_TYPES
 
 
-def _build_retrieval_tools(keys: List[str], call_type: str) -> List[dict]:
+def _build_retrieval_tools(keys: Sequence[str], call_type: str) -> Sequence[Mapping[str, Any]]:
     """
     Build retrieval tool definitions in the target request schema.
 
@@ -62,7 +73,7 @@ def _build_retrieval_tools(keys: List[str], call_type: str) -> List[dict]:
     from litellm.llms.anthropic.chat.transformation import AnthropicConfig
 
     anthropic_tools, _mcp_servers = AnthropicConfig()._map_tools(openai_tools)
-    return cast(List[dict], anthropic_tools)
+    return cast(list[dict], anthropic_tools)
 
 
 def _content_to_text(content: Any) -> str:
@@ -76,8 +87,8 @@ def _content_to_text(content: Any) -> str:
 
     Implemented iteratively (stack-based) to avoid unbounded recursion.
     """
-    parts: List[str] = []
-    stack: List[Any] = [content]
+    parts: list[str] = []
+    stack: list[Any] = [content]
     while stack:
         item = stack.pop()
         if isinstance(item, str):
@@ -96,9 +107,9 @@ def _content_to_text(content: Any) -> str:
 
 
 def _normalize_messages_for_compression(
-    messages: List[dict],
+    messages: Sequence[Mapping[str, Any]],
     call_type: str,
-) -> Tuple[List[dict], List[dict]]:
+) -> tuple[Sequence[Mapping[str, Any]], Sequence[Mapping[str, Any]]]:
     """
     Normalize each original message to a text-surrogate content for scoring.
 
@@ -110,9 +121,9 @@ def _normalize_messages_for_compression(
             f"Unsupported call_type={call_type!r} for compression. Expected one of: {sorted(_SUPPORTED_CALL_TYPES)}."
         )
 
-    original_messages: List[Dict[str, Any]] = [dict(m) for m in messages]
+    original_messages = [dict(m) for m in messages]
 
-    normalized_messages: List[dict] = []
+    normalized_messages = []
     for msg in original_messages:
         normalized_messages.append(
             {
@@ -123,7 +134,7 @@ def _normalize_messages_for_compression(
     return normalized_messages, original_messages
 
 
-def _extract_last_user_message(messages: List[dict]) -> str:
+def _extract_last_user_message(messages: Sequence[Mapping[str, Any]]) -> str:
     """Return the text content of the last user message."""
     for msg in reversed(messages):
         if msg.get("role") == "user":
@@ -131,10 +142,10 @@ def _extract_last_user_message(messages: List[dict]) -> str:
     return ""
 
 
-def _extract_tool_use_ids(content: Any) -> List[str]:
+def _extract_tool_use_ids(content: Any) -> Sequence[str]:
     if not isinstance(content, list):
         return []
-    tool_use_ids: List[str] = []
+    tool_use_ids = []
     for part in content:
         if not isinstance(part, dict):
             continue
@@ -146,10 +157,10 @@ def _extract_tool_use_ids(content: Any) -> List[str]:
     return tool_use_ids
 
 
-def _extract_tool_result_ids(content: Any) -> Set[str]:
+def _extract_tool_result_ids(content: Any) -> AbstractSet[str]:
     if not isinstance(content, list):
         return set()
-    tool_result_ids: Set[str] = set()
+    tool_result_ids = set()
     for part in content:
         if not isinstance(part, dict):
             continue
@@ -161,16 +172,52 @@ def _extract_tool_result_ids(content: Any) -> Set[str]:
     return tool_result_ids
 
 
+def _is_skill_tool_name(name: Any) -> bool:
+    if not isinstance(name, str):
+        return False
+    return any(segment in {"skill", "skills"} for segment in re.split(r"[^a-z0-9]+", name.lower()))
+
+
+def _message_calls_skill_tool(message: Mapping[str, Any]) -> bool:
+    raw_tool_calls = message.get("tool_calls")
+    if isinstance(raw_tool_calls, list):
+        for tool_call in raw_tool_calls:
+            if not isinstance(tool_call, dict):
+                continue
+            function = tool_call.get("function")
+            if isinstance(function, dict) and _is_skill_tool_name(function.get("name")):
+                return True
+
+    content = message.get("content")
+    if not isinstance(content, list):
+        return False
+    return any(
+        isinstance(part, dict) and part.get("type") == "tool_use" and _is_skill_tool_name(part.get("name"))
+        for part in content
+    )
+
+
+def _get_skill_tool_exchange_indices(
+    messages: Sequence[Mapping[str, Any]], tool_exchange_spans: Sequence[AbstractSet[int]]
+) -> frozenset[int]:
+    return frozenset(
+        idx
+        for span in tool_exchange_spans
+        if any(_message_calls_skill_tool(messages[span_idx]) for span_idx in span)
+        for idx in span
+    )
+
+
 def _extract_anthropic_tool_exchange_spans(
-    messages: List[dict],
-) -> Tuple[List[Set[int]], Optional[str]]:
+    messages: Sequence[Mapping[str, Any]],
+) -> tuple[Sequence[AbstractSet[int]], Optional[str]]:
     """
     Return atomic 2-message spans for Anthropic tool exchanges.
 
     Each assistant message containing `tool_use` must be immediately followed by a
     user message containing matching `tool_result` blocks for all tool_use ids.
     """
-    spans: List[Set[int]] = []
+    spans = []
     i = 0
     while i < len(messages):
         current = messages[i]
@@ -204,21 +251,87 @@ def _extract_anthropic_tool_exchange_spans(
     return spans, None
 
 
-def _get_protected_indices(messages: List[dict]) -> List[int]:
+def _extract_openai_tool_call_ids(tool_calls: Any) -> Optional[Sequence[str]]:
+    if not isinstance(tool_calls, list):
+        return None
+    tool_call_ids = []
+    for tool_call in tool_calls:
+        if not isinstance(tool_call, dict):
+            return None
+        tool_call_id = tool_call.get("id")
+        if not isinstance(tool_call_id, str) or not tool_call_id:
+            return None
+        tool_call_ids.append(tool_call_id)
+    if len(tool_call_ids) != len(set(tool_call_ids)):
+        return None
+    return tool_call_ids
+
+
+def _extract_openai_tool_exchange_spans(
+    messages: Sequence[Mapping[str, Any]],
+) -> tuple[Sequence[AbstractSet[int]], Optional[str]]:
+    spans = []
+    covered_tool_indices = set()
+    i = 0
+    while i < len(messages):
+        current = messages[i]
+        if current.get("role") != "assistant":
+            i += 1
+            continue
+
+        raw_tool_calls = current.get("tool_calls")
+        if raw_tool_calls is None:
+            i += 1
+            continue
+
+        tool_call_ids = _extract_openai_tool_call_ids(raw_tool_calls)
+        if tool_call_ids is None:
+            return [], "invalid_openai_tool_sequence"
+        if not tool_call_ids:
+            i += 1
+            continue
+
+        j = i + 1
+        tool_result_ids = set()
+        tool_indices = set()
+        while j < len(messages) and messages[j].get("role") == "tool":
+            tool_call_id = messages[j].get("tool_call_id")
+            if not isinstance(tool_call_id, str) or not tool_call_id:
+                return [], "invalid_openai_tool_sequence"
+            if tool_call_id in tool_result_ids:
+                return [], "invalid_openai_tool_sequence"
+            tool_result_ids.add(tool_call_id)
+            tool_indices.add(j)
+            j += 1
+
+        if tool_result_ids != set(tool_call_ids):
+            return [], "invalid_openai_tool_sequence"
+
+        spans.append({i, *tool_indices})
+        covered_tool_indices.update(tool_indices)
+        i = j
+
+    if any(message.get("role") == "tool" and idx not in covered_tool_indices for idx, message in enumerate(messages)):
+        return [], "invalid_openai_tool_sequence"
+
+    return spans, None
+
+
+def _get_protected_indices(messages: Sequence[Mapping[str, Any]]) -> Sequence[int]:
     """
     Return indices of messages that must never be compressed:
-    - All system messages
+    - All system and developer messages
     - The last user message
     - The last assistant message
     """
-    protected: List[int] = []
+    protected = []
 
     last_user_idx = None
     last_assistant_idx = None
 
     for i, msg in enumerate(messages):
         role = msg.get("role", "")
-        if role == "system":
+        if role in ("system", "developer"):
             protected.append(i)
         elif role == "user":
             last_user_idx = i
@@ -233,23 +346,35 @@ def _get_protected_indices(messages: List[dict]) -> List[int]:
     return protected
 
 
+def _normalize_scores(scores: list[float]) -> list[float]:
+    min_score = min(scores) if scores else 0.0
+    max_score = max(scores) if scores else 0.0
+    score_range = max_score - min_score
+    if score_range == 0:
+        return [0.0] * len(scores)
+    return [(score - min_score) / score_range for score in scores]
+
+
+def _hybrid_retention_scores(messages: list[dict], relevance_scores: list[float]) -> list[float]:
+    normalized_relevance = _normalize_scores(relevance_scores)
+    message_count = max(len(messages), 1)
+    return [
+        _RELEVANCE_WEIGHT * relevance
+        + _RECENCY_WEIGHT * ((idx + 1) / message_count)
+        + _CONVERSATIONAL_ROLE_WEIGHT * (1.0 if message.get("role") in ("user", "assistant") else 0.0)
+        for idx, (message, relevance) in enumerate(zip(messages, normalized_relevance))
+    ]
+
+
 def _combine_scores(
-    bm25_scores: List[float],
-    emb_scores: List[float],
+    bm25_scores: list[float],
+    emb_scores: list[float],
     bm25_weight: float = 0.4,
-) -> List[float]:
+) -> list[float]:
     """Weighted average of BM25 and embedding scores, with min-max normalization."""
 
-    def _normalize(scores: List[float]) -> List[float]:
-        min_s = min(scores) if scores else 0.0
-        max_s = max(scores) if scores else 0.0
-        rng = max_s - min_s
-        if rng == 0:
-            return [0.0] * len(scores)
-        return [(s - min_s) / rng for s in scores]
-
-    norm_bm25 = _normalize(bm25_scores)
-    norm_emb = _normalize(emb_scores)
+    norm_bm25 = _normalize_scores(bm25_scores)
+    norm_emb = _normalize_scores(emb_scores)
     emb_weight = 1.0 - bm25_weight
 
     return [bm25_weight * b + emb_weight * e for b, e in zip(norm_bm25, norm_emb)]
@@ -257,7 +382,7 @@ def _combine_scores(
 
 def _count_message_tokens(
     model: str,
-    messages: List[Any],
+    messages: list[Any],
     custom_tokenizer: Optional[SelectTokenizerResponse],
     token_count_multiplier: float,
 ) -> int:
@@ -310,76 +435,131 @@ def _truncate_message_to_budget(
 
 
 def _select_kept_indices_for_budget(
-    normalized_messages: List[dict],
-    original_messages: List[dict],
-    combined_scores: List[float],
+    normalized_messages: list[dict],
+    original_messages: list[dict],
+    retention_scores: list[float],
     compression_target: int,
     model: str,
-    initial_kept_indices: Set[int],
-    tool_exchange_spans: List[Set[int]],
+    initial_kept_indices: set[int],
+    tool_exchange_spans: list[set[int]],
     custom_tokenizer: Optional[SelectTokenizerResponse],
     token_count_multiplier: float,
-) -> Tuple[Set[int], Dict[int, dict]]:
+) -> tuple[set[int], dict[int, dict]]:
     kept_indices = set(initial_kept_indices)
-    current_tokens = 0
-    for i in kept_indices:
-        current_tokens += _count_message_tokens(
+    current_tokens = sum(
+        _count_message_tokens(
             model=model,
             messages=[original_messages[i]],
             custom_tokenizer=custom_tokenizer,
             token_count_multiplier=token_count_multiplier,
         )
+        for i in kept_indices
+    )
 
-    # Fill token budget from highest-scoring units.
-    # A unit is either:
-    # 1) a single message index, or
-    # 2) an Anthropic tool-exchange span that must be kept/dropped atomically.
-    truncated_overrides: Dict[int, dict] = {}  # idx -> truncated message dict
-    span_id_by_index: Dict[int, int] = {}
-    for span_id, span in enumerate(tool_exchange_spans):
-        for idx in span:
-            span_id_by_index[idx] = span_id
+    span_id_by_index = {idx: span_id for span_id, span in enumerate(tool_exchange_spans) for idx in span}
+    single_message_units: list[CandidateUnit] = [
+        (retention_scores[idx], (idx,), True)
+        for idx in range(len(normalized_messages))
+        if idx not in span_id_by_index and idx not in kept_indices
+    ]
+    tool_span_units: list[CandidateUnit] = [
+        (
+            max(retention_scores[idx] for idx in span),
+            tuple(sorted(span)),
+            False,
+        )
+        for span in tool_exchange_spans
+        if not any(idx in kept_indices for idx in span)
+    ]
+    candidate_units = sorted([*single_message_units, *tool_span_units], key=lambda unit: min(unit[1]))
+    recent_units = sorted(candidate_units, key=lambda unit: max(unit[1]), reverse=True)[:_RECENT_WORKING_SET_UNITS]
+    recent_indices = {unit[1] for unit in recent_units}
+    older_units = [unit for unit in candidate_units if unit[1] not in recent_indices]
+    coverage_bucket_size = max(math.ceil(len(older_units) / _HISTORY_COVERAGE_BUCKETS), 1)
+    coverage_units = [
+        max(bucket, key=lambda unit: unit[0])
+        for start in range(0, len(older_units), coverage_bucket_size)
+        if (bucket := older_units[start : start + coverage_bucket_size])
+    ][:_HISTORY_COVERAGE_BUCKETS]
 
-    # Build single-message candidate units (non-span messages).
-    candidate_units: List[Tuple[float, Tuple[int, ...], bool]] = []
-    for idx in range(len(normalized_messages)):
-        if idx in span_id_by_index or idx in kept_indices:
-            continue
-        candidate_units.append((combined_scores[idx], (idx,), True))
+    available_tokens = max(compression_target - current_tokens, 0)
+    coverage_limit = current_tokens + math.floor(available_tokens * _HISTORY_COVERAGE_BUDGET_RATIO)
+    kept_indices, truncated_overrides, current_tokens = _fit_candidate_units(
+        candidate_units=coverage_units,
+        original_messages=original_messages,
+        model=model,
+        custom_tokenizer=custom_tokenizer,
+        token_count_multiplier=token_count_multiplier,
+        kept_indices=kept_indices,
+        truncated_overrides={},
+        current_tokens=current_tokens,
+        token_limit=coverage_limit,
+        allow_truncation=False,
+    )
+    recent_limit = current_tokens + math.floor(available_tokens * _RECENT_WORKING_SET_BUDGET_RATIO)
+    kept_indices, truncated_overrides, current_tokens = _fit_candidate_units(
+        candidate_units=recent_units,
+        original_messages=original_messages,
+        model=model,
+        custom_tokenizer=custom_tokenizer,
+        token_count_multiplier=token_count_multiplier,
+        kept_indices=kept_indices,
+        truncated_overrides=truncated_overrides,
+        current_tokens=current_tokens,
+        token_limit=min(recent_limit, compression_target),
+        allow_truncation=False,
+    )
+    kept_indices, truncated_overrides, _ = _fit_candidate_units(
+        candidate_units=sorted(candidate_units, key=lambda unit: unit[0], reverse=True),
+        original_messages=original_messages,
+        model=model,
+        custom_tokenizer=custom_tokenizer,
+        token_count_multiplier=token_count_multiplier,
+        kept_indices=kept_indices,
+        truncated_overrides=truncated_overrides,
+        current_tokens=current_tokens,
+        token_limit=compression_target,
+        allow_truncation=True,
+    )
+    return kept_indices, truncated_overrides
 
-    # Build span candidate units (atomic keep/drop for tool exchanges).
-    for span in tool_exchange_spans:
-        span_indices = tuple(sorted(span))
-        if any(idx in kept_indices for idx in span_indices):
-            continue
-        span_score = max(combined_scores[idx] for idx in span_indices)
-        candidate_units.append((span_score, span_indices, False))
 
-    # Sort by descending relevance score.
-    candidate_units.sort(key=lambda item: item[0], reverse=True)
+def _fit_candidate_units(
+    candidate_units: list[CandidateUnit],
+    original_messages: list[dict],
+    model: str,
+    custom_tokenizer: Optional[SelectTokenizerResponse],
+    token_count_multiplier: float,
+    kept_indices: set[int],
+    truncated_overrides: dict[int, dict],
+    current_tokens: int,
+    token_limit: int,
+    allow_truncation: bool,
+) -> tuple[set[int], dict[int, dict], int]:
+    selected_indices = set(kept_indices)
+    selected_overrides = dict(truncated_overrides)
 
     for _score, indices, can_truncate in candidate_units:
-        if any(idx in kept_indices for idx in indices):
+        if any(idx in selected_indices for idx in indices):
             continue
-        msg_tokens = 0
-        for idx in indices:
-            msg_tokens += _count_message_tokens(
+        message_tokens = sum(
+            _count_message_tokens(
                 model=model,
                 messages=[original_messages[idx]],
                 custom_tokenizer=custom_tokenizer,
                 token_count_multiplier=token_count_multiplier,
             )
-        remaining = compression_target - current_tokens
+            for idx in indices
+        )
+        remaining = token_limit - current_tokens
 
         if remaining <= 0:
-            break  # budget exhausted
+            break
 
-        if current_tokens + msg_tokens <= compression_target:
-            # Fits entirely
-            kept_indices.update(indices)
-            current_tokens += msg_tokens
-        elif can_truncate and len(indices) == 1 and remaining >= 100:
-            # Too large to fit whole single message, but we have budget — truncate it.
+        if current_tokens + message_tokens <= token_limit:
+            selected_indices.update(indices)
+            current_tokens += message_tokens
+        elif allow_truncation and can_truncate and len(indices) == 1 and remaining >= 100:
             idx = indices[0]
             truncated = _truncate_message_to_budget(
                 message=original_messages[idx],
@@ -395,15 +575,15 @@ def _select_kept_indices_for_budget(
                     custom_tokenizer=custom_tokenizer,
                     token_count_multiplier=token_count_multiplier,
                 )
-                truncated_overrides[idx] = truncated
-                kept_indices.add(idx)
+                selected_overrides[idx] = truncated
+                selected_indices.add(idx)
                 current_tokens += truncated_tokens
 
-    return kept_indices, truncated_overrides
+    return selected_indices, selected_overrides, current_tokens
 
 
-def _get_dropped_tool_span_indices(kept_indices: Set[int], tool_exchange_spans: List[Set[int]]) -> Set[int]:
-    dropped_tool_span_indices: Set[int] = set()
+def _get_dropped_tool_span_indices(kept_indices: set[int], tool_exchange_spans: list[set[int]]) -> set[int]:
+    dropped_tool_span_indices: set[int] = set()
     for span in tool_exchange_spans:
         if not any(idx in kept_indices for idx in span):
             dropped_tool_span_indices.update(span)
@@ -411,25 +591,25 @@ def _get_dropped_tool_span_indices(kept_indices: Set[int], tool_exchange_spans: 
 
 
 def compress(
-    messages: List[dict],
+    messages: list[dict],
     model: str,
     call_type: Union[CallTypes, str] = CallTypes.completion,
     compression_trigger: int = 200_000,
     compression_target: Optional[int] = None,
     embedding_model: Optional[str] = None,
-    embedding_model_params: Optional[Dict[str, Any]] = None,
+    embedding_model_params: Optional[dict[str, Any]] = None,
     compression_cache: Optional[DualCache] = None,
     custom_tokenizer: Optional[SelectTokenizerResponse] = None,
     token_count_multiplier: float = 1.0,
 ) -> CompressedResult:
     """
-    Compress a list of messages by replacing low-relevance content with stubs.
+    Compress a list of messages by replacing lower-priority content with stubs.
 
     Messages below ``compression_trigger`` tokens pass through unchanged.
-    Messages above are scored with BM25 (and optionally embeddings), ranked,
-    and the lowest-relevance messages are replaced with stubs.  Originals are
-    cached and a retrieval tool is injected so the model can recover dropped
-    content on demand.
+    Messages above are scored with BM25 (and optionally embeddings), then
+    selected using relevance, recency, role priority, recent-working-set, and
+    historical-coverage signals. Originals are cached and a retrieval tool is
+    injected so the model can recover dropped content on demand.
 
     Parameters:
         messages: The conversation messages to (potentially) compress.
@@ -470,7 +650,7 @@ def compress(
     effective_token_count_multiplier = max(token_count_multiplier, 1.0)
     original_tokens = _count_message_tokens(
         model=model,
-        messages=cast(List[Any], original_messages),
+        messages=cast(list[Any], original_messages),
         custom_tokenizer=custom_tokenizer,
         token_count_multiplier=effective_token_count_multiplier,
     )
@@ -505,37 +685,42 @@ def compress(
             cache=compression_cache,
             embedding_model_params=embedding_model_params,
         )
-        combined_scores = _combine_scores(bm25_scores, emb_scores, bm25_weight=0.4)
+        relevance_scores = _combine_scores(bm25_scores, emb_scores, bm25_weight=0.4)
     else:
-        combined_scores = bm25_scores
+        relevance_scores = bm25_scores
+
+    retention_scores = _hybrid_retention_scores(messages=normalized_messages, relevance_scores=relevance_scores)
 
     # Protected messages are never compressed
     protected_indices = _get_protected_indices(normalized_messages)
-    kept_indices: Set[int] = set(protected_indices)
+    kept_indices: set[int] = set(protected_indices)
 
-    tool_exchange_spans: List[Set[int]] = []
     if _is_anthropic_call_type(call_type_str):
         tool_exchange_spans, tool_sequence_error = _extract_anthropic_tool_exchange_spans(original_messages)
-        if tool_sequence_error is not None:
-            return CompressedResult(
-                messages=original_messages,
-                original_tokens=original_tokens,
-                compressed_tokens=original_tokens,
-                compression_ratio=0.0,
-                cache={},
-                tools=[],
-                compression_skipped_reason=tool_sequence_error,
-            )
+    else:
+        tool_exchange_spans, tool_sequence_error = _extract_openai_tool_exchange_spans(original_messages)
 
-        for span in tool_exchange_spans:
-            # If any message in the span is protected, keep the whole span.
-            if any(idx in kept_indices for idx in span):
-                kept_indices.update(span)
+    if tool_sequence_error is not None:
+        return CompressedResult(
+            messages=original_messages,
+            original_tokens=original_tokens,
+            compressed_tokens=original_tokens,
+            compression_ratio=0.0,
+            cache={},
+            tools=[],
+            compression_skipped_reason=tool_sequence_error,
+        )
+
+    kept_indices.update(_get_skill_tool_exchange_indices(original_messages, tool_exchange_spans))
+
+    for span in tool_exchange_spans:
+        if any(idx in kept_indices for idx in span):
+            kept_indices.update(span)
 
     kept_indices, truncated_overrides = _select_kept_indices_for_budget(
         normalized_messages=normalized_messages,
         original_messages=original_messages,
-        combined_scores=combined_scores,
+        retention_scores=retention_scores,
         compression_target=compression_target,
         model=model,
         initial_kept_indices=kept_indices,
@@ -545,9 +730,9 @@ def compress(
     )
 
     # Build compressed messages and cache
-    compressed_messages: List[dict] = []
-    cache: Dict[str, str] = {}
-    used_keys: Set[str] = set()
+    compressed_messages: list[dict] = []
+    cache: dict[str, str] = {}
+    used_keys: set[str] = set()
     dropped_tool_span_indices = _get_dropped_tool_span_indices(
         kept_indices=kept_indices, tool_exchange_spans=tool_exchange_spans
     )
@@ -569,7 +754,7 @@ def compress(
 
     compressed_tokens = _count_message_tokens(
         model=model,
-        messages=cast(List[Any], compressed_messages),
+        messages=cast(list[Any], compressed_messages),
         custom_tokenizer=custom_tokenizer,
         token_count_multiplier=effective_token_count_multiplier,
     )
@@ -582,4 +767,3 @@ def compress(
         cache=cache,
         tools=tools,
     )
-

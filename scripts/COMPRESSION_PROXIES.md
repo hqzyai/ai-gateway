@@ -1,6 +1,6 @@
 # 本地压缩代理
 
-LiteLLM 通过 `COMPRESSION_BACKEND` 在 Headroom 和 lean-ctx 之间切换，但不会负责启动或停止它们。请先在单独的终端启动所选代理，再运行 `./scripts/start_local.sh`
+LiteLLM 默认不启用压缩代理。设置 `COMPRESSION_BACKEND=headroom` 或 `COMPRESSION_BACKEND=lean-ctx` 可显式启用对应代理，但 LiteLLM 不会负责启动或停止它们。请先在单独的终端启动所选代理，再运行 `./scripts/start_local.sh`
 
 ## 启动 Headroom
 

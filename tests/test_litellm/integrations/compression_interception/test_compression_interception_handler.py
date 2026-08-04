@@ -2,6 +2,7 @@
 Unit tests for Compression Interception Handler.
 """
 
+import logging
 from unittest.mock import MagicMock
 
 import pytest
@@ -9,6 +10,7 @@ import pytest
 from litellm.integrations.compression_interception.handler import (
     CompressionInterceptionLogger,
 )
+from litellm.types.integrations.custom_logger import AgenticLoopPlan
 from litellm.types.utils import CallTypes
 
 
@@ -112,9 +114,7 @@ async def test_pre_call_hook_compresses_messages_and_injects_tool(monkeypatch):
         ],
     }
 
-    result = await logger.async_pre_call_deployment_hook(
-        kwargs=kwargs, call_type=CallTypes.anthropic_messages
-    )
+    result = await logger.async_pre_call_deployment_hook(kwargs=kwargs, call_type=CallTypes.anthropic_messages)
 
     assert result is not None
     assert result["messages"] == compressed_result["messages"]
@@ -156,9 +156,7 @@ async def test_pre_call_hook_below_trigger_does_not_inject_empty_tools(monkeypat
         "messages": original_messages,
     }
 
-    result = await logger.async_pre_call_deployment_hook(
-        kwargs=kwargs, call_type=CallTypes.anthropic_messages
-    )
+    result = await logger.async_pre_call_deployment_hook(kwargs=kwargs, call_type=CallTypes.anthropic_messages)
 
     assert result is not None
     # Original request had no ``tools`` — skipped compression must leave it that way.
@@ -168,7 +166,7 @@ async def test_pre_call_hook_below_trigger_does_not_inject_empty_tools(monkeypat
 
 
 @pytest.mark.asyncio
-async def test_should_run_agentic_loop_detects_retrieval_tool_use():
+async def test_should_run_agentic_loop_detects_retrieval_tool_use(caplog):
     """Test should-run hook returns tool calls for retrieval tool_use blocks."""
     logger = CompressionInterceptionLogger()
     response = {
@@ -182,31 +180,45 @@ async def test_should_run_agentic_loop_detects_retrieval_tool_use():
         ]
     }
 
-    should_run, tools_dict = await logger.async_should_run_agentic_loop(
-        response=response,
-        model="bedrock/claude",
-        messages=[],
-        tools=[
-            {
-                "type": "function",
-                "function": {
-                    "name": "litellm_content_retrieve",
-                    "parameters": {"type": "object"},
-                },
-            }
-        ],
-        stream=False,
-        custom_llm_provider="bedrock",
-        kwargs={},
-    )
+    litellm_metadata = {}
+    with caplog.at_level(logging.INFO, logger="LiteLLM"):
+        should_run, tools_dict = await logger.async_should_run_agentic_loop(
+            response=response,
+            model="bedrock/claude",
+            messages=[],
+            tools=[
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "litellm_content_retrieve",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
+            stream=False,
+            custom_llm_provider="bedrock",
+            kwargs={
+                "litellm_call_id": "call_123",
+                "litellm_metadata": litellm_metadata,
+            },
+        )
 
     assert should_run is True
     assert len(tools_dict["tool_calls"]) == 1
     assert tools_dict["tool_calls"][0]["input"]["key"] == "auth.py"
+    assert litellm_metadata["compression_retrieval"] == {
+        "source": "compression_interception",
+        "retrieval_requested": True,
+        "requested_keys": 1,
+        "cache_hits": 0,
+        "cache_misses": 0,
+        "second_call_success": False,
+    }
+    assert "retrieval requested [call_id=call_123 requested_keys=1]" in caplog.text
 
 
 @pytest.mark.asyncio
-async def test_build_agentic_loop_plan_returns_request_patch():
+async def test_build_agentic_loop_plan_returns_request_patch(caplog):
     """Callback should return typed patch with tool_result content."""
     logger = CompressionInterceptionLogger()
     call_id = "call_123"
@@ -217,37 +229,38 @@ async def test_build_agentic_loop_plan_returns_request_patch():
 
     logging_obj = MagicMock()
     logging_obj.litellm_call_id = call_id
-    logging_obj.model_call_details = {
-        "agentic_loop_params": {"model": "bedrock/invoke/claude-3-5-sonnet"}
-    }
+    logging_obj.model_call_details = {"agentic_loop_params": {"model": "bedrock/invoke/claude-3-5-sonnet"}}
 
-    plan = await logger.async_build_agentic_loop_plan(
-        tools={
-            "tool_calls": [
-                {
-                    "id": "toolu_abc",
-                    "type": "tool_use",
-                    "name": "litellm_content_retrieve",
-                    "input": {"key": "auth.py"},
-                }
-            ]
-        },
-        model="claude-3-5-sonnet",
-        messages=[{"role": "user", "content": "read auth.py"}],
-        response=None,
-        anthropic_messages_provider_config=None,
-        anthropic_messages_optional_request_params={
-            "max_tokens": 1024,
-            "tools": [{"name": "litellm_content_retrieve"}],
-        },
-        logging_obj=logging_obj,
-        stream=False,
-        kwargs={
-            "temperature": 0.1,
-            "_compression_interception_internal": True,
-            "litellm_logging_obj": object(),
-        },
-    )
+    litellm_metadata = {}
+    with caplog.at_level(logging.INFO, logger="LiteLLM"):
+        plan = await logger.async_build_agentic_loop_plan(
+            tools={
+                "tool_calls": [
+                    {
+                        "id": "toolu_abc",
+                        "type": "tool_use",
+                        "name": "litellm_content_retrieve",
+                        "input": {"key": "auth.py"},
+                    }
+                ]
+            },
+            model="claude-3-5-sonnet",
+            messages=[{"role": "user", "content": "read auth.py"}],
+            response=None,
+            anthropic_messages_provider_config=None,
+            anthropic_messages_optional_request_params={
+                "max_tokens": 1024,
+                "tools": [{"name": "litellm_content_retrieve"}],
+            },
+            logging_obj=logging_obj,
+            stream=False,
+            kwargs={
+                "temperature": 0.1,
+                "_compression_interception_internal": True,
+                "litellm_logging_obj": object(),
+                "litellm_metadata": litellm_metadata,
+            },
+        )
 
     assert plan.run_agentic_loop is True
     assert plan.request_patch is not None
@@ -261,6 +274,48 @@ async def test_build_agentic_loop_plan_returns_request_patch():
     assert "litellm_logging_obj" not in plan.request_patch.kwargs
     assert plan.request_patch.kwargs["temperature"] == 0.1
     assert "max_tokens" not in plan.request_patch.optional_params
+    assert plan.metadata["cache_hits"] == 1
+    assert plan.metadata["cache_misses"] == 0
+    assert litellm_metadata["compression_retrieval"]["cache_hits"] == 1
+    assert litellm_metadata["compression_retrieval"]["second_call_success"] is False
+    assert "cache lookup completed" in caplog.text
+    assert "cache_hits=1 cache_misses=0" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_post_agentic_loop_response_records_success(caplog):
+    logger = CompressionInterceptionLogger()
+    plan = AgenticLoopPlan(
+        run_agentic_loop=True,
+        metadata={
+            "tool_type": "compression_retrieval",
+            "call_id": "call_123",
+            "requested_keys": 2,
+            "cache_hits": 1,
+            "cache_misses": 1,
+        },
+    )
+    response = {"status": "complete"}
+    litellm_metadata = {}
+
+    with caplog.at_level(logging.INFO, logger="LiteLLM"):
+        result = await logger.async_post_agentic_loop_response_hook(
+            response=response,
+            plan=plan,
+            kwargs={"litellm_metadata": litellm_metadata},
+        )
+
+    assert result is response
+    assert litellm_metadata["compression_retrieval"] == {
+        "source": "compression_interception",
+        "retrieval_requested": True,
+        "requested_keys": 2,
+        "cache_hits": 1,
+        "cache_misses": 1,
+        "second_call_success": True,
+    }
+    assert "retrieval follow-up succeeded" in caplog.text
+    assert "call_id=call_123" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -370,6 +425,7 @@ async def test_build_agentic_loop_plan_missing_key_fallback():
     logging_obj.litellm_call_id = "missing_call"
     logging_obj.model_call_details = {"agentic_loop_params": {}}
 
+    litellm_metadata = {}
     plan = await logger.async_build_agentic_loop_plan(
         tools={
             "tool_calls": [
@@ -388,14 +444,17 @@ async def test_build_agentic_loop_plan_missing_key_fallback():
         anthropic_messages_optional_request_params={},
         logging_obj=logging_obj,
         stream=False,
-        kwargs={},
+        kwargs={"litellm_metadata": litellm_metadata},
     )
 
     assert plan.request_patch is not None
     assert (
-        plan.request_patch.messages[-1]["content"][0]["content"]
-        == "[compressed content key 'not_found.py' not found]"
+        plan.request_patch.messages[-1]["content"][0]["content"] == "[compressed content key 'not_found.py' not found]"
     )
+    assert plan.metadata["cache_hits"] == 0
+    assert plan.metadata["cache_misses"] == 1
+    assert litellm_metadata["compression_retrieval"]["cache_hits"] == 0
+    assert litellm_metadata["compression_retrieval"]["cache_misses"] == 1
 
 
 def _stub_compress_result(original_tokens, compressed_tokens, cache):

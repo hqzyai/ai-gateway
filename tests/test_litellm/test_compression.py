@@ -19,6 +19,31 @@ CALL_TYPE = CallTypes.completion
 ANTHROPIC_CALL_TYPE = CallTypes.anthropic_messages
 
 
+def _tool_exchange_token_counter(model, messages=None, text=None):
+    if messages is None:
+        return 0
+    if len(messages) != 1:
+        return 1000
+    message_text = str(messages[0])
+    if "final query" in message_text:
+        return 50
+    if "assistant_tail" in message_text:
+        return 20
+    if "other_blob" in message_text:
+        return 200
+    if "tool_payload_relevant" in message_text:
+        return 200
+    return 10
+
+
+def _uniform_message_token_counter(model, messages=None, text=None):
+    if messages is None:
+        return 0
+    if len(messages) != 1:
+        return 1000
+    return 20
+
+
 # ---------------------------------------------------------------------------
 # BM25 scorer
 # ---------------------------------------------------------------------------
@@ -248,11 +273,20 @@ def test_compress_preserves_system_message():
         {"role": "user", "content": "Large file content. " * 5000},
         {"role": "user", "content": "Fix the bug"},
     ]
-    result = litellm.compress(
-        messages, model="gpt-4o", call_type=CALL_TYPE, compression_trigger=1000
-    )
+    result = litellm.compress(messages, model="gpt-4o", call_type=CALL_TYPE, compression_trigger=1000)
     assert result["messages"][0]["role"] == "system"
     assert "System prompt" in result["messages"][0]["content"]
+
+
+def test_compress_preserves_developer_message():
+    messages = [
+        {"role": "developer", "content": "Developer rules. " * 500},
+        {"role": "user", "content": "Large file content. " * 5000},
+        {"role": "user", "content": "Fix the bug"},
+    ]
+    result = litellm.compress(messages, model="gpt-4o", call_type=CALL_TYPE, compression_trigger=1000)
+    assert result["messages"][0]["role"] == "developer"
+    assert "Developer rules" in result["messages"][0]["content"]
 
 
 def test_compress_preserves_last_user_message():
@@ -260,9 +294,7 @@ def test_compress_preserves_last_user_message():
         {"role": "user", "content": "Big context " * 5000},
         {"role": "user", "content": "Fix the bug in auth.py"},
     ]
-    result = litellm.compress(
-        messages, model="gpt-4o", call_type=CALL_TYPE, compression_trigger=1000
-    )
+    result = litellm.compress(messages, model="gpt-4o", call_type=CALL_TYPE, compression_trigger=1000)
     last_user = [m for m in result["messages"] if m["role"] == "user"][-1]
     assert "Fix the bug in auth.py" in last_user["content"]
 
@@ -273,9 +305,7 @@ def test_compress_preserves_last_assistant_message():
         {"role": "assistant", "content": "I'll help with that. " * 2000},
         {"role": "user", "content": "Now fix the bug"},
     ]
-    result = litellm.compress(
-        messages, model="gpt-4o", call_type=CALL_TYPE, compression_trigger=1000
-    )
+    result = litellm.compress(messages, model="gpt-4o", call_type=CALL_TYPE, compression_trigger=1000)
     assistant_msgs = [m for m in result["messages"] if m["role"] == "assistant"]
     assert len(assistant_msgs) >= 1
     # The last assistant message should be preserved (not stubbed)
@@ -288,9 +318,7 @@ def test_cache_keys_match_stubs():
         {"role": "user", "content": "# auth.py\n" + "code " * 5000},
         {"role": "user", "content": "Fix it"},
     ]
-    result = litellm.compress(
-        messages, model="gpt-4o", call_type=CALL_TYPE, compression_trigger=1000
-    )
+    result = litellm.compress(messages, model="gpt-4o", call_type=CALL_TYPE, compression_trigger=1000)
     if result["tools"]:
         tool_desc = result["tools"][0]["function"]["description"]
         for key in result["cache"]:
@@ -303,9 +331,7 @@ def test_compress_default_target():
         {"role": "user", "content": "content " * 5000},
         {"role": "user", "content": "query"},
     ]
-    result = litellm.compress(
-        messages, model="gpt-4o", call_type=CALL_TYPE, compression_trigger=2000
-    )
+    result = litellm.compress(messages, model="gpt-4o", call_type=CALL_TYPE, compression_trigger=2000)
     # Should have compressed — target = 1000
     assert result["compressed_tokens"] <= result["original_tokens"]
 
@@ -375,9 +401,7 @@ def test_compress_default_call_type_is_completion():
 def test_compress_forwards_embedding_model_params(monkeypatch):
     captured = {}
 
-    def fake_embedding_score_messages(
-        query, messages, model, cache=None, embedding_model_params=None
-    ):
+    def fake_embedding_score_messages(query, messages, model, cache=None, embedding_model_params=None):
         captured["query"] = query
         captured["model"] = model
         captured["embedding_model_params"] = embedding_model_params
@@ -402,9 +426,7 @@ def test_compress_forwards_embedding_model_params(monkeypatch):
 
     assert result["compressed_tokens"] <= result["original_tokens"]
     assert captured["model"] == "text-embedding-3-small"
-    assert captured["embedding_model_params"] == {
-        "api_base": "https://example-embeddings.test"
-    }
+    assert captured["embedding_model_params"] == {"api_base": "https://example-embeddings.test"}
 
 
 def test_embedding_scorer_forwards_embedding_model_params(monkeypatch):
@@ -473,9 +495,7 @@ def test_simple_compression(final_user_message, expected_content):
         {"role": "user", "content": "Unrelated cooking recipes " * 2000},
         {"role": "user", "content": final_user_message},
     ]
-    result = litellm.compress(
-        messages, model="gpt-4o", call_type=CALL_TYPE, compression_trigger=1000
-    )
+    result = litellm.compress(messages, model="gpt-4o", call_type=CALL_TYPE, compression_trigger=1000)
     if expected_content == "Unrelated cooking recipes ":
         assert "Unrelated cooking recipes " in result["messages"][1]["content"]
         assert "Authentication code " not in result["messages"][0]["content"]
@@ -495,27 +515,8 @@ def test_compress_anthropic_drops_irrelevant_tool_exchange_span(monkeypatch):
         # Prefer idx=0 and de-prioritize the tool exchange span (idx=1,2)
         return [0.95, 0.01, 0.02, 0.8, 1.0]
 
-    def fake_token_counter(model, messages=None, text=None):
-        if messages is not None:
-            return 1000
-        if text is None:
-            return 0
-        if "final query" in text:
-            return 50
-        if "assistant_tail" in text:
-            return 20
-        if "other_blob" in text:
-            return 220
-        if "tool_payload_relevant" in text:
-            return 200
-        if text == "":
-            return 1
-        return 10
-
-    monkeypatch.setattr(
-        compress_module, "bm25_score_messages", fake_bm25_score_messages
-    )
-    monkeypatch.setattr(compress_module, "token_counter", fake_token_counter)
+    monkeypatch.setattr(compress_module, "bm25_score_messages", fake_bm25_score_messages)
+    monkeypatch.setattr(compress_module, "token_counter", _tool_exchange_token_counter)
 
     messages = [
         {"role": "user", "content": "other_blob " * 300},
@@ -570,27 +571,8 @@ def test_compress_anthropic_keeps_relevant_tool_exchange_span(monkeypatch):
         # Prefer the tool exchange span over idx=0
         return [0.05, 0.01, 0.92, 0.8, 1.0]
 
-    def fake_token_counter(model, messages=None, text=None):
-        if messages is not None:
-            return 1000
-        if text is None:
-            return 0
-        if "final query" in text:
-            return 50
-        if "assistant_tail" in text:
-            return 20
-        if "other_blob" in text:
-            return 220
-        if "tool_payload_relevant" in text:
-            return 200
-        if text == "":
-            return 1
-        return 10
-
-    monkeypatch.setattr(
-        compress_module, "bm25_score_messages", fake_bm25_score_messages
-    )
-    monkeypatch.setattr(compress_module, "token_counter", fake_token_counter)
+    monkeypatch.setattr(compress_module, "bm25_score_messages", fake_bm25_score_messages)
+    monkeypatch.setattr(compress_module, "token_counter", _tool_exchange_token_counter)
 
     messages = [
         {"role": "user", "content": "other_blob " * 300},
@@ -635,6 +617,54 @@ def test_compress_anthropic_keeps_relevant_tool_exchange_span(monkeypatch):
     assert len(result["cache"]) == 1
 
 
+def test_compress_anthropic_always_keeps_skill_constraints(monkeypatch):
+    compress_module = importlib.import_module("litellm.compression.compress")
+    monkeypatch.setattr(
+        compress_module,
+        "bm25_score_messages",
+        lambda query, messages: [0.95, 0.01, 0.02, 0.8, 1.0],
+    )
+    monkeypatch.setattr(compress_module, "token_counter", _tool_exchange_token_counter)
+    skill_constraint = "tool_payload_relevant mandatory skill constraint: write the final report to a file"
+    messages = [
+        {"role": "user", "content": "other_blob " * 300},
+        {
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "tool_use",
+                    "id": "toolu_skill",
+                    "name": "skill_view",
+                    "input": {"name": "document-review"},
+                }
+            ],
+        },
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "toolu_skill",
+                    "content": [{"type": "text", "text": skill_constraint}],
+                }
+            ],
+        },
+        {"role": "assistant", "content": "assistant_tail"},
+        {"role": "user", "content": "final query"},
+    ]
+
+    result = litellm.compress(
+        messages=messages,
+        model="claude-sonnet-4-20250514",
+        call_type=ANTHROPIC_CALL_TYPE,
+        compression_trigger=100,
+        compression_target=280,
+    )
+
+    assert result["messages"][1:3] == messages[1:3]
+    assert skill_constraint in str(result["messages"])
+
+
 def test_compress_anthropic_malformed_tool_sequence_passes_through():
     messages = [
         {"role": "user", "content": "other_blob " * 300},
@@ -665,3 +695,219 @@ def test_compress_anthropic_malformed_tool_sequence_passes_through():
     assert result["cache"] == {}
     assert result["tools"] == []
     assert result["compression_skipped_reason"] == "invalid_anthropic_tool_sequence"
+
+
+@pytest.mark.parametrize(
+    "tool_scores, expected_message_count",
+    [
+        ([0.95, 0.01, 0.02, 0.8, 1.0], 3),
+        ([0.05, 0.01, 0.92, 0.8, 1.0], 5),
+    ],
+)
+def test_compress_openai_tool_exchange_is_atomic(monkeypatch, tool_scores, expected_message_count):
+    compress_module = importlib.import_module("litellm.compression.compress")
+    monkeypatch.setattr(
+        compress_module,
+        "bm25_score_messages",
+        lambda query, messages: tool_scores,
+    )
+    monkeypatch.setattr(compress_module, "token_counter", _tool_exchange_token_counter)
+    messages = [
+        {"role": "user", "content": "other_blob " * 300},
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "lookup", "arguments": "{}"},
+                }
+            ],
+        },
+        {
+            "role": "tool",
+            "tool_call_id": "call_1",
+            "content": "tool_payload_relevant",
+        },
+        {"role": "assistant", "content": "assistant_tail"},
+        {"role": "user", "content": "final query"},
+    ]
+
+    result = litellm.compress(
+        messages=messages,
+        model="gpt-4o",
+        call_type=CALL_TYPE,
+        compression_trigger=100,
+        compression_target=280,
+    )
+
+    assert len(result["messages"]) == expected_message_count
+    roles = [message["role"] for message in result["messages"]]
+    assert ("tool" in roles) == (expected_message_count == 5)
+    assert ("tool_calls" in result["messages"][1]) == (expected_message_count == 5)
+
+
+def test_compress_openai_always_keeps_skill_constraints(monkeypatch):
+    compress_module = importlib.import_module("litellm.compression.compress")
+    monkeypatch.setattr(
+        compress_module,
+        "bm25_score_messages",
+        lambda query, messages: [0.95, 0.01, 0.02, 0.8, 1.0],
+    )
+    monkeypatch.setattr(compress_module, "token_counter", _tool_exchange_token_counter)
+    skill_constraint = "tool_payload_relevant mandatory skill constraint: write the final report to a file"
+    messages = [
+        {"role": "user", "content": "other_blob " * 300},
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": "call_skill",
+                    "type": "function",
+                    "function": {"name": "skill_view", "arguments": '{"name":"document-review"}'},
+                }
+            ],
+        },
+        {
+            "role": "tool",
+            "tool_call_id": "call_skill",
+            "content": skill_constraint,
+        },
+        {"role": "assistant", "content": "assistant_tail"},
+        {"role": "user", "content": "final query"},
+    ]
+
+    result = litellm.compress(
+        messages=messages,
+        model="gpt-4o",
+        call_type=CALL_TYPE,
+        compression_trigger=100,
+        compression_target=280,
+    )
+
+    assert result["messages"][1:3] == messages[1:3]
+    assert skill_constraint in str(result["messages"])
+
+
+@pytest.mark.parametrize(
+    "broken_messages",
+    [
+        [
+            {"role": "tool", "tool_call_id": "call_orphan", "content": "result"},
+            {"role": "user", "content": "final query"},
+        ],
+        [
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "call_duplicate",
+                        "type": "function",
+                        "function": {"name": "lookup", "arguments": "{}"},
+                    },
+                    {
+                        "id": "call_duplicate",
+                        "type": "function",
+                        "function": {"name": "lookup", "arguments": "{}"},
+                    },
+                ],
+            },
+            {
+                "role": "tool",
+                "tool_call_id": "call_duplicate",
+                "content": "result",
+            },
+            {"role": "user", "content": "final query"},
+        ],
+    ],
+)
+def test_compress_openai_invalid_tool_sequence_passes_through(broken_messages):
+    messages = [
+        {"role": "user", "content": "large context " * 1000},
+        *broken_messages,
+    ]
+    result = litellm.compress(
+        messages=messages,
+        model="gpt-4o",
+        call_type=CALL_TYPE,
+        compression_trigger=100,
+        compression_target=80,
+    )
+
+    assert result["messages"] == messages
+    assert result["cache"] == {}
+    assert result["tools"] == []
+    assert result["compression_skipped_reason"] == "invalid_openai_tool_sequence"
+
+
+def test_compress_reserves_budget_for_low_relevance_recent_messages(monkeypatch):
+    compress_module = importlib.import_module("litellm.compression.compress")
+    scores = [1.0, 0.9, 0.8, 0.7, 0.0, 0.0, 0.0, 1.0, 1.0]
+    monkeypatch.setattr(
+        compress_module,
+        "bm25_score_messages",
+        lambda query, messages: scores,
+    )
+    monkeypatch.setattr(compress_module, "token_counter", _uniform_message_token_counter)
+    messages = [
+        {"role": "user", "content": "old_high_0"},
+        {"role": "assistant", "content": "old_high_1"},
+        {"role": "user", "content": "old_high_2"},
+        {"role": "assistant", "content": "recent_low_0"},
+        {"role": "user", "content": "recent_low_1"},
+        {"role": "assistant", "content": "recent_low_2"},
+        {"role": "user", "content": "recent_low_3"},
+        {"role": "assistant", "content": "assistant_tail"},
+        {"role": "user", "content": "final query"},
+    ]
+
+    result = litellm.compress(
+        messages=messages,
+        model="gpt-4o",
+        call_type=CALL_TYPE,
+        compression_trigger=100,
+        compression_target=140,
+    )
+
+    retained_content = {message.get("content") for message in result["messages"]}
+    assert "recent_low_2" in retained_content
+    assert "recent_low_3" in retained_content
+
+
+def test_compress_preserves_historical_coverage_with_bm25_ranking(monkeypatch):
+    compress_module = importlib.import_module("litellm.compression.compress")
+    scores = [0.2, 0.0, 1.0, 0.9, 0.8, 0.7, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0]
+    monkeypatch.setattr(
+        compress_module,
+        "bm25_score_messages",
+        lambda query, messages: scores,
+    )
+    monkeypatch.setattr(compress_module, "token_counter", _uniform_message_token_counter)
+    messages = [
+        {"role": "user", "content": "history_anchor"},
+        {"role": "assistant", "content": "history_competitor"},
+        {"role": "user", "content": "high_relevance_0"},
+        {"role": "assistant", "content": "high_relevance_1"},
+        {"role": "user", "content": "high_relevance_2"},
+        {"role": "assistant", "content": "high_relevance_3"},
+        {"role": "user", "content": "recent_0"},
+        {"role": "assistant", "content": "recent_1"},
+        {"role": "user", "content": "recent_2"},
+        {"role": "assistant", "content": "recent_3"},
+        {"role": "assistant", "content": "assistant_tail"},
+        {"role": "user", "content": "final query"},
+    ]
+
+    result = litellm.compress(
+        messages=messages,
+        model="gpt-4o",
+        call_type=CALL_TYPE,
+        compression_trigger=100,
+        compression_target=140,
+    )
+
+    assert result["messages"][0]["content"] == "history_anchor"
+    assert "litellm_content_retrieve" in result["messages"][1]["content"]
