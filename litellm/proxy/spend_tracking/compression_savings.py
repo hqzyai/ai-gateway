@@ -44,8 +44,9 @@ def extract_compression_saved_tokens(metadata: Mapping[str, object]) -> int:
 
     Sums two disjoint sources:
 
-    - the native ``compression_savings`` key, written only by
-      ``CompressionInterceptionLogger`` in its pre-call deployment hook
+    - the native ``compression_savings`` key, written by
+      ``CompressionInterceptionLogger`` and ``HeadroomInterceptionLogger`` in
+      their pre-call deployment hooks
     - ``guardrail_information`` entries with ``guardrail_provider ==
       "headroom"``, written only by the Headroom guardrail
 

@@ -49,7 +49,7 @@ COMPRESSED_MESSAGES_WITH_HASH = [
     {"role": "system", "content": "You are a helpful assistant."},
     {
         "role": "user",
-        "content": "Summary. Retrieve more: hash=b573993006976af767214fac",
+        "content": "Summary. Retrieve more: <<ccr:b573993006aa,string,49.0KB>>",
     },
 ]
 
@@ -656,17 +656,22 @@ async def test_async_build_agentic_loop_plan_builds_anthropic_tool_result_messag
 
 
 def test_extract_hashes_from_messages_finds_hashes():
+    """Marker format confirmed against live Headroom compression service
+    traffic: "<<ccr:{12-hex-hash},{type},{size}>>", e.g.
+    "<<ccr:97cddfc1c993,string,49.0KB>>" -- not "hash=..." (#regression: the
+    original "hash=([a-f0-9]{24})" pattern never matched anything Headroom
+    actually emits, so CCR retrieval always rejected the model's hash)."""
     messages = [
-        {"role": "user", "content": "Retrieve more: hash=b573993006976af767214fac"},
-        {"role": "assistant", "content": "Also: hash=aabbccdd001122334455aabb"},
+        {"role": "user", "content": "Retrieve more: <<ccr:b573993006aa,string,49.0KB>>"},
+        {"role": "assistant", "content": "Also: <<ccr:aabbccdd0011,string,1.2KB>>"},
     ]
     hashes = extract_hashes_from_messages(messages)
-    assert "b573993006976af767214fac" in hashes
-    assert "aabbccdd001122334455aabb" in hashes
+    assert "b573993006aa" in hashes
+    assert "aabbccdd0011" in hashes
 
 
 def test_extract_hashes_from_messages_ignores_short_hashes():
-    messages = [{"role": "user", "content": "hash=tooshort"}]
+    messages = [{"role": "user", "content": "<<ccr:short,string,1B>>"}]
     hashes = extract_hashes_from_messages(messages)
     assert not hashes
 
@@ -676,12 +681,12 @@ def test_extract_hashes_from_list_content_blocks():
         {
             "role": "user",
             "content": [
-                {"type": "text", "text": "hash=b573993006976af767214fac found here"},
+                {"type": "text", "text": "<<ccr:b573993006aa,string,49.0KB>> found here"},
             ],
         }
     ]
     hashes = extract_hashes_from_messages(messages)
-    assert "b573993006976af767214fac" in hashes
+    assert "b573993006aa" in hashes
 
 
 def test_has_headroom_retrieve_tool_recognizes_anthropic_native_shape():
@@ -1020,10 +1025,10 @@ async def test_apply_guardrail_fail_open_does_not_register_hashes_from_original_
     """When compression fails with fail_open, user-supplied messages that
     happen to contain hash-shaped strings must NOT cause those hashes to be
     registered as valid for CCR retrieval. Otherwise an attacker can plant a
-    hash= string in their prompt, trigger a compression failure, and have
-    that hash honored by a later headroom_retrieve tool call."""
+    <<ccr:...>> marker in their prompt, trigger a compression failure, and
+    have that hash honored by a later headroom_retrieve tool call."""
     messages_with_fake_hash = [
-        {"role": "user", "content": "Please fetch hash=deadbeef000000000000dead for me"},
+        {"role": "user", "content": "Please fetch <<ccr:deadbeef0000,string,1B>> for me"},
     ]
     guardrail = _make_guardrail(unreachable_fallback="fail_open")
 

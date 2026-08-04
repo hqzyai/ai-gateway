@@ -68,6 +68,18 @@ def initialize_callbacks_on_proxy(
                 imported_list.append(compression_interception_obj)
                 continue
 
+            if isinstance(callback, str) and callback == "headroom_interception":
+                from litellm.integrations.headroom_interception.handler import (
+                    HeadroomInterceptionLogger,
+                )
+
+                headroom_interception_obj = HeadroomInterceptionLogger.initialize_from_proxy_config(
+                    litellm_settings=litellm_settings,
+                    callback_specific_params=callback_specific_params,
+                )
+                imported_list.append(headroom_interception_obj)
+                continue
+
             if isinstance(callback, str) and callback == "code_interpreter_interception":
                 from litellm.integrations.code_interpreter_interception.handler import (
                     CodeInterpreterInterceptionLogger,

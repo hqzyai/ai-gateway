@@ -26,6 +26,14 @@ class HeadroomGuardrailConfigModel(GuardrailConfigModel[BaseModel]):
             "forwards the request uncompressed instead of blocking it."
         ),
     )
+    tool_call_format: Literal["openai", "hermes"] = Field(
+        default="openai",
+        description=(
+            "Tool-call format used for the headroom_retrieve tool. 'openai' (default) uses native "
+            "structured tool calling. 'hermes' emits NousResearch Hermes-style inline <tool_call> "
+            "text tags in the system prompt instead, for models without native tool-calling support."
+        ),
+    )
 
     @staticmethod
     def ui_friendly_name() -> str:

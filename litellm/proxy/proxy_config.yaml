@@ -54,10 +54,35 @@ general_settings:
 
 # LiteLLM Settings
 litellm_settings:
+  # callbacks: [ "headroom_interception" ]  # 关掉了，避免和下面 guardrails 里的 headroom-compression 重复压缩；要开回来把这行取消注释即可
+  headroom_interception_params:
+    api_base: http://127.0.0.1:8787
+    api_key: null                      # 本地 headroom proxy 默认 loopback-only，不需要 token
+    model: null                        # 可选，不填就用请求本身的 model
+    unreachable_fallback: fail_closed  # 或 fail_open（Headroom 服务不可用时降级为不压缩，仍正常转发）
+    tool_call_format: openai           # 或 hermes（见下）
   # Enable MCP Semantic Tool Filter
   mcp_semantic_tool_filter:
     enabled: true
     embedding_model: "text-embedding-3-small"
     top_k: 5
     similarity_threshold: 0.3
-  
+
+# Headroom guardrail path (for comparing against headroom_interception above).
+# default_on is intentionally false: headroom_interception already compresses
+# every request globally, so leaving this default_on:true would double-compress
+# every request (guardrail pre_call runs earlier in the lifecycle than
+# headroom_interception's pre_call_deployment_hook). Opt a specific test
+# request into this path with:
+#   curl ... -d '{"model": "gpt-4o", "guardrails": ["headroom-compression"], "messages": [...]}'
+# to see it show up in the Guardrails & Policy Compliance panel in the logs UI.
+guardrails:
+  - guardrail_name: headroom-compression
+    litellm_params:
+      guardrail: headroom
+      mode: pre_call
+      api_base: http://127.0.0.1:8787
+      default_on: true
+      unreachable_fallback: fail_closed
+      tool_call_format: openai
+

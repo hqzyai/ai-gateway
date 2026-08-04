@@ -848,6 +848,16 @@ class BaseLitellmParams(ContentFilterConfigModel):  # works for new and patch up
         ),
     )
 
+    tool_call_format: Literal["openai", "hermes"] = Field(
+        default="openai",
+        description=(
+            "Tool-call format used for the headroom_retrieve tool. 'openai' (default) uses native "
+            "structured tool calling via the `tools` API field. 'hermes' emits NousResearch "
+            "Hermes-style inline <tool_call> text tags in the system prompt instead, for models "
+            "without native tool-calling support. Implemented by guardrail='headroom'."
+        ),
+    )
+
     extra_headers: Optional[List[str]] = Field(
         default=None,
         description=(
