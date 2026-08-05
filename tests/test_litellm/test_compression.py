@@ -911,3 +911,206 @@ def test_compress_preserves_historical_coverage_with_bm25_ranking(monkeypatch):
 
     assert result["messages"][0]["content"] == "history_anchor"
     assert "litellm_content_retrieve" in result["messages"][1]["content"]
+
+
+# ---------------------------------------------------------------------------
+# Chunk-level selection
+# ---------------------------------------------------------------------------
+
+
+def _char_count_tokens(text):
+    return len(text) // 4
+
+
+def _file_block(name, lines):
+    return f"[start of {name}]\n" + "\n".join(lines) + f"\n[end of {name}]"
+
+
+def test_chunk_selection_keeps_relevant_file_region():
+    from litellm.compression.chunk_selection import select_chunks_to_budget
+
+    filler_a = [f"alpha row{i:03d} padding text" for i in range(120)]
+    filler_c = [f"gamma row{i:03d} padding text" for i in range(120)]
+    lines_b = [f"beta row{i:03d} padding text" for i in range(120)]
+    lines_b[55] = "def compute_separability_matrix(nested_compound):"
+    lines_b[56] = "    return separability_matrix(nested_compound)"
+
+    content = "\n".join(
+        [
+            _file_block("a.py", filler_a),
+            _file_block("b.py", lines_b),
+            _file_block("c.py", filler_c),
+        ]
+    )
+
+    out = select_chunks_to_budget(
+        content=content,
+        query="fix compute separability matrix for nested compound models",
+        max_tokens=350,
+        count_tokens=_char_count_tokens,
+    )
+
+    assert out is not None
+    assert "compute_separability_matrix" in out
+    assert "[start of b.py]" in out
+    assert "[end of b.py]" in out
+    assert "gamma row000" not in out
+    assert "c.py" in out.split("[files omitted (not shown):")[1]
+    assert _char_count_tokens(out) <= 350
+
+
+def test_chunk_selection_retains_middle_of_unlabeled_content():
+    from litellm.compression.chunk_selection import select_chunks_to_budget
+
+    lines = [f"padding row{i:03d} content here" for i in range(300)]
+    lines[150] = "def rotate_jwt_refresh_token(session):"
+    content = "\n".join(lines)
+
+    out = select_chunks_to_budget(
+        content=content,
+        query="bug in rotate jwt refresh token logic",
+        max_tokens=350,
+        count_tokens=_char_count_tokens,
+    )
+
+    assert out is not None
+    assert "rotate_jwt_refresh_token" in out
+    assert "padding row299" not in out
+    assert _char_count_tokens(out) <= 350
+
+
+def test_chunk_selection_scales_windows_down_for_tiny_budget():
+    from litellm.compression.chunk_selection import select_chunks_to_budget
+
+    lines = [f"noise row{i:03d} data" for i in range(100)]
+    lines[40] = "target_needle_token found"
+    content = "\n".join(lines)
+
+    out = select_chunks_to_budget(
+        content=content,
+        query="target needle token",
+        max_tokens=100,
+        count_tokens=_char_count_tokens,
+    )
+
+    assert out is not None
+    assert "target_needle_token" in out
+    assert _char_count_tokens(out) <= 100
+
+
+def test_chunk_selection_returns_none_when_budget_unusable():
+    from litellm.compression.chunk_selection import select_chunks_to_budget
+
+    out = select_chunks_to_budget(
+        content="some content",
+        query="query",
+        max_tokens=10,
+        count_tokens=_char_count_tokens,
+    )
+
+    assert out is None
+
+
+def test_relevance_query_walks_past_trailing_instruction():
+    compress_module = importlib.import_module("litellm.compression.compress")
+
+    messages = [
+        {"role": "system", "content": "You are a coder"},
+        {"role": "user", "content": "Fix the froznak collision bug in the parser"},
+        {"role": "user", "content": "x" * 30000},
+        {"role": "user", "content": "Now produce the patch"},
+    ]
+
+    query = compress_module._build_relevance_query(messages)
+
+    assert "froznak" in query
+    assert "Now produce the patch" in query
+    assert "xxxx" not in query
+
+
+def test_relevance_query_falls_back_when_all_user_messages_huge():
+    compress_module = importlib.import_module("litellm.compression.compress")
+
+    messages = [
+        {"role": "user", "content": "a" * 30000},
+        {"role": "user", "content": "b" * 30000},
+    ]
+
+    query = compress_module._build_relevance_query(messages)
+
+    assert query == "b" * 4000
+
+
+def test_compress_truncation_keeps_query_relevant_chunks():
+    lines = [f"padding row{i:03d} filler content for the big file" for i in range(600)]
+    lines[300] = "def froznak_collision_handler(parser):"
+    big_context = "[start of parser.py]\n" + "\n".join(lines) + "\n[end of parser.py]"
+
+    messages = [
+        {"role": "system", "content": "You are a coder"},
+        {"role": "user", "content": "Fix the froznak collision bug in the parser"},
+        {"role": "user", "content": big_context},
+        {"role": "user", "content": "Now produce the patch"},
+    ]
+
+    result = litellm.compress(
+        messages=messages,
+        model="gpt-4o",
+        call_type=CALL_TYPE,
+        compression_trigger=1000,
+        compression_target=900,
+    )
+
+    context_msg = result["messages"][2]["content"]
+    assert "froznak_collision_handler" in context_msg
+    assert "padding row599" not in context_msg
+    assert result["messages"][1]["content"] == "Fix the froznak collision bug in the parser"
+    assert result["messages"][3]["content"] == "Now produce the patch"
+    assert result["compressed_tokens"] < result["original_tokens"]
+
+
+def test_chunk_selection_suppresses_query_echo():
+    from litellm.compression.chunk_selection import select_chunks_to_budget
+
+    issue_text = (
+        "The frobnicate handler crashes when the widget registry contains "
+        "duplicate entries because the lookup table is not deduplicated "
+        "before iteration starts in the main processing loop somewhere"
+    )
+    code_lines = [f"code row{i:03d} unrelated filler" for i in range(80)]
+    code_lines[40] = "def frobnicate_handler(widget_registry):"
+    content = "\n".join([issue_text] * 8 + code_lines)
+
+    out = select_chunks_to_budget(
+        content=content,
+        query=issue_text + " fix this bug",
+        max_tokens=150,
+        count_tokens=_char_count_tokens,
+    )
+
+    assert out is not None
+    assert "frobnicate_handler" in out
+    assert "duplicate entries because the lookup table" not in out
+
+
+def test_chunk_selection_boosts_file_matching_query_path():
+    from litellm.compression.chunk_selection import select_chunks_to_budget
+
+    generic = [f"shared row{i:03d} common words here" for i in range(80)]
+    content = "\n".join(
+        [
+            _file_block("pkg/io/qdp.py", generic),
+            _file_block("pkg/io/other.py", generic),
+        ]
+    )
+
+    out = select_chunks_to_budget(
+        content=content,
+        query="the qdp reader assumes commands are upper case",
+        max_tokens=700,
+        count_tokens=_char_count_tokens,
+    )
+
+    assert out is not None
+    qdp_body = out.split("[start of pkg/io/qdp.py]")[1].split("[end of pkg/io/qdp.py]")[0]
+    assert "shared row000" in qdp_body

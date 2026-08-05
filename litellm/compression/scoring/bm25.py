@@ -7,10 +7,11 @@ No external dependencies — uses only stdlib.
 import math
 import re
 from collections import Counter
+from collections.abc import Sequence
 from typing import Dict, List
 
 
-def _tokenize(text: str) -> List[str]:
+def tokenize(text: str) -> List[str]:
     """Split text into lowercase tokens on word boundaries."""
     return re.findall(r"[a-z0-9_]+", text.lower())
 
@@ -49,14 +50,32 @@ def bm25_score_messages(
     Returns:
         List of float scores, one per message. Higher = more relevant.
     """
-    query_terms = _tokenize(query)
-    if not query_terms:
-        return [0.0] * len(messages)
+    return bm25_score_texts(query, [_extract_content(msg) for msg in messages], k1=k1, b=b)
 
-    # Tokenize all documents
-    doc_tokens: List[List[str]] = []
-    for msg in messages:
-        doc_tokens.append(_tokenize(_extract_content(msg)))
+
+def bm25_score_texts(
+    query: str,
+    texts: Sequence[str],
+    k1: float = 1.5,
+    b: float = 0.75,
+) -> List[float]:
+    """
+    Score each text's relevance to the query using BM25 (Okapi BM25).
+
+    Parameters:
+        query: The reference text to score against.
+        texts: The documents to score.
+        k1: Term frequency saturation parameter.
+        b: Length normalization parameter.
+
+    Returns:
+        List of float scores, one per text. Higher = more relevant.
+    """
+    query_terms = tokenize(query)
+    if not query_terms:
+        return [0.0] * len(texts)
+
+    doc_tokens: List[List[str]] = [tokenize(text) for text in texts]
 
     n = len(doc_tokens)
     if n == 0:

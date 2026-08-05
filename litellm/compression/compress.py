@@ -9,6 +9,7 @@ from collections.abc import Mapping, Sequence, Set as AbstractSet
 from typing import Any, Optional, Union, cast
 
 from litellm.caching.dual_cache import DualCache
+from litellm.compression.chunk_selection import select_chunks_to_budget
 from litellm.compression.message_stubbing import (
     extract_key,
     stub_message,
@@ -33,6 +34,10 @@ _SUPPORTED_CALL_TYPES = frozenset(
     }
 )
 _RECENT_WORKING_SET_UNITS = 4
+_MESSAGE_OVERHEAD_TOKENS = 16
+_QUERY_TARGET_CHARS = 2000
+_QUERY_MESSAGE_CAP_CHARS = 4000
+_QUERY_MESSAGE_SKIP_CHARS = 20000
 _HISTORY_COVERAGE_BUCKETS = 4
 _HISTORY_COVERAGE_BUDGET_RATIO = 0.2
 _RECENT_WORKING_SET_BUDGET_RATIO = 0.4
@@ -134,12 +139,31 @@ def _normalize_messages_for_compression(
     return normalized_messages, original_messages
 
 
-def _extract_last_user_message(messages: Sequence[Mapping[str, Any]]) -> str:
-    """Return the text content of the last user message."""
-    for msg in reversed(messages):
-        if msg.get("role") == "user":
-            return _content_to_text(msg.get("content", ""))
-    return ""
+def _build_relevance_query(messages: Sequence[Mapping[str, Any]]) -> str:
+    """
+    Build the BM25/embedding relevance query from recent user messages.
+
+    Walks user messages newest-first, accumulating text until enough signal is
+    collected.  A lone trailing instruction like "now produce the patch" carries
+    no relevance signal, so earlier user messages (the actual task statement)
+    are pulled in until the query reaches a useful size.
+    """
+    user_texts = [_content_to_text(msg.get("content", "")) for msg in reversed(messages) if msg.get("role") == "user"]
+
+    collected: list[str] = []
+    total_chars = 0
+    for text in user_texts:
+        if not text or len(text) > _QUERY_MESSAGE_SKIP_CHARS:
+            continue
+        capped = text[:_QUERY_MESSAGE_CAP_CHARS]
+        collected.append(capped)
+        total_chars += len(capped)
+        if total_chars >= _QUERY_TARGET_CHARS:
+            break
+
+    if collected:
+        return " ".join(reversed(collected))
+    return next((t[:_QUERY_MESSAGE_CAP_CHARS] for t in user_texts if t), "")
 
 
 def _extract_tool_use_ids(content: Any) -> Sequence[str]:
@@ -399,39 +423,28 @@ def _truncate_message_to_budget(
     model: str,
     custom_tokenizer: Optional[SelectTokenizerResponse],
     token_count_multiplier: float,
+    query: str,
 ) -> Optional[dict]:
     source = _content_to_text(message.get("content", ""))
     if not source:
         return None
 
-    marker = "\n...[truncated for context window]...\n"
-    lower = 0
-    upper = len(source)
-    best: Optional[dict] = None
-
-    while lower <= upper:
-        retained_chars = (lower + upper) // 2
-        if retained_chars >= len(source):
-            truncated_content = source
+    def count_tokens(text: str) -> int:
+        if custom_tokenizer is None:
+            token_count = token_counter(model=model, text=text)
         else:
-            prefix_chars = retained_chars * 7 // 10
-            suffix_chars = retained_chars - prefix_chars
-            suffix = source[-suffix_chars:] if suffix_chars > 0 else ""
-            truncated_content = source[:prefix_chars] + marker + suffix
-        candidate = {**message, "content": truncated_content}
-        candidate_tokens = _count_message_tokens(
-            model=model,
-            messages=[candidate],
-            custom_tokenizer=custom_tokenizer,
-            token_count_multiplier=token_count_multiplier,
-        )
-        if candidate_tokens <= max_tokens:
-            best = candidate
-            lower = retained_chars + 1
-        else:
-            upper = retained_chars - 1
+            token_count = token_counter(model=model, text=text, custom_tokenizer=custom_tokenizer)
+        return math.ceil(token_count * token_count_multiplier)
 
-    return best
+    selected = select_chunks_to_budget(
+        content=source,
+        query=query,
+        max_tokens=max_tokens - _MESSAGE_OVERHEAD_TOKENS,
+        count_tokens=count_tokens,
+    )
+    if selected is None:
+        return None
+    return {**message, "content": selected}
 
 
 def _select_kept_indices_for_budget(
@@ -444,6 +457,7 @@ def _select_kept_indices_for_budget(
     tool_exchange_spans: list[set[int]],
     custom_tokenizer: Optional[SelectTokenizerResponse],
     token_count_multiplier: float,
+    query: str,
 ) -> tuple[set[int], dict[int, dict]]:
     kept_indices = set(initial_kept_indices)
     current_tokens = sum(
@@ -495,6 +509,7 @@ def _select_kept_indices_for_budget(
         current_tokens=current_tokens,
         token_limit=coverage_limit,
         allow_truncation=False,
+        query=query,
     )
     recent_limit = current_tokens + math.floor(available_tokens * _RECENT_WORKING_SET_BUDGET_RATIO)
     kept_indices, truncated_overrides, current_tokens = _fit_candidate_units(
@@ -508,6 +523,7 @@ def _select_kept_indices_for_budget(
         current_tokens=current_tokens,
         token_limit=min(recent_limit, compression_target),
         allow_truncation=False,
+        query=query,
     )
     kept_indices, truncated_overrides, _ = _fit_candidate_units(
         candidate_units=sorted(candidate_units, key=lambda unit: unit[0], reverse=True),
@@ -520,6 +536,7 @@ def _select_kept_indices_for_budget(
         current_tokens=current_tokens,
         token_limit=compression_target,
         allow_truncation=True,
+        query=query,
     )
     return kept_indices, truncated_overrides
 
@@ -535,9 +552,11 @@ def _fit_candidate_units(
     current_tokens: int,
     token_limit: int,
     allow_truncation: bool,
+    query: str,
 ) -> tuple[set[int], dict[int, dict], int]:
     selected_indices = set(kept_indices)
     selected_overrides = dict(truncated_overrides)
+    truncation_used = False
 
     for _score, indices, can_truncate in candidate_units:
         if any(idx in selected_indices for idx in indices):
@@ -559,7 +578,13 @@ def _fit_candidate_units(
         if current_tokens + message_tokens <= token_limit:
             selected_indices.update(indices)
             current_tokens += message_tokens
-        elif allow_truncation and can_truncate and len(indices) == 1 and remaining >= 100:
+        elif (
+            allow_truncation
+            and not truncation_used
+            and can_truncate
+            and len(indices) == 1
+            and remaining >= max(100, token_limit // 4)
+        ):
             idx = indices[0]
             truncated = _truncate_message_to_budget(
                 message=original_messages[idx],
@@ -567,6 +592,7 @@ def _fit_candidate_units(
                 model=model,
                 custom_tokenizer=custom_tokenizer,
                 token_count_multiplier=token_count_multiplier,
+                query=query,
             )
             if truncated is not None:
                 truncated_tokens = _count_message_tokens(
@@ -578,6 +604,7 @@ def _fit_candidate_units(
                 selected_overrides[idx] = truncated
                 selected_indices.add(idx)
                 current_tokens += truncated_tokens
+                truncation_used = True
 
     return selected_indices, selected_overrides, current_tokens
 
@@ -622,7 +649,7 @@ def compress(
               (structured content blocks + atomic tool exchanges)
         compression_trigger: Only compress if input exceeds this token count.
         compression_target: Target token count after compression.
-            Defaults to ``compression_trigger // 2``.
+            Defaults to 70% of ``compression_trigger``.
         embedding_model: If provided, use BM25 + embeddings for scoring.
             If ``None``, BM25 only.
         embedding_model_params: Optional kwargs forwarded to
@@ -668,7 +695,7 @@ def compress(
         )
 
     # Extract query for relevance scoring
-    query = _extract_last_user_message(normalized_messages)
+    query = _build_relevance_query(normalized_messages)
 
     # Score each message
     bm25_scores = bm25_score_messages(query, normalized_messages)
@@ -727,6 +754,7 @@ def compress(
         tool_exchange_spans=tool_exchange_spans,
         custom_tokenizer=custom_tokenizer,
         token_count_multiplier=effective_token_count_multiplier,
+        query=query,
     )
 
     # Build compressed messages and cache

@@ -10,7 +10,7 @@ API calls.
 Usage:
     python tests/eval_swe_bench.py --model gpt-4o --problems 10
     python tests/eval_swe_bench.py --model claude-sonnet-4-20250514 --problems 25
-    python tests/eval_swe_bench.py --model gpt-4o-mini --problems 50 --compression-trigger 8000
+    python tests/eval_swe_bench.py --problems 50 --compression-trigger 8000
 
 Requires:
     pip install datasets
@@ -36,11 +36,13 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Optional
 
+from tokenizers import Tokenizer
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import litellm  # noqa: E402
 from litellm.compression import compress as litellm_compress  # noqa: E402
-from litellm.types.utils import CallTypes  # noqa: E402
+from litellm.types.utils import CallTypes, SelectTokenizerResponse  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Prompts
@@ -56,26 +58,36 @@ SYSTEM_MSG = (
     "fences — just the raw diff text."
 )
 
+QWEN_TOKENIZER_PATH = (
+    Path(__file__).resolve().parent.parent
+    / "litellm"
+    / "litellm_core_utils"
+    / "tokenizers"
+    / "qwen3_6_27b_nvfp4_tokenizer.json"
+)
+
 
 # ---------------------------------------------------------------------------
 # Dataset loading
 # ---------------------------------------------------------------------------
 
 
-def _load_via_datasets(n: int, split: str) -> list[dict]:
+def _load_via_datasets(n: int, split: str, offset: int) -> list[dict]:
     """Load via the HuggingFace `datasets` library (preferred if available)."""
     from datasets import load_dataset
 
     ds = load_dataset("princeton-nlp/SWE-bench_Lite_bm25_27K", split=split)
     problems = []
     for i, item in enumerate(ds):
-        if n > 0 and i >= n:
+        if i < offset:
+            continue
+        if n > 0 and len(problems) >= n:
             break
         problems.append(dict(item))
     return problems
 
 
-def _load_via_api(n: int, split: str) -> list[dict]:
+def _load_via_api(n: int, split: str, offset: int) -> list[dict]:
     """Fallback: fetch rows directly from the HuggingFace dataset API (no deps).
 
     The API returns at most 100 rows per request, so we paginate.
@@ -84,16 +96,16 @@ def _load_via_api(n: int, split: str) -> list[dict]:
     import urllib.request
 
     # 0 means "all" — SWE-bench Lite has 300 test instances
-    target = n if n > 0 else 300
+    target = n if n > 0 else max(300 - offset, 0)
     page_size = 100
     all_rows: list[dict] = []
 
-    for offset in range(0, target, page_size):
-        length = min(page_size, target - offset)
+    for page_offset in range(offset, offset + target, page_size):
+        length = min(page_size, offset + target - page_offset)
         url = (
             "https://datasets-server.huggingface.co/rows"
             "?dataset=princeton-nlp/SWE-bench_Lite_bm25_27K"
-            f"&config=default&split={split}&offset={offset}&length={length}"
+            f"&config=default&split={split}&offset={page_offset}&length={length}"
         )
         req = urllib.request.Request(url, headers={"User-Agent": "litellm-eval"})
         with urllib.request.urlopen(req, timeout=60) as resp:
@@ -106,7 +118,7 @@ def _load_via_api(n: int, split: str) -> list[dict]:
     return all_rows
 
 
-def load_problems(n: int = 10, split: str = "test") -> list[dict]:
+def load_problems(n: int = 10, split: str = "test", offset: int = 0) -> list[dict]:
     """Load n problems from princeton-nlp/SWE-bench_Lite_bm25_27K."""
     print("Loading SWE-bench_Lite_bm25_27K ...", flush=True)
 
@@ -115,10 +127,10 @@ def load_problems(n: int = 10, split: str = "test") -> list[dict]:
     # poison the process.  Fall back to the `datasets` library only if the
     # API call fails.
     try:
-        problems = _load_via_api(n, split)
+        problems = _load_via_api(n, split, offset)
     except Exception:
         try:
-            problems = _load_via_datasets(n, split)
+            problems = _load_via_datasets(n, split, offset)
         except Exception as e:
             print(f"ERROR: Could not load dataset ({type(e).__name__}: {e})")
             sys.exit(1)
@@ -433,6 +445,7 @@ def eval_instance(
     model: str,
     use_compression: bool,
     compression_trigger: int,
+    custom_tokenizer: SelectTokenizerResponse,
     compression_target: Optional[int] = None,
     embedding_model: Optional[str] = None,
 ) -> SWERunResult:
@@ -449,6 +462,7 @@ def eval_instance(
             "call_type": CallTypes.completion,
             "compression_trigger": compression_trigger,
             "embedding_model": embedding_model,
+            "custom_tokenizer": custom_tokenizer,
         }
         if compression_target is not None:
             compress_kwargs["compression_target"] = compression_target
@@ -543,6 +557,7 @@ def aggregate(results: list[SWERunResult]) -> dict:
 def run_benchmark(
     model: str,
     num_problems: int = 10,
+    offset: int = 0,
     compression_trigger: int = 10_000,
     compression_target: Optional[int] = None,
     embedding_model: Optional[str] = None,
@@ -553,18 +568,24 @@ def run_benchmark(
     Parameters:
         model:               LLM model name (litellm format).
         num_problems:        How many SWE-bench Lite problems to run.
+        offset:              How many dataset problems to skip.
         compression_trigger: Token count above which compression activates.
                              The bm25_27K dataset has ~27k tokens of context
                              per problem, so a trigger of 10k–20k is sensible.
         embedding_model:     Optional embedding model for semantic scoring.
     """
-    problems = load_problems(n=num_problems)
+    problems = load_problems(n=num_problems, offset=offset)
+    custom_tokenizer: SelectTokenizerResponse = {
+        "type": "huggingface_tokenizer",
+        "tokenizer": Tokenizer.from_file(str(QWEN_TOKENIZER_PATH)),
+    }
 
     print(f"{'=' * 60}")
     print("SWE-bench Compression Eval")
     print(f"{'=' * 60}")
     print(f"Model:               {model}")
     print(f"Problems:            {len(problems)}")
+    print(f"Offset:              {offset}")
     effective_target = (
         compression_target
         if compression_target is not None
@@ -572,6 +593,7 @@ def run_benchmark(
     )
     print(f"Compression trigger: {compression_trigger} tokens")
     print(f"Compression target:  {effective_target} tokens")
+    print(f"Tokenizer:           {QWEN_TOKENIZER_PATH}")
     print(f"Embedding model:     {embedding_model or 'None (BM25 only)'}")
     print(f"{'=' * 60}\n")
 
@@ -589,6 +611,7 @@ def run_benchmark(
             model,
             use_compression=False,
             compression_trigger=compression_trigger,
+            custom_tokenizer=custom_tokenizer,
             compression_target=compression_target,
         )
         baseline_results.append(r_base)
@@ -608,6 +631,7 @@ def run_benchmark(
             model,
             use_compression=True,
             compression_trigger=compression_trigger,
+            custom_tokenizer=custom_tokenizer,
             compression_target=compression_target,
             embedding_model=embedding_model,
         )
@@ -692,7 +716,9 @@ def run_benchmark(
         "model": model,
         "timestamp": ts,
         "num_problems": len(problems),
+        "offset": offset,
         "compression_trigger": compression_trigger,
+        "tokenizer": str(QWEN_TOKENIZER_PATH),
         "embedding_model": embedding_model,
         "baseline": base_agg,
         "compressed": comp_agg,
@@ -713,13 +739,19 @@ def run_benchmark(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="SWE-bench Compression Evaluation")
     parser.add_argument(
-        "--model", default="gpt-4o-mini", help="Model name (litellm format)"
+        "--model", default="qwen3.6-27b-nvfp4", help="Model name (litellm format)"
     )
     parser.add_argument(
         "--problems",
         type=int,
         default=10,
         help="Number of SWE-bench Lite problems to run (default: 10)",
+    )
+    parser.add_argument(
+        "--offset",
+        type=int,
+        default=0,
+        help="Number of SWE-bench Lite problems to skip (default: 0)",
     )
     parser.add_argument(
         "--compression-trigger",
@@ -746,6 +778,7 @@ if __name__ == "__main__":
     run_benchmark(
         model=args.model,
         num_problems=args.problems,
+        offset=args.offset,
         compression_trigger=args.compression_trigger,
         compression_target=args.compression_target,
         embedding_model=args.embedding_model,
