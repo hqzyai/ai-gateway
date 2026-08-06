@@ -245,6 +245,9 @@ class CompressionInterceptionLogger(CustomLogger):
     ) -> Optional[dict]:
         if not self.enabled:
             return None
+        model_info = kwargs.get("model_info")
+        if not isinstance(model_info, dict) or model_info.get("compression_interception_enabled") is not True:
+            return None
         compression_call_type = call_type or CallTypes.anthropic_messages
         if compression_call_type not in _SUPPORTED_CALL_TYPES:
             return None

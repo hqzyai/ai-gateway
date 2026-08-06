@@ -105,6 +105,7 @@ async def test_pre_call_hook_compresses_messages_and_injects_tool(monkeypatch):
 
     kwargs = {
         "model": "bedrock/us.anthropic.claude-sonnet-4-5",
+        "model_info": {"compression_interception_enabled": True},
         "messages": [{"role": "user", "content": "very large context"}],
         "tools": [
             {
@@ -122,6 +123,37 @@ async def test_pre_call_hook_compresses_messages_and_injects_tool(monkeypatch):
     assert "existing_tool" in tool_names
     assert "litellm_content_retrieve" in tool_names
     assert result["litellm_call_id"] in logger._compression_cache_by_call_id
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "model_info",
+    [
+        None,
+        {},
+        {"compression_interception_enabled": False},
+        {"compression_interception_enabled": "true"},
+        {"compression_interception_enabled": 1},
+    ],
+)
+async def test_pre_call_hook_requires_model_opt_in(monkeypatch, model_info):
+    logger = CompressionInterceptionLogger()
+    compress_mock = MagicMock()
+    monkeypatch.setattr(
+        "litellm.integrations.compression_interception.handler.compress",
+        compress_mock,
+    )
+    kwargs = {
+        "model": "bedrock/us.anthropic.claude-sonnet-4-5",
+        "messages": [{"role": "user", "content": "very large context"}],
+    }
+    if model_info is not None:
+        kwargs["model_info"] = model_info
+
+    result = await logger.async_pre_call_deployment_hook(kwargs=kwargs, call_type=CallTypes.anthropic_messages)
+
+    assert result is None
+    compress_mock.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -153,6 +185,7 @@ async def test_pre_call_hook_below_trigger_does_not_inject_empty_tools(monkeypat
 
     kwargs = {
         "model": "bedrock/us.anthropic.claude-sonnet-4-5",
+        "model_info": {"compression_interception_enabled": True},
         "messages": original_messages,
     }
 
@@ -485,6 +518,7 @@ async def test_pre_call_hook_records_compression_savings_in_litellm_metadata(mon
     litellm_metadata = {"user_api_key": "hashed-key", "user_api_key_user_id": "u1"}
     kwargs = {
         "model": "claude-sonnet-5",
+        "model_info": {"compression_interception_enabled": True},
         "messages": [{"role": "user", "content": "very large context"}],
         "litellm_metadata": litellm_metadata,
     }
@@ -513,6 +547,7 @@ async def test_pre_call_hook_creates_litellm_metadata_when_absent(monkeypatch):
 
     kwargs = {
         "model": "claude-sonnet-5",
+        "model_info": {"compression_interception_enabled": True},
         "messages": [{"role": "user", "content": "ctx"}],
     }
 
@@ -546,6 +581,7 @@ async def test_pre_call_hook_invalid_token_counts_fail_open(monkeypatch, origina
     litellm_metadata = {"user_api_key": "hashed-key"}
     kwargs = {
         "model": "claude-sonnet-5",
+        "model_info": {"compression_interception_enabled": True},
         "messages": [{"role": "user", "content": "ctx"}],
         "litellm_metadata": litellm_metadata,
     }
@@ -575,6 +611,7 @@ async def test_pre_call_hook_no_compression_records_no_savings(monkeypatch):
     litellm_metadata = {"user_api_key": "hashed-key"}
     kwargs = {
         "model": "claude-sonnet-5",
+        "model_info": {"compression_interception_enabled": True},
         "messages": [{"role": "user", "content": "small"}],
         "litellm_metadata": litellm_metadata,
     }
