@@ -51,6 +51,7 @@ from litellm.types.utils import (
     ChatCompletionMessageToolCall,
     Message,
     ModelResponse,
+    Usage,
 )
 
 # The internal control fields that must never reach a provider request body.
@@ -103,8 +104,8 @@ class FakeSandboxConfig:
         self.deleted += 1
 
 
-def _tool_call_model_response() -> ModelResponse:
-    return ModelResponse(
+def _tool_call_model_response(usage: Optional[Usage] = None) -> ModelResponse:
+    response = ModelResponse(
         choices=[
             Choices(
                 finish_reason="tool_calls",
@@ -125,10 +126,13 @@ def _tool_call_model_response() -> ModelResponse:
             )
         ]
     )
+    if usage is not None:
+        setattr(response, "usage", usage)
+    return response
 
 
-def _plain_model_response(content: str = "The answer is 42") -> ModelResponse:
-    return ModelResponse(
+def _plain_model_response(content: str = "The answer is 42", usage: Optional[Usage] = None) -> ModelResponse:
+    response = ModelResponse(
         choices=[
             Choices(
                 finish_reason="stop",
@@ -136,6 +140,9 @@ def _plain_model_response(content: str = "The answer is 42") -> ModelResponse:
             )
         ]
     )
+    if usage is not None:
+        setattr(response, "usage", usage)
+    return response
 
 
 def _raw_response_for(model_response: ModelResponse) -> MagicMock:
@@ -206,6 +213,308 @@ async def test_internal_control_fields_never_leak_into_provider_body(restore_cal
 
     # The final response is the post-loop answer, not the tool-call turn.
     assert response.choices[0].message.content == "The answer is 42"
+
+
+class _UsageSpyLogger(CustomLogger):
+    """Records every success-logging event the way a spend-log callback would."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.events: List[Tuple[Optional[str], Optional[int], Optional[int]]] = []
+
+    async def async_log_success_event(self, kwargs, response_obj, start_time, end_time) -> None:
+        usage = getattr(response_obj, "usage", None)
+        self.events.append(
+            (
+                kwargs.get("litellm_call_id"),
+                getattr(usage, "prompt_tokens", None),
+                getattr(usage, "completion_tokens", None),
+            )
+        )
+
+
+async def _settle_async_logging(spy: _UsageSpyLogger, expected: int = 1, timeout: float = 5.0) -> None:
+    """Wait for the expected success events, then let any extra ones land."""
+    import asyncio
+    import time
+
+    deadline = time.monotonic() + timeout
+    while len(spy.events) < expected and time.monotonic() < deadline:
+        await asyncio.sleep(0.01)
+    await asyncio.sleep(0.5)
+
+
+@pytest.mark.asyncio
+async def test_agentic_loop_bills_every_turn_exactly_once(restore_callbacks):
+    """Regression: an agentic loop issues N provider calls for one client request,
+    but only the last response reaches the outer logging object.
+
+    Before the usage fold, the pre-loop turn's tokens were billed by nobody and
+    the follow-up's tokens were billed twice (once by the nested acompletion's
+    own logging, once by the outer one). Both halves are pinned here: the spend
+    event must fire once, and its token counts must be the sum over every
+    provider call actually made."""
+    logger = CodeInterpreterInterceptionLogger(sandbox_config=FakeSandboxConfig())
+    spy = _UsageSpyLogger()
+    litellm.callbacks = [logger, spy]
+
+    create = AsyncMock(
+        side_effect=[
+            _raw_response_for(
+                _tool_call_model_response(usage=Usage(prompt_tokens=1000, completion_tokens=20, total_tokens=1020))
+            ),
+            _raw_response_for(
+                _plain_model_response(usage=Usage(prompt_tokens=1500, completion_tokens=30, total_tokens=1530))
+            ),
+        ]
+    )
+    mock_client = MagicMock()
+    mock_client.chat.completions.with_raw_response.create = create
+
+    response = await litellm.acompletion(
+        model="openai/gpt-4o-mini",
+        messages=[{"role": "user", "content": "what is 6*7?"}],
+        tools=[{"type": "code_interpreter"}],
+        tool_choice={"type": "code_interpreter"},
+        api_key="sk-test",
+        client=mock_client,
+    )
+
+    assert create.await_count == 2, (
+        f"expected the agentic loop to issue a follow-up provider call; got {create.await_count} call(s)"
+    )
+
+    assert response.usage.prompt_tokens == 2500
+    assert response.usage.completion_tokens == 50
+    assert response.usage.total_tokens == 2550
+
+    await _settle_async_logging(spy)
+
+    assert len(spy.events) == 1, f"expected exactly one spend event for the whole loop; got {spy.events}"
+    _call_id, logged_prompt_tokens, logged_completion_tokens = spy.events[0]
+    assert logged_prompt_tokens == 2500
+    assert logged_completion_tokens == 50
+
+
+class _ToolCallGatedLogger(CustomLogger):
+    """Gate that fires only while the model is still emitting tool calls, so the
+    loop runs exactly one follow-up turn and then terminates naturally."""
+
+    def __init__(self, follow_up_messages: List[Dict[str, Any]]) -> None:
+        super().__init__()
+        self._follow_up_messages = follow_up_messages
+
+    @staticmethod
+    def _tool_calls_of(response: Any) -> Optional[List[Any]]:
+        choices = getattr(response, "choices", None)
+        if not choices:
+            return None
+        return getattr(getattr(choices[0], "message", None), "tool_calls", None)
+
+    async def async_should_run_agentic_loop(
+        self,
+        response: Any,
+        model: str,
+        messages: List[Dict[str, Any]],
+        tools: Optional[List[Dict[str, Any]]],
+        stream: bool,
+        custom_llm_provider: str,
+        kwargs: Dict[str, Any],
+    ) -> Tuple[bool, Dict[str, Any]]:
+        tool_calls = self._tool_calls_of(response)
+        if not tool_calls:
+            return False, {}
+        return True, {"tool_calls": [{"id": "call_abc", "name": "litellm_code_execution"}]}
+
+    async def async_build_agentic_loop_plan(
+        self,
+        tools: Dict[str, Any],
+        model: str,
+        messages: List[Dict[str, Any]],
+        response: Any,
+        anthropic_messages_provider_config: Any,
+        anthropic_messages_optional_request_params: Dict[str, Any],
+        logging_obj: Any,
+        stream: bool,
+        kwargs: Dict[str, Any],
+    ) -> AgenticLoopPlan:
+        return AgenticLoopPlan(
+            run_agentic_loop=True,
+            request_patch=AgenticLoopRequestPatch(
+                model=model,
+                messages=self._follow_up_messages,
+                max_tokens=200,
+                optional_params={},
+                kwargs={},
+            ),
+        )
+
+
+def _openai_style_stream_chunks(
+    completion_id: str, prompt_tokens: int, completion_tokens: int, emit_tool_call: bool
+) -> List[bytes]:
+    """SSE for one streamed turn, ending with a usage-carrying chunk."""
+    import json as _json
+
+    envelope = {"id": completion_id, "object": "chat.completion.chunk", "created": 0, "model": "m"}
+    if emit_tool_call:
+        first_delta: Dict[str, Any] = {
+            "role": "assistant",
+            "tool_calls": [
+                {
+                    "index": 0,
+                    "id": "call_abc",
+                    "type": "function",
+                    "function": {
+                        "name": "litellm_code_execution",
+                        "arguments": _json.dumps({"code": "print(6*7)"}),
+                    },
+                }
+            ],
+        }
+        final_reason = "tool_calls"
+    else:
+        first_delta = {"role": "assistant", "content": "The answer is 42"}
+        final_reason = "stop"
+
+    payloads = [
+        {**envelope, "choices": [{"index": 0, "delta": first_delta, "finish_reason": None}]},
+        {**envelope, "choices": [{"index": 0, "delta": {}, "finish_reason": final_reason}]},
+        {
+            **envelope,
+            "choices": [],
+            "usage": {
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": prompt_tokens + completion_tokens,
+            },
+        },
+    ]
+    return [f"data: {_json.dumps(p)}\n\n".encode() for p in payloads] + [b"data: [DONE]\n\n"]
+
+
+class _FakeUpstreamResponse:
+    """Minimal httpx-response stand-in for the shared httpx LLM handler."""
+
+    status_code = 200
+    headers: Dict[str, str] = {}
+    text = ""
+
+    def __init__(self, sse_lines: List[bytes]) -> None:
+        self._sse_lines = sse_lines
+
+    def raise_for_status(self) -> None:
+        return None
+
+    async def aiter_bytes(self, chunk_size: Optional[int] = None):
+        for line in self._sse_lines:
+            yield line
+
+    async def aiter_lines(self):
+        for line in self._sse_lines:
+            yield line.decode().rstrip("\n")
+
+
+class _FakeUpstreamJsonResponse:
+    """Non-streaming httpx-response stand-in; the agentic follow-up never streams."""
+
+    status_code = 200
+    headers: Dict[str, str] = {}
+    text = ""
+
+    def __init__(self, completion_id: str, prompt_tokens: int, completion_tokens: int) -> None:
+        self._body = {
+            "id": completion_id,
+            "object": "chat.completion",
+            "created": 0,
+            "model": "m",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {"role": "assistant", "content": "The answer is 42"},
+                    "finish_reason": "stop",
+                }
+            ],
+            "usage": {
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": prompt_tokens + completion_tokens,
+            },
+        }
+
+    def raise_for_status(self) -> None:
+        return None
+
+    def json(self) -> Dict[str, Any]:
+        return self._body
+
+
+@pytest.mark.asyncio
+async def test_streaming_agentic_loop_bills_every_turn_under_a_distinct_request_id(restore_callbacks):
+    """Regression: on the streaming path the pre-loop turn is billed by its own
+    stream wrapper before the loop even runs, so the non-streaming fix (fold the
+    parent's tokens into the follow-up) would double-count it.
+
+    The follow-up must therefore bill itself, and it must do so under its own
+    litellm_call_id: SpendLogs keys rows by request id and inserts them with
+    skip_duplicates=True, so reusing the parent's id silently drops this turn's
+    row and the tokens vanish from the bill. Both properties are pinned here,
+    together with the end-to-end equality billed == sent."""
+    from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler
+
+    turn_usage = [(1000, 20), (1500, 30)]
+    # A plain gate keeps the request genuinely streaming; the code-interpreter
+    # logger converts streaming requests to non-streaming, which is the other branch.
+    logger = _ToolCallGatedLogger(
+        follow_up_messages=[
+            {"role": "user", "content": "what is 6*7?"},
+            {"role": "user", "content": "tool result"},
+        ]
+    )
+    spy = _UsageSpyLogger()
+    litellm.callbacks = [logger, spy]
+
+    post = AsyncMock(
+        side_effect=[
+            _FakeUpstreamResponse(_openai_style_stream_chunks("chatcmpl-1", 1000, 20, emit_tool_call=True)),
+            _FakeUpstreamJsonResponse("chatcmpl-2", 1500, 30),
+        ]
+    )
+    mock_client = AsyncMock(spec=AsyncHTTPHandler)
+    mock_client.post = post
+
+    stream = await litellm.acompletion(
+        model="hosted_vllm/m",
+        messages=[{"role": "user", "content": "what is 6*7?"}],
+        api_key="sk-test",
+        api_base="http://localhost:9999",
+        stream=True,
+        stream_options={"include_usage": True},
+        client=mock_client,
+    )
+    async for _chunk in stream:
+        pass
+
+    assert post.await_count == 2, (
+        f"expected the agentic loop to issue a follow-up provider call; got {post.await_count} call(s)"
+    )
+
+    await _settle_async_logging(spy, expected=2)
+
+    sent_prompt = sum(prompt for prompt, _completion in turn_usage)
+    sent_completion = sum(completion for _prompt, completion in turn_usage)
+    billed_prompt = sum(event[1] for event in spy.events)
+    billed_completion = sum(event[2] for event in spy.events)
+
+    assert (billed_prompt, billed_completion) == (sent_prompt, sent_completion), (
+        f"billed tokens must equal tokens sent upstream; sent={(sent_prompt, sent_completion)} "
+        f"billed={(billed_prompt, billed_completion)} events={spy.events}"
+    )
+
+    call_ids = [event[0] for event in spy.events]
+    assert len(set(call_ids)) == len(call_ids), (
+        f"each turn needs its own request id or SpendLogs drops one as a duplicate; got {call_ids}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -574,3 +883,38 @@ async def test_dispatcher_raises_on_repeated_tool_call_fingerprint(restore_callb
             )
 
     acompletion_mock.assert_not_awaited()
+
+
+def test_followup_metadata_drops_measurements_the_first_turn_already_reported():
+    """Regression: an agentic loop bills several turns for one client request. A
+    measurement the interception took once for the whole request (what
+    compression saved, whether retrieval fired) must ride on exactly one spend
+    row -- carrying it onto the follow-up turn made the daily savings aggregate
+    sum the same number twice."""
+    from litellm.litellm_core_utils.chat_completion_agentic_loop import (
+        _add_agentic_loop_metadata,
+    )
+
+    savings = {"tokens_before": 100, "tokens_after": 40, "tokens_saved": 60}
+    first_turn_metadata = {
+        "compression_savings": savings,
+        "compression_retrieval": {"requested_keys": 1},
+        "user_api_key_alias": "keep-me",
+    }
+    kwargs_for_followup: Dict[str, Any] = {
+        "litellm_metadata": first_turn_metadata,
+        "_agentic_loop_depth": 1,
+        "max_agentic_loops": 3,
+    }
+
+    _add_agentic_loop_metadata(kwargs_for_followup)
+
+    followup_metadata = kwargs_for_followup["litellm_metadata"]
+    assert "compression_savings" not in followup_metadata
+    assert "compression_retrieval" not in followup_metadata
+    assert followup_metadata["user_api_key_alias"] == "keep-me"
+    assert followup_metadata["_agentic_loop_depth"] == 1
+
+    # The first turn's own row must keep reporting them.
+    assert first_turn_metadata["compression_savings"] is savings
+    assert "compression_retrieval" in first_turn_metadata

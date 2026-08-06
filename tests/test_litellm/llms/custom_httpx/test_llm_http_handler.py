@@ -1097,9 +1097,7 @@ def test_sync_delete_responses_sets_json_content_type():
         ({}, True, None, None),
     ],
 )
-def test_resolve_anthropic_messages_timeout(
-    monkeypatch, litellm_params_kwargs, stream, global_timeout, expected
-):
+def test_resolve_anthropic_messages_timeout(monkeypatch, litellm_params_kwargs, stream, global_timeout, expected):
     from litellm.constants import DEFAULT_REQUEST_TIMEOUT_SECONDS
 
     if global_timeout is None:
@@ -1115,9 +1113,7 @@ def test_resolve_anthropic_messages_timeout(
         )
     else:
         monkeypatch.setattr("litellm.request_timeout", global_timeout, raising=False)
-        monkeypatch.setattr(
-            "litellm.request_timeout_explicitly_set", True, raising=False
-        )
+        monkeypatch.setattr("litellm.request_timeout_explicitly_set", True, raising=False)
 
     resolved = BaseLLMHTTPHandler._resolve_anthropic_messages_timeout(
         litellm_params=GenericLiteLLMParams(**litellm_params_kwargs),
@@ -1142,9 +1138,7 @@ async def test_async_anthropic_messages_handler_forwards_request_timeout(monkeyp
         return_value=({"x-api-key": "k"}, "https://api.anthropic.com")
     )
     mock_config.should_filter_anthropic_beta_headers = Mock(return_value=False)
-    mock_config.transform_anthropic_messages_request = Mock(
-        return_value={"model": "claude", "messages": []}
-    )
+    mock_config.transform_anthropic_messages_request = Mock(return_value={"model": "claude", "messages": []})
     mock_config.get_complete_url = Mock(return_value="https://api.anthropic.com/v1/messages")
     mock_config.sign_request = Mock(return_value=({"x-api-key": "k"}, None))
     mock_config.max_retry_on_anthropic_messages_http_error = 1
@@ -1190,9 +1184,7 @@ async def test_async_anthropic_messages_handler_forwards_stream_timeout(monkeypa
         return_value=({"x-api-key": "k"}, "https://api.anthropic.com")
     )
     mock_config.should_filter_anthropic_beta_headers = Mock(return_value=False)
-    mock_config.transform_anthropic_messages_request = Mock(
-        return_value={"model": "claude", "messages": []}
-    )
+    mock_config.transform_anthropic_messages_request = Mock(return_value={"model": "claude", "messages": []})
     mock_config.get_complete_url = Mock(return_value="https://api.anthropic.com/v1/messages")
     mock_config.sign_request = Mock(return_value=({"x-api-key": "k"}, None))
     mock_config.max_retry_on_anthropic_messages_http_error = 1
@@ -1602,7 +1594,13 @@ async def test_async_anthropic_messages_handler_passes_api_key_to_agentic_hooks(
     )
     mock_config.sign_request = Mock(return_value=({}, None))
 
-    fake_raw_response = {"id": "msg_1", "type": "message", "role": "assistant", "content": [], "stop_reason": "end_turn"}
+    fake_raw_response = {
+        "id": "msg_1",
+        "type": "message",
+        "role": "assistant",
+        "content": [],
+        "stop_reason": "end_turn",
+    }
     mock_config.transform_anthropic_messages_response = Mock(return_value=fake_raw_response)
 
     mock_logging_obj = Mock()
@@ -1622,10 +1620,17 @@ async def test_async_anthropic_messages_handler_passes_api_key_to_agentic_hooks(
     mock_httpx_response.status_code = 200
 
     with (
-        patch.object(handler, "_async_post_anthropic_messages_with_http_error_retry", new=AsyncMock(return_value=mock_httpx_response)),
+        patch.object(
+            handler,
+            "_async_post_anthropic_messages_with_http_error_retry",
+            new=AsyncMock(return_value=mock_httpx_response),
+        ),
         patch.object(handler, "_call_agentic_completion_hooks", side_effect=fake_agentic_hooks),
         patch("litellm.llms.custom_httpx.llm_http_handler.get_async_httpx_client"),
-        patch("litellm.litellm_core_utils.get_provider_specific_headers.ProviderSpecificHeaderUtils.get_provider_specific_headers", return_value=None),
+        patch(
+            "litellm.litellm_core_utils.get_provider_specific_headers.ProviderSpecificHeaderUtils.get_provider_specific_headers",
+            return_value=None,
+        ),
     ):
         result = await handler.async_anthropic_messages_handler(
             model="claude-haiku",
@@ -1799,7 +1804,9 @@ def test_audio_transcriptions_sends_dict_data_as_json_body():
     form-encodes it and silently ignores json=; JSON-body providers (e.g.
     Google Speech-to-Text) need an application/json body."""
     captured = {}
-    client = HTTPHandler(client=httpx.Client(transport=httpx.MockTransport(_capture_json_transcription_request(captured))))
+    client = HTTPHandler(
+        client=httpx.Client(transport=httpx.MockTransport(_capture_json_transcription_request(captured)))
+    )
 
     response = BaseLLMHTTPHandler().audio_transcriptions(
         client=client,
@@ -2035,9 +2042,7 @@ async def test_anthropic_invalid_thinking_signature_retry_resigns_bedrock_reques
     ok_response = httpx.Response(200, json={"id": "msg_1"}, request=httpx.Request("POST", request_url))
 
     class FakeAsyncClient:
-        async def post(
-            self, url, headers, data, stream=False, logging_obj=None, timeout=None
-        ):
+        async def post(self, url, headers, data, stream=False, logging_obj=None, timeout=None):
             posts.append({"headers": dict(headers), "data": data})
             return invalid_signature_response if len(posts) == 1 else ok_response
 
@@ -2071,3 +2076,222 @@ async def test_anthropic_invalid_thinking_signature_retry_resigns_bedrock_reques
     retry_authorization = posts[1]["headers"]["Authorization"]
     assert retry_authorization.startswith("AWS4-HMAC-SHA256")
     assert retry_authorization != first_attempt_headers["Authorization"]
+
+
+# ---------------------------------------------------------------------------
+# Anthropic Messages agentic loop: billed tokens must equal sent tokens
+# ---------------------------------------------------------------------------
+
+
+def _anthropic_message_body(message_id, input_tokens, output_tokens, emit_tool_use):
+    return {
+        "id": message_id,
+        "type": "message",
+        "role": "assistant",
+        "model": "m",
+        "stop_reason": "tool_use" if emit_tool_use else "end_turn",
+        "stop_sequence": None,
+        "content": (
+            [{"type": "tool_use", "id": "tu_1", "name": "litellm_content_retrieve", "input": {"key": "f.py"}}]
+            if emit_tool_use
+            else [{"type": "text", "text": "done"}]
+        ),
+        "usage": {"input_tokens": input_tokens, "output_tokens": output_tokens},
+    }
+
+
+def _anthropic_sse(message_id, input_tokens, output_tokens, emit_tool_use):
+    events = [
+        {
+            "type": "message_start",
+            "message": {
+                "id": message_id,
+                "type": "message",
+                "role": "assistant",
+                "model": "m",
+                "content": [],
+                "usage": {"input_tokens": input_tokens, "output_tokens": 1},
+            },
+        },
+        (
+            {
+                "type": "content_block_start",
+                "index": 0,
+                "content_block": {"type": "tool_use", "id": "tu_1", "name": "litellm_content_retrieve", "input": {}},
+            }
+            if emit_tool_use
+            else {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}
+        ),
+        (
+            {
+                "type": "content_block_delta",
+                "index": 0,
+                "delta": {"type": "input_json_delta", "partial_json": json.dumps({"key": "f.py"})},
+            }
+            if emit_tool_use
+            else {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "done"}}
+        ),
+        {"type": "content_block_stop", "index": 0},
+        {
+            "type": "message_delta",
+            "delta": {"stop_reason": "tool_use" if emit_tool_use else "end_turn"},
+            "usage": {"output_tokens": output_tokens},
+        },
+        {"type": "message_stop"},
+    ]
+    return [f"event: {e['type']}\ndata: {json.dumps(e)}\n\n".encode() for e in events]
+
+
+class _FakeAnthropicUpstream:
+    status_code = 200
+    headers: dict = {}
+    text = ""
+
+    def __init__(self, body, sse_lines):
+        self._body = body
+        self._sse_lines = sse_lines
+
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        return self._body
+
+    async def aiter_bytes(self, chunk_size=None):
+        for line in self._sse_lines:
+            yield line
+
+    async def aiter_lines(self):
+        for line in self._sse_lines:
+            yield line.decode()
+
+
+class _RetrievalGateLogger(litellm.integrations.custom_logger.CustomLogger):
+    """Fires only while the model still emits tool_use, so the loop runs one follow-up."""
+
+    async def async_should_run_agentic_loop(
+        self, response, model, messages, tools, stream, custom_llm_provider, kwargs
+    ):
+        content = response.get("content", []) if isinstance(response, dict) else []
+        calls = [b for b in content if isinstance(b, dict) and b.get("type") == "tool_use"]
+        return bool(calls), {"tool_calls": calls}
+
+    async def async_build_agentic_loop_plan(
+        self,
+        tools,
+        model,
+        messages,
+        response,
+        anthropic_messages_provider_config,
+        anthropic_messages_optional_request_params,
+        logging_obj,
+        stream,
+        kwargs,
+    ):
+        from litellm.types.integrations.custom_logger import (
+            AgenticLoopPlan,
+            AgenticLoopRequestPatch,
+        )
+
+        return AgenticLoopPlan(
+            run_agentic_loop=True,
+            request_patch=AgenticLoopRequestPatch(
+                model=model,
+                messages=list(messages) + [{"role": "user", "content": "retrieved content"}],
+                max_tokens=1024,
+                optional_params={},
+                kwargs={},
+            ),
+        )
+
+
+class _AnthropicUsageSpy(litellm.integrations.custom_logger.CustomLogger):
+    def __init__(self):
+        super().__init__()
+        self.events = []
+
+    async def async_log_success_event(self, kwargs, response_obj, start_time, end_time):
+        if isinstance(response_obj, dict):
+            usage = response_obj.get("usage") or {}
+            recorded = (usage.get("input_tokens", 0), usage.get("output_tokens", 0))
+        else:
+            usage_obj = getattr(response_obj, "usage", None)
+            if usage_obj is None:
+                return
+            recorded = (getattr(usage_obj, "prompt_tokens", 0), getattr(usage_obj, "completion_tokens", 0))
+        self.events.append((kwargs.get("litellm_call_id"), recorded[0], recorded[1]))
+
+
+async def _settle(spy, expected, timeout=5.0):
+    import time as _time
+
+    deadline = _time.monotonic() + timeout
+    while len(spy.events) < expected and _time.monotonic() < deadline:
+        await asyncio.sleep(0.01)
+    await asyncio.sleep(0.5)
+
+
+@pytest.mark.parametrize("stream", [False, True])
+@pytest.mark.asyncio
+async def test_anthropic_agentic_loop_bills_exactly_what_it_sends(stream, monkeypatch):
+    """Regression: an agentic loop on /v1/messages issues two upstream calls for
+    one client request. Non-streaming, only the last response reaches a logging
+    object, so the first turn's tokens must be folded in. Streaming, the first
+    turn is already billed by its own stream wrapper, so the follow-up must bill
+    itself under a distinct request id instead -- SpendLogs keys rows by request
+    id and inserts with skip_duplicates=True, so a reused id drops the row.
+
+    Either way the invariant is the same: billed tokens == tokens sent upstream."""
+    turns = [(40329, 62), (87995, 150)]
+    saved_callbacks = list(litellm.callbacks)
+    spy = _AnthropicUsageSpy()
+    litellm.callbacks = [_RetrievalGateLogger(), spy]
+    try:
+        # The agentic follow-up builds its own HTTP client, so an injected
+        # ``client=`` would only cover the first turn; the transport itself is
+        # what has to be stubbed for both turns to be observable.
+        upstreams = [
+            _FakeAnthropicUpstream(
+                _anthropic_message_body("msg_1", turns[0][0], turns[0][1], True),
+                _anthropic_sse("msg_1", turns[0][0], turns[0][1], True),
+            ),
+            _FakeAnthropicUpstream(
+                _anthropic_message_body("msg_2", turns[1][0], turns[1][1], False),
+                _anthropic_sse("msg_2", turns[1][0], turns[1][1], False),
+            ),
+        ]
+        posts = []
+
+        async def fake_post(self, *args, **kwargs):
+            posts.append(kwargs)
+            return upstreams[len(posts) - 1]
+
+        monkeypatch.setattr(AsyncHTTPHandler, "post", fake_post)
+
+        result = await litellm.anthropic.messages.acreate(
+            model="anthropic/claude-sonnet-4-5",
+            messages=[{"role": "user", "content": "hi"}],
+            max_tokens=1024,
+            stream=stream,
+            api_key="sk-test",
+        )
+        if stream:
+            async for _chunk in result:
+                pass
+
+        assert len(posts) == 2, f"expected a follow-up upstream call; got {len(posts)}"
+
+        await _settle(spy, expected=2 if stream else 1)
+
+        sent = (sum(i for i, _ in turns), sum(o for _, o in turns))
+        billed = (sum(e[1] for e in spy.events), sum(e[2] for e in spy.events))
+        assert billed == sent, (
+            f"billed tokens must equal tokens sent upstream; sent={sent} billed={billed} events={spy.events}"
+        )
+
+        call_ids = [e[0] for e in spy.events]
+        assert len(set(call_ids)) == len(call_ids), (
+            f"each billed turn needs its own request id or SpendLogs drops one as a duplicate; got {call_ids}"
+        )
+    finally:
+        litellm.callbacks = saved_callbacks

@@ -97,6 +97,47 @@ def _compression_savings_from_counts(
     )
 
 
+def _recorded_compression_savings(kwargs: dict[str, object]) -> CompressionSavingsMetadata | None:
+    """Read back what the pre-call hook recorded for this request, if anything."""
+    metadata = kwargs.get("litellm_metadata")
+    if not isinstance(metadata, dict):
+        return None
+    savings = metadata.get("compression_savings")
+    if not isinstance(savings, dict):
+        return None
+    counts = {key: savings.get(key) for key in ("tokens_before", "tokens_after")}
+    if any(isinstance(value, bool) or not isinstance(value, int) for value in counts.values()):
+        return None
+    return CompressionSavingsMetadata(
+        tokens_before=cast(int, counts["tokens_before"]),
+        tokens_after=cast(int, counts["tokens_after"]),
+        tokens_saved=cast(int, counts["tokens_before"]) - cast(int, counts["tokens_after"]),
+        source="compression_interception",
+    )
+
+
+def _savings_after_retrieval_refill(
+    savings: CompressionSavingsMetadata, refilled_tokens: int
+) -> CompressionSavingsMetadata:
+    """
+    Restate savings once retrieval pulls compressed content back into the prompt.
+
+    Compression only saves anything if the model answers from the stubs. When it
+    calls the retrieval tool instead, the loop sends the compressed prompt twice
+    (once to ask, once to answer) plus everything it pulled back, so the request
+    costs more than the uncompressed one would have. ``tokens_after`` therefore
+    becomes what the whole loop actually sends, and ``tokens_saved`` goes
+    negative, which the spend aggregate floors at zero rather than crediting.
+    """
+    tokens_after = savings["tokens_after"] * 2 + refilled_tokens
+    return CompressionSavingsMetadata(
+        tokens_before=savings["tokens_before"],
+        tokens_after=tokens_after,
+        tokens_saved=savings["tokens_before"] - tokens_after,
+        source="compression_interception",
+    )
+
+
 def _record_compression_savings(kwargs: dict[str, object], savings: CompressionSavingsMetadata) -> None:
     """
     Attach savings to the request's litellm metadata so they land in the
@@ -338,6 +379,40 @@ class CompressionInterceptionLogger(CustomLogger):
             return None
         return _positive_int(model_info.get("max_input_tokens"))
 
+    def _restate_savings_for_refill(self, kwargs: dict[str, Any], model: str, refilled: list[str]) -> None:
+        """Rewrite this request's savings to account for the content being pulled back."""
+        savings = _recorded_compression_savings(kwargs)
+        if savings is None:
+            return
+        refilled_tokens = self._text_tokens(
+            model=model,
+            text="".join(refilled),
+            custom_tokenizer=self._resolve_custom_tokenizer(kwargs=kwargs, model=model),
+            token_count_multiplier=_compression_token_count_multiplier(kwargs),
+        )
+        _record_compression_savings(
+            kwargs=kwargs,
+            savings=_savings_after_retrieval_refill(savings=savings, refilled_tokens=refilled_tokens),
+        )
+
+    @staticmethod
+    def _text_tokens(
+        model: str,
+        text: str,
+        custom_tokenizer: Optional[SelectTokenizerResponse],
+        token_count_multiplier: float,
+    ) -> int:
+        if not text:
+            return 0
+        try:
+            if custom_tokenizer is None:
+                token_count = token_counter(model=model, text=text)
+            else:
+                token_count = token_counter(model=model, text=text, custom_tokenizer=custom_tokenizer)
+        except (KeyError, TypeError, ValueError):
+            return 0
+        return math.ceil(token_count * max(token_count_multiplier, 1.0))
+
     @staticmethod
     def _tool_schema_tokens(
         model: str,
@@ -456,6 +531,7 @@ class CompressionInterceptionLogger(CustomLogger):
                 cache_misses=cache_misses,
             ),
         )
+        self._restate_savings_for_refill(kwargs=kwargs, model=model, refilled=retrieval_results)
         verbose_logger.info(
             "CompressionInterception: cache lookup completed "
             "[call_id=%s requested_keys=%d cache_hits=%d cache_misses=%d]",

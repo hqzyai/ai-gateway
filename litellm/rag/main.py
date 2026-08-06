@@ -11,14 +11,12 @@ __all__ = ["ingest", "aingest", "query", "aquery"]
 
 import asyncio
 import contextvars
-from contextlib import contextmanager
 from functools import partial
 from typing import (
     TYPE_CHECKING,
     Any,
     Coroutine,
     Dict,
-    Iterator,
     List,
     Optional,
     Tuple,
@@ -29,7 +27,7 @@ from typing import (
 import httpx
 
 import litellm
-from litellm._internal_context import is_internal_call
+from litellm._internal_context import suppressed_sub_call_billing
 from litellm.cost_calculator import vector_store_search_cost
 from litellm.litellm_core_utils.litellm_logging import Logging as LiteLLMLoggingObj
 from litellm.rag.ingestion.base_ingestion import BaseRAGIngestion
@@ -193,25 +191,6 @@ async def aingest(
         )
 
 
-@contextmanager
-def _suppressed_sub_call_billing() -> Iterator[None]:
-    """
-    Suppress a sub-call's own billing event so the parent aquery event bills it.
-
-    Every suppressed sub-call's cost must be folded into the parent event:
-    into the response's hidden response_cost on the non-streaming path, or via
-    the logging object's additional_response_cost on the streaming path (the
-    streamed cost is computed from assembled chunks after this pipeline
-    returns, so there is no response object to fold into here).
-    """
-    previous = is_internal_call.get()
-    is_internal_call.set(True)
-    try:
-        yield
-    finally:
-        is_internal_call.set(previous)
-
-
 async def _execute_query_pipeline(
     model: str,
     messages: List[Any],
@@ -233,7 +212,7 @@ async def _execute_query_pipeline(
         raise ValueError("No query found in messages for RAG query")
 
     # 2. Search vector store
-    with _suppressed_sub_call_billing():
+    with suppressed_sub_call_billing():
         search_response = await litellm.vector_stores.asearch(
             vector_store_id=retrieval_config["vector_store_id"],
             query=query_text,
@@ -262,7 +241,7 @@ async def _execute_query_pipeline(
     if rerank and rerank.get("enabled"):
         documents = RAGQuery.extract_documents_from_search(search_response)
         if documents:
-            with _suppressed_sub_call_billing():
+            with suppressed_sub_call_billing():
                 rerank_response = await litellm.arerank(
                     model=rerank["model"],
                     query=query_text,
@@ -280,7 +259,7 @@ async def _execute_query_pipeline(
     modified_messages = messages[:-1] + [context_message] + [messages[-1]]
 
     # Use router if available to properly resolve virtual model names
-    with _suppressed_sub_call_billing():
+    with suppressed_sub_call_billing():
         if router is not None:
             response = await router.acompletion(
                 model=model,

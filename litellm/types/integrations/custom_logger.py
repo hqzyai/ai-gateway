@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
@@ -21,6 +22,18 @@ def is_interception_internal_key(
     prefixes: frozenset[str] = INTERCEPTION_INTERNAL_PREFIXES,
 ) -> bool:
     return any(key.startswith(prefix) for prefix in prefixes)
+
+
+# Metadata an interception measures once for the whole client request. An agentic
+# loop answers one request with several billed turns, so carrying these onto a
+# follow-up turn would report the same measurement on more than one spend row and
+# the daily aggregates would sum it twice.
+REQUEST_SCOPED_METADATA_KEYS = frozenset(("compression_savings", "compression_retrieval"))
+
+
+def without_request_scoped_metadata(metadata: Mapping[str, object]) -> dict[str, object]:
+    """Copy metadata for a follow-up turn, dropping what the first turn already reported."""
+    return {key: value for key, value in metadata.items() if key not in REQUEST_SCOPED_METADATA_KEYS}
 
 
 class StandardCustomLoggerInitParams(BaseModel):

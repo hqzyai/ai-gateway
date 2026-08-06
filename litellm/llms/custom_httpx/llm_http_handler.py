@@ -95,6 +95,7 @@ from litellm.types.files import StreamingMediaUploadConfig, TwoStepFileUploadCon
 from litellm.types.integrations.custom_logger import (
     AgenticLoopPlan,
     AgenticLoopRequestPatch,
+    without_request_scoped_metadata,
 )
 from litellm.types.llms.anthropic_messages.anthropic_response import (
     AnthropicMessagesResponse,
@@ -5082,8 +5083,15 @@ class BaseLLMHTTPHandler:
         fingerprint: str,
         stream: bool = False,
         callback: Optional[Any] = None,
+        previous_response: Optional[Any] = None,
     ) -> Any:
+        import uuid
+
+        from litellm._internal_context import suppressed_sub_call_billing
         from litellm.anthropic_interface import messages as anthropic_messages
+        from litellm.litellm_core_utils.agentic_loop_usage import (
+            accumulate_agentic_loop_usage,
+        )
 
         patch = plan.request_patch or AgenticLoopRequestPatch()
         if patch.messages is None:
@@ -5120,17 +5128,23 @@ class BaseLLMHTTPHandler:
         kwargs_for_followup["_agentic_loop_depth"] = depth + 1
         kwargs_for_followup["max_agentic_loops"] = max_loops
         kwargs_for_followup["_agentic_loop_fingerprints"] = fingerprints + [fingerprint]
+        followup_metadata = kwargs_for_followup.get("litellm_metadata")
+        if isinstance(followup_metadata, dict):
+            kwargs_for_followup["litellm_metadata"] = without_request_scoped_metadata(followup_metadata)
+        if stream:
+            kwargs_for_followup["litellm_call_id"] = str(uuid.uuid4())
 
-        response = await anthropic_messages.acreate(
-            **{
-                "max_tokens": max_tokens,
-                "messages": patch.messages,
-                "model": patch.model or full_model_name,
-                "stream": stream,
-                **optional_params,
-                **kwargs_for_followup,
-            }
-        )
+        with suppressed_sub_call_billing():
+            response = await anthropic_messages.acreate(
+                **{
+                    "max_tokens": max_tokens,
+                    "messages": patch.messages,
+                    "model": patch.model or full_model_name,
+                    "stream": stream,
+                    **optional_params,
+                    **kwargs_for_followup,
+                }
+            )
 
         if callback is not None:
             try:
@@ -5147,6 +5161,9 @@ class BaseLLMHTTPHandler:
                     str(e),
                 )
 
+        if previous_response is not None:
+            accumulate_agentic_loop_usage(previous_response=previous_response, followup_response=response)
+
         return response
 
     async def _execute_responses_agentic_plan(
@@ -5161,7 +5178,13 @@ class BaseLLMHTTPHandler:
         fingerprints: list[str],
         fingerprint: str,
         callback: Any | None = None,
+        previous_response: Any | None = None,
     ) -> Any:
+        from litellm._internal_context import suppressed_sub_call_billing
+        from litellm.litellm_core_utils.agentic_loop_usage import (
+            accumulate_agentic_loop_usage,
+        )
+
         patch = plan.request_patch or AgenticLoopRequestPatch()
         if patch.messages is None:
             raise ValueError("Agentic loop plan missing patched responses input")
@@ -5192,12 +5215,13 @@ class BaseLLMHTTPHandler:
         kwargs_for_followup["_agentic_loop_fingerprints"] = fingerprints + [fingerprint]
 
         try:
-            response = await litellm.aresponses(
-                model=patch.model or model,
-                input=patch.messages,
-                **optional_params,
-                **kwargs_for_followup,
-            )
+            with suppressed_sub_call_billing():
+                response = await litellm.aresponses(
+                    model=patch.model or model,
+                    input=patch.messages,
+                    **optional_params,
+                    **kwargs_for_followup,
+                )
 
             if callback is not None:
                 try:
@@ -5213,6 +5237,9 @@ class BaseLLMHTTPHandler:
                         model,
                         str(e),
                     )
+
+            if previous_response is not None:
+                accumulate_agentic_loop_usage(previous_response=previous_response, followup_response=response)
 
             return response
         finally:
@@ -5498,6 +5525,7 @@ class BaseLLMHTTPHandler:
                         fingerprints=fingerprints,
                         fingerprint=fingerprint,
                         callback=callback,
+                        previous_response=response,
                     )
 
                 return self._maybe_wrap_in_fake_stream(
@@ -5514,6 +5542,7 @@ class BaseLLMHTTPHandler:
                         fingerprint=fingerprint,
                         stream=stream,
                         callback=callback,
+                        previous_response=response,
                     ),
                     logging_obj,
                     api_surface,

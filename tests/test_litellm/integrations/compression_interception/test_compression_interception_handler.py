@@ -582,3 +582,128 @@ async def test_pre_call_hook_no_compression_records_no_savings(monkeypatch):
     await logger.async_pre_call_deployment_hook(kwargs=kwargs, call_type=CallTypes.anthropic_messages)
 
     assert "compression_savings" not in litellm_metadata
+
+
+async def _build_plan_with_recorded_savings(
+    logger: CompressionInterceptionLogger,
+    litellm_metadata: dict,
+    cached_content: str,
+    requested_key: str,
+) -> None:
+    """Drive one retrieval turn against a request whose pre-call savings are already recorded."""
+    call_id = "call_savings"
+    logger._compression_cache_by_call_id[call_id] = ({"auth.py": cached_content}, 9999999999.0)
+    logging_obj = MagicMock()
+    logging_obj.litellm_call_id = call_id
+    logging_obj.model_call_details = {"agentic_loop_params": {"model": "gpt-4o"}}
+
+    await logger.async_build_agentic_loop_plan(
+        tools={
+            "tool_calls": [
+                {
+                    "id": "toolu_abc",
+                    "type": "tool_use",
+                    "name": "litellm_content_retrieve",
+                    "input": {"key": requested_key},
+                }
+            ]
+        },
+        model="gpt-4o",
+        messages=[{"role": "user", "content": "read auth.py"}],
+        response=None,
+        anthropic_messages_provider_config=None,
+        anthropic_messages_optional_request_params={"max_tokens": 1024},
+        logging_obj=logging_obj,
+        stream=False,
+        kwargs={"litellm_metadata": litellm_metadata},
+    )
+
+
+@pytest.mark.asyncio
+async def test_retrieval_refill_restates_savings_as_a_net_loss():
+    """Regression: compression only saves anything if the model answers from the
+    stubs. When it retrieves instead, the loop sends the compressed prompt twice
+    plus everything it pulled back, so the request costs more than the
+    uncompressed one would have.
+
+    Reporting the pre-refill figure credited the savings dashboard for tokens
+    that were spent, not saved. tokens_after must become what the whole loop
+    sends, and the spend aggregate must stop crediting the request."""
+    from litellm.litellm_core_utils.token_counter import token_counter
+    from litellm.proxy.spend_tracking.compression_savings import (
+        extract_compression_saved_tokens,
+    )
+
+    cached_content = "def authenticate(user):\n    return check(user)\n" * 1000
+    litellm_metadata = {
+        "compression_savings": {
+            "tokens_before": 86636,
+            "tokens_after": 39680,
+            "tokens_saved": 46956,
+            "source": "compression_interception",
+        }
+    }
+    logger = CompressionInterceptionLogger()
+
+    assert extract_compression_saved_tokens(litellm_metadata) == 46956
+
+    await _build_plan_with_recorded_savings(
+        logger=logger,
+        litellm_metadata=litellm_metadata,
+        cached_content=cached_content,
+        requested_key="auth.py",
+    )
+
+    refilled_tokens = token_counter(model="gpt-4o", text=cached_content)
+    savings = litellm_metadata["compression_savings"]
+    assert savings["tokens_before"] == 86636
+    assert savings["tokens_after"] == 39680 * 2 + refilled_tokens
+    assert savings["tokens_saved"] == 86636 - savings["tokens_after"]
+    assert savings["tokens_saved"] < 0, "a refilled request costs more than the uncompressed one"
+
+    assert extract_compression_saved_tokens(litellm_metadata) == 0, (
+        "a request whose content was pulled back must not credit the savings dashboard"
+    )
+
+
+@pytest.mark.asyncio
+async def test_retrieval_miss_still_charges_the_second_prompt():
+    """A cache miss refills nothing, but the loop still pays for the compressed
+    prompt a second time, so the savings must halve rather than stand."""
+    litellm_metadata = {
+        "compression_savings": {
+            "tokens_before": 100000,
+            "tokens_after": 30000,
+            "tokens_saved": 70000,
+            "source": "compression_interception",
+        }
+    }
+    logger = CompressionInterceptionLogger()
+
+    await _build_plan_with_recorded_savings(
+        logger=logger,
+        litellm_metadata=litellm_metadata,
+        cached_content="unused",
+        requested_key="missing.py",
+    )
+
+    savings = litellm_metadata["compression_savings"]
+    # 30000 sent twice, plus the short "[compressed content key ... not found]" notice.
+    assert 60000 <= savings["tokens_after"] <= 60050
+    assert savings["tokens_saved"] == 100000 - savings["tokens_after"]
+
+
+@pytest.mark.asyncio
+async def test_savings_left_alone_when_nothing_was_recorded():
+    """A request that never compressed must not gain a savings entry from the loop."""
+    litellm_metadata: dict = {}
+    logger = CompressionInterceptionLogger()
+
+    await _build_plan_with_recorded_savings(
+        logger=logger,
+        litellm_metadata=litellm_metadata,
+        cached_content="content",
+        requested_key="auth.py",
+    )
+
+    assert "compression_savings" not in litellm_metadata
