@@ -11,7 +11,7 @@ import time
 import uuid
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Optional, cast
+from typing import Any, Final, Optional, cast
 
 import litellm
 from tokenizers import Tokenizer
@@ -149,7 +149,7 @@ def _record_compression_savings(kwargs: dict[str, object], savings: CompressionS
     to the same object; replacing it would orphan writes made through those
     references.
     """
-    existing = kwargs.get("litellm_metadata")
+    existing: Final = kwargs.get("litellm_metadata")
     if isinstance(existing, dict):
         existing["compression_savings"] = savings
         return
@@ -254,8 +254,8 @@ class CompressionInterceptionLogger(CustomLogger):
         if int(kwargs.get("_agentic_loop_depth", 0) or 0) > 0:
             return None
 
-        messages = kwargs.get("messages")
-        model = kwargs.get("model")
+        messages: Final = kwargs.get("messages")
+        model: Final = kwargs.get("model")
         if not isinstance(messages, list) or not isinstance(model, str):
             return None
 
@@ -272,7 +272,7 @@ class CompressionInterceptionLogger(CustomLogger):
             token_count_multiplier=token_count_multiplier,
         )
 
-        compressed = compress(  # type: ignore
+        compressed: Final = compress(
             messages=messages,
             model=model,
             call_type=compression_call_type,
@@ -595,20 +595,20 @@ class CompressionInterceptionLogger(CustomLogger):
             }
             follow_up_messages = messages + [assistant_message, user_message]
 
-        max_tokens = cast(
-            Optional[int],
+        max_tokens: Final = cast(
+            int | None,
             anthropic_messages_optional_request_params.get("max_tokens") or kwargs.get("max_tokens"),
         )
-        optional_params_without_max_tokens = {
+        optional_params_without_max_tokens: Final = {
             k: v for k, v in anthropic_messages_optional_request_params.items() if k != "max_tokens"
         }
 
         full_model_name = model
         if logging_obj is not None:
-            agentic_params = logging_obj.model_call_details.get("agentic_loop_params", {})
+            agentic_params: Final = logging_obj.model_call_details.get("agentic_loop_params", {})
             full_model_name = cast(str, agentic_params.get("model", model))
 
-        request_patch = AgenticLoopRequestPatch(
+        request_patch: Final = AgenticLoopRequestPatch(
             model=full_model_name,
             messages=follow_up_messages,
             max_tokens=max_tokens,
@@ -659,7 +659,7 @@ class CompressionInterceptionLogger(CustomLogger):
         return response
 
     def _prune_expired_cache(self) -> None:
-        now = time.time()
+        now: Final = time.time()
         self._compression_cache_by_call_id = {
             call_id: (cache, created_at)
             for call_id, (
@@ -672,18 +672,18 @@ class CompressionInterceptionLogger(CustomLogger):
     def _get_cache(self, call_id: Optional[str]) -> dict[str, str]:
         if not call_id:
             return {}
-        cache_entry = self._compression_cache_by_call_id.get(call_id)
+        cache_entry: Final = self._compression_cache_by_call_id.get(call_id)
         if cache_entry is None:
             return {}
         return cache_entry[0]
 
     def _resolve_call_id(self, logging_obj: Any, kwargs: dict[str, Any]) -> Optional[str]:
         if logging_obj is not None:
-            logging_call_id = getattr(logging_obj, "litellm_call_id", None)
+            logging_call_id: Final = getattr(logging_obj, "litellm_call_id", None)
             if isinstance(logging_call_id, str) and logging_call_id:
                 return logging_call_id
-        kwargs_call_id = kwargs.get("litellm_call_id")
-        return cast(Optional[str], kwargs_call_id if isinstance(kwargs_call_id, str) else None)
+        kwargs_call_id: Final = kwargs.get("litellm_call_id")
+        return cast(str | None, kwargs_call_id if isinstance(kwargs_call_id, str) else None)
 
     def _resolve_retrieval_content(self, tool_call: dict[str, Any], cache: dict[str, str]) -> tuple[str, bool]:
         raw_input = tool_call.get("input", {})

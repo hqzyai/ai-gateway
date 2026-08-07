@@ -8,8 +8,8 @@ from typing import (
     TYPE_CHECKING,
     Any,
     AsyncIterator,
+    Final,
     Iterator,
-    List,
     Tuple,
     Type,
     Union,
@@ -117,11 +117,11 @@ class BaseConfig(ABC):
 
         if 'thinking' is enabled and 'max_tokens' or 'max_completion_tokens' is not specified, set 'max_tokens' to the thinking token budget + DEFAULT_MAX_TOKENS
         """
-        is_thinking_enabled = self.is_thinking_enabled(optional_params)
+        is_thinking_enabled: Final = self.is_thinking_enabled(optional_params)
         if is_thinking_enabled and (
             "max_tokens" not in non_default_params and "max_completion_tokens" not in non_default_params
         ):
-            thinking_token_budget = cast(dict, optional_params["thinking"]).get("budget_tokens", None)
+            thinking_token_budget: Final = cast(dict, optional_params["thinking"]).get("budget_tokens", None)
             if thinking_token_budget is not None:
                 optional_params["max_tokens"] = thinking_token_budget + DEFAULT_MAX_TOKENS
 
@@ -136,7 +136,7 @@ class BaseConfig(ABC):
         """
         return False
 
-    def _add_tools_to_optional_params(self, optional_params: dict, tools: List) -> dict:
+    def _add_tools_to_optional_params(self, optional_params: dict, tools: list) -> dict:
         """
         Helper util to add tools to optional_params.
         """
@@ -151,8 +151,8 @@ class BaseConfig(ABC):
 
     def translate_developer_role_to_system_role(
         self,
-        messages: List[AllMessageValues],
-    ) -> List[AllMessageValues]:
+        messages: list[AllMessageValues],
+    ) -> list[AllMessageValues]:
         """
         Translate `developer` role to `system` role for non-OpenAI providers.
 
@@ -215,12 +215,12 @@ class BaseConfig(ABC):
             json_schema = value["json_schema"]["schema"]
 
         if json_schema and not is_response_format_supported:
-            _tool_choice = ChatCompletionToolChoiceObjectParam(
+            _tool_choice: Final = ChatCompletionToolChoiceObjectParam(
                 type="function",
                 function=ChatCompletionToolChoiceFunctionParam(name=RESPONSE_FORMAT_TOOL_NAME),
             )
 
-            _tool = ChatCompletionToolParam(
+            _tool: Final = ChatCompletionToolParam(
                 type="function",
                 function=ChatCompletionToolParamFunctionChunk(name=RESPONSE_FORMAT_TOOL_NAME, parameters=json_schema),
             )
@@ -250,7 +250,7 @@ class BaseConfig(ABC):
         self,
         headers: dict,
         model: str,
-        messages: List[AllMessageValues],
+        messages: list[AllMessageValues],
         optional_params: dict,
         litellm_params: dict,
         api_key: str | None = None,
@@ -307,7 +307,7 @@ class BaseConfig(ABC):
     def transform_request(
         self,
         model: str,
-        messages: List[AllMessageValues],
+        messages: list[AllMessageValues],
         optional_params: dict,
         litellm_params: dict,
         headers: dict,
@@ -317,7 +317,7 @@ class BaseConfig(ABC):
     async def async_transform_request(
         self,
         model: str,
-        messages: List[AllMessageValues],
+        messages: list[AllMessageValues],
         optional_params: dict,
         litellm_params: dict,
         headers: dict,
@@ -343,7 +343,7 @@ class BaseConfig(ABC):
         model_response: "ModelResponse",
         logging_obj: LiteLLMLoggingObj,
         request_data: dict,
-        messages: List[AllMessageValues],
+        messages: list[AllMessageValues],
         optional_params: dict,
         litellm_params: dict,
         encoding: Any,
@@ -364,9 +364,7 @@ class BaseConfig(ABC):
         return parsed_response
 
     @abstractmethod
-    def get_error_class(
-        self, error_message: str, status_code: int, headers: Union[dict, httpx.Headers]
-    ) -> BaseLLMException:
+    def get_error_class(self, error_message: str, status_code: int, headers: dict | httpx.Headers) -> BaseLLMException:
         pass
 
     def get_model_response_iterator(
@@ -431,10 +429,10 @@ class BaseConfig(ABC):
     def apply_assembled_streaming_response_metadata(
         self,
         response: "ModelResponse",
-        chunks: List[Any],
+        chunks: list[Any],
     ) -> None:
         """Hook for providers to merge chunk metadata into assembled streaming responses."""
-        return None
+        return
 
     def calculate_additional_costs(self, model: str, prompt_tokens: int, completion_tokens: int) -> dict | None:
         """

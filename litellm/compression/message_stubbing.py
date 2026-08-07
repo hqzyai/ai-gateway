@@ -3,12 +3,12 @@ Replace messages with compact stubs and extract human-readable keys.
 """
 
 import re
-from typing import Set
+from typing import Final
 
 from litellm.compression.content_detection import detect_content_type
 
 # Patterns for extracting file paths from content
-_FILE_PATH_PATTERNS = [
+_FILE_PATH_PATTERNS: Final = [
     re.compile(r"^#\s*(\S+\.\w+)", re.MULTILINE),  # # filename.py
     re.compile(r"^//\s*(\S+\.\w+)", re.MULTILINE),  # // filename.js
     re.compile(r"^File:\s*(\S+)", re.MULTILINE),  # File: path/to/file
@@ -17,7 +17,7 @@ _FILE_PATH_PATTERNS = [
 ]
 
 
-def extract_key(message: dict, fallback_index: int, used_keys: Set[str]) -> str:
+def extract_key(message: dict, fallback_index: int, used_keys: set[str]) -> str:
     """
     Extract a human-readable key for the message.
 
@@ -41,7 +41,7 @@ def extract_key(message: dict, fallback_index: int, used_keys: Set[str]) -> str:
         key = f"message_{fallback_index}"
 
     # Handle duplicates
-    base_key = key
+    base_key: Final = key
     counter = 2
     while key in used_keys:
         key = f"{base_key}_{counter}"
@@ -62,10 +62,10 @@ def stub_message(message: dict, key: str) -> dict:
     if isinstance(content, list):
         content = " ".join(p.get("text", "") if isinstance(p, dict) else str(p) for p in content)
 
-    line_count = content.count("\n") + 1
-    content_type = detect_content_type(content)
+    line_count: Final = content.count("\n") + 1
+    content_type: Final = detect_content_type(content)
 
-    stub_content = (
+    stub_content: Final = (
         f"[Compressed: {key} — {line_count} lines, {content_type}. "
         f"Use litellm_content_retrieve tool to get full content.]"
     )

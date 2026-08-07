@@ -3,6 +3,7 @@ Common utilities for Volcengine LLM provider
 """
 
 from collections.abc import Mapping
+from typing import Final
 
 import httpx
 
@@ -52,7 +53,7 @@ def get_volcengine_headers(api_key: str, extra_headers: Mapping[str, str] | None
     Returns:
         Dictionary of headers
     """
-    headers = {
+    headers: Final = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {api_key}",
     }

@@ -1,4 +1,3 @@
-import { TabPanel } from "@tremor/react";
 import React from "react";
 import useAuthorized from "@/app/(dashboard)/hooks/useAuthorized";
 import { useModelCostMap } from "../../hooks/models/useModelCostMap";
@@ -9,7 +8,7 @@ const PriceDataManagementTab = () => {
   const { data: modelCostMap, isLoading, refetch: refetchModelCostMap } = useModelCostMap();
 
   return (
-    <TabPanel>
+    <div>
       <div className="p-6">
         <PricingRulesManager
           accessToken={accessToken}
@@ -19,7 +18,7 @@ const PriceDataManagementTab = () => {
           onModelCostMapReload={() => void refetchModelCostMap()}
         />
       </div>
-    </TabPanel>
+    </div>
   );
 };
 

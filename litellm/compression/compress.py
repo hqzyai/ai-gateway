@@ -6,7 +6,7 @@ scoring, message stubbing, and retrieval tool injection.
 import math
 import re
 from collections.abc import Mapping, Sequence, Set as AbstractSet
-from typing import Any, Optional, Union, cast
+from typing import Any, Final, Optional, cast
 
 from litellm.caching.dual_cache import DualCache
 from litellm.compression.chunk_selection import select_chunks_to_budget
@@ -22,11 +22,11 @@ from litellm.types.utils import CallTypes, SelectTokenizerResponse
 
 # CallTypes that produce Anthropic-shaped messages (structured content blocks).
 # Everything else is treated as OpenAI chat-completions shape.
-_ANTHROPIC_CALL_TYPES = frozenset({CallTypes.anthropic_messages.value})
+_ANTHROPIC_CALL_TYPES: Final = frozenset({CallTypes.anthropic_messages.value})
 # CallTypes that are valid targets for compression.  Compression operates on
 # message-shaped inputs, so we only accept call types whose payload is a list
 # of role/content messages.
-_SUPPORTED_CALL_TYPES = frozenset(
+_SUPPORTED_CALL_TYPES: Final = frozenset(
     {
         CallTypes.completion.value,
         CallTypes.acompletion.value,
@@ -48,7 +48,7 @@ _CONVERSATIONAL_ROLE_WEIGHT = 0.2
 CandidateUnit = tuple[float, tuple[int, ...], bool]
 
 
-def _normalize_call_type(call_type: Union[CallTypes, str]) -> str:
+def _normalize_call_type(call_type: CallTypes | str) -> str:
     """Return the string value for a ``CallTypes`` enum or a raw string."""
     if isinstance(call_type, CallTypes):
         return call_type.value
@@ -69,7 +69,7 @@ def _build_retrieval_tools(keys: Sequence[str], call_type: str) -> Sequence[Mapp
     if not keys:
         return []
 
-    openai_tools = [build_retrieval_tool(keys)]
+    openai_tools: Final = [build_retrieval_tool(keys)]
     if not _is_anthropic_call_type(call_type):
         return openai_tools
 
@@ -341,12 +341,16 @@ def _extract_openai_tool_exchange_spans(
     return spans, None
 
 
-def _get_protected_indices(messages: Sequence[Mapping[str, Any]]) -> Sequence[int]:
+def get_protected_indices(messages: Sequence[Mapping[str, Any]]) -> Sequence[int]:
     """
     Return indices of messages that must never be compressed:
     - All system and developer messages
     - The last user message
     - The last assistant message
+
+    The last user message is what the model is being asked to act on right now,
+    so compressing it replaces the live instruction with a marker. Compression
+    guardrails share this policy; see the Headroom guardrail.
     """
     protected = []
 
@@ -620,7 +624,7 @@ def _get_dropped_tool_span_indices(kept_indices: set[int], tool_exchange_spans: 
 def compress(
     messages: list[dict],
     model: str,
-    call_type: Union[CallTypes, str] = CallTypes.completion,
+    call_type: CallTypes | str = CallTypes.completion,
     compression_trigger: int = 200_000,
     compression_target: Optional[int] = None,
     embedding_model: Optional[str] = None,
@@ -665,7 +669,7 @@ def compress(
         A ``CompressedResult`` dict containing compressed messages, token
         counts, a cache of original content, and the retrieval tool definition.
     """
-    call_type_str = _normalize_call_type(call_type)
+    call_type_str: Final = _normalize_call_type(call_type)
     normalized_messages, original_messages = _normalize_messages_for_compression(
         messages=messages,
         call_type=call_type_str,
@@ -698,14 +702,14 @@ def compress(
     query = _build_relevance_query(normalized_messages)
 
     # Score each message
-    bm25_scores = bm25_score_messages(query, normalized_messages)
+    bm25_scores: Final = bm25_score_messages(query, normalized_messages)
 
     if embedding_model:
         from litellm.compression.scoring.embedding_scorer import (
             embedding_score_messages,
         )
 
-        emb_scores = embedding_score_messages(
+        emb_scores: Final = embedding_score_messages(
             query,
             normalized_messages,
             model=embedding_model,
@@ -719,7 +723,7 @@ def compress(
     retention_scores = _hybrid_retention_scores(messages=normalized_messages, relevance_scores=relevance_scores)
 
     # Protected messages are never compressed
-    protected_indices = _get_protected_indices(normalized_messages)
+    protected_indices = get_protected_indices(normalized_messages)
     kept_indices: set[int] = set(protected_indices)
 
     if _is_anthropic_call_type(call_type_str):
@@ -778,7 +782,7 @@ def compress(
             compressed_messages.append(stub_message(msg, key))
 
     # Build retrieval tool in the target request schema
-    tools = _build_retrieval_tools(list(cache.keys()), call_type=call_type_str)
+    tools: Final = _build_retrieval_tools(list(cache.keys()), call_type=call_type_str)
 
     compressed_tokens = _count_message_tokens(
         model=model,

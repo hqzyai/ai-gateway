@@ -6,7 +6,7 @@ from collections.abc import Awaitable, Callable
 from contextlib import nullcontext
 from contextvars import ContextVar, Token
 from dataclasses import dataclass
-from typing import cast
+from typing import Final, cast
 
 from litellm._internal_context import suppressed_sub_call_billing
 from litellm._logging import verbose_logger
@@ -23,7 +23,7 @@ from litellm.types.integrations.custom_logger import (
 from litellm.types.utils import Choices, Message, ModelResponse
 from litellm.utils import CustomStreamWrapper
 
-_FOLLOWUP_INTERNAL_PARAMS = frozenset(
+_FOLLOWUP_INTERNAL_PARAMS: Final = frozenset(
     (
         "acompletion",
         "litellm_logging_obj",
@@ -136,20 +136,20 @@ def sanitize_response_hiding_proxy_owned_tools(response: ModelResponse) -> Model
 
 
 def _gate_overridden(callback: CustomLogger) -> bool:
-    base = CustomLogger.async_should_run_agentic_loop
-    func = type(callback).async_should_run_agentic_loop
+    base: Final = CustomLogger.async_should_run_agentic_loop
+    func: Final = type(callback).async_should_run_agentic_loop
     return getattr(func, "__func__", func) is not getattr(base, "__func__", base)
 
 
 def _build_plan_overridden(callback: CustomLogger) -> bool:
-    base = CustomLogger.async_build_agentic_loop_plan
-    func = type(callback).async_build_agentic_loop_plan
+    base: Final = CustomLogger.async_build_agentic_loop_plan
+    func: Final = type(callback).async_build_agentic_loop_plan
     return getattr(func, "__func__", func) is not getattr(base, "__func__", base)
 
 
 def _post_hook_overridden(callback: CustomLogger) -> bool:
-    base = CustomLogger.async_post_agentic_loop_response_hook
-    func = type(callback).async_post_agentic_loop_response_hook
+    base: Final = CustomLogger.async_post_agentic_loop_response_hook
+    func: Final = type(callback).async_post_agentic_loop_response_hook
     return getattr(func, "__func__", func) is not getattr(base, "__func__", base)
 
 
@@ -158,10 +158,10 @@ def _coerce_int(value: object, default: int) -> int:
 
 
 def _agentic_loop_settings(kwargs: dict[str, object]) -> tuple[int, int, list[str]]:
-    depth = _coerce_int(kwargs.get("_agentic_loop_depth"), 0)
-    max_loops = max(_coerce_int(kwargs.get("max_agentic_loops"), 3), 1)
-    raw_fingerprints = kwargs.get("_agentic_loop_fingerprints")
-    fingerprints = [str(fp) for fp in raw_fingerprints] if isinstance(raw_fingerprints, list) else []
+    depth: Final = _coerce_int(kwargs.get("_agentic_loop_depth"), 0)
+    max_loops: Final = max(_coerce_int(kwargs.get("max_agentic_loops"), 3), 1)
+    raw_fingerprints: Final = kwargs.get("_agentic_loop_fingerprints")
+    fingerprints: Final = [str(fp) for fp in raw_fingerprints] if isinstance(raw_fingerprints, list) else []
     return depth, max_loops, fingerprints
 
 
@@ -179,7 +179,7 @@ def _check_agentic_loop_safety(
     max_loops: int,
     model: str,
 ) -> str:
-    fingerprint = _fingerprint_tools(tool_calls)
+    fingerprint: Final = _fingerprint_tools(tool_calls)
     if fingerprint in fingerprints:
         raise ValueError("Agentic loop detected repeated tool-call fingerprint; aborting rerun")
     if depth >= max_loops:
@@ -250,7 +250,7 @@ async def _execute_chat_completion_agentic_plan(
     """
     import litellm
 
-    patch = plan.request_patch or AgenticLoopRequestPatch()
+    patch: Final = plan.request_patch or AgenticLoopRequestPatch()
     if patch.messages is None:
         raise ValueError("Agentic loop plan missing patched messages")
 
@@ -260,7 +260,7 @@ async def _execute_chat_completion_agentic_plan(
     if "tool_choice" not in patch.optional_params:
         optional_params_for_followup.pop("tool_choice", None)
 
-    kwargs_for_followup = _filter_followup_kwargs(kwargs)
+    kwargs_for_followup: Final = _filter_followup_kwargs(kwargs)
     kwargs_for_followup.update(
         {k: v for k, v in _filter_followup_kwargs(patch.kwargs).items() if k not in optional_params_for_followup}
     )
@@ -344,9 +344,9 @@ async def maybe_run_chat_completion_agentic_loop(
 ) -> ModelResponse | CustomStreamWrapper | None:
     import litellm
 
-    callbacks = litellm.callbacks + (getattr(logging_obj, "dynamic_success_callbacks", None) or [])
+    callbacks: Final = litellm.callbacks + (getattr(logging_obj, "dynamic_success_callbacks", None) or [])
     depth, max_loops, fingerprints = _agentic_loop_settings(kwargs)
-    tools = optional_params.get("tools", [])
+    tools: Final = optional_params.get("tools", [])
 
     for callback in callbacks:
         if not isinstance(callback, CustomLogger):

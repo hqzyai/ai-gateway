@@ -612,8 +612,8 @@ def test_generic_cost_per_token_gpt55_pro():
     [
         ("gpt-5.6", 5e-6, 3e-5, 5e-7, 6.25e-6),
         ("gpt-5.6-sol", 5e-6, 3e-5, 5e-7, 6.25e-6),
-        ("gpt-5.6-terra", 2.5e-6, 1.5e-5, 2.5e-7, 3.125e-6),
-        ("gpt-5.6-luna", 1e-6, 6e-6, 1e-7, 1.25e-6),
+        ("gpt-5.6-terra", 2e-6, 1.2e-5, 2e-7, 2.5e-6),
+        ("gpt-5.6-luna", 2e-7, 1.2e-6, 2e-8, 2.5e-7),
     ],
 )
 def test_generic_cost_per_token_gpt56(
@@ -663,15 +663,106 @@ def test_generic_cost_per_token_gpt56(
 
 
 @pytest.mark.parametrize(
+    "model,flex_long_input_cost,flex_long_output_cost",
+    [
+        ("gpt-5.6", 5e-6, 2.25e-5),
+        ("gpt-5.6-sol", 5e-6, 2.25e-5),
+        ("gpt-5.6-terra", 2e-6, 9e-6),
+        ("gpt-5.6-luna", 2e-7, 9e-7),
+    ],
+)
+def test_generic_cost_per_token_gpt56_flex_above_272k(
+    model, flex_long_input_cost, flex_long_output_cost
+):
+    """A >272K flex request bills the flex long-context rate, not the standard one.
+
+    Flex long-context is half the standard long-context rate. Without the
+    ``*_above_272k_tokens_flex`` keys these requests silently fell back to the
+    standard long-context price, billing 2x what OpenAI charges.
+    """
+    os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
+    litellm.model_cost = litellm.get_model_cost_map(url="")
+
+    prompt_tokens = 300000
+    completion_tokens = 1000
+    usage = Usage(
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        total_tokens=prompt_tokens + completion_tokens,
+    )
+    prompt_cost, completion_cost = generic_cost_per_token(
+        model=model,
+        usage=usage,
+        custom_llm_provider="openai",
+        service_tier="flex",
+    )
+
+    assert prompt_cost == pytest.approx(flex_long_input_cost * prompt_tokens)
+    assert completion_cost == pytest.approx(flex_long_output_cost * completion_tokens)
+
+    standard_long_prompt_cost, standard_long_completion_cost = generic_cost_per_token(
+        model=model,
+        usage=usage,
+        custom_llm_provider="openai",
+        service_tier=None,
+    )
+    assert prompt_cost == pytest.approx(standard_long_prompt_cost / 2)
+    assert completion_cost == pytest.approx(standard_long_completion_cost / 2)
+
+
+@pytest.mark.parametrize(
+    "service_tier,prompt_tokens,input_rate,cache_write_rate,cache_read_rate",
+    [
+        (None, 100000, 2e-6, 2.5e-6, 2e-7),
+        ("flex", 100000, 1e-6, 1.25e-6, 1e-7),
+        ("priority", 100000, 4e-6, 5e-6, 4e-7),
+        (None, 300000, 4e-6, 5e-6, 4e-7),
+        ("flex", 300000, 2e-6, 2.5e-6, 2e-7),
+    ],
+)
+def test_generic_cost_per_token_gpt56_terra_cache_costs_by_tier_and_context(
+    service_tier, prompt_tokens, input_rate, cache_write_rate, cache_read_rate
+):
+    os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
+    litellm.model_cost = litellm.get_model_cost_map(url="")
+
+    cached_tokens = 50000
+    cache_write_tokens = 40000
+    text_tokens = prompt_tokens - cached_tokens - cache_write_tokens
+    usage = Usage(
+        prompt_tokens=prompt_tokens,
+        completion_tokens=100,
+        total_tokens=prompt_tokens + 100,
+        prompt_tokens_details=PromptTokensDetailsWrapper(
+            cached_tokens=cached_tokens, cache_write_tokens=cache_write_tokens
+        ),
+    )
+
+    prompt_cost, _ = generic_cost_per_token(
+        model="gpt-5.6-terra",
+        usage=usage,
+        custom_llm_provider="openai",
+        service_tier=service_tier,
+    )
+
+    expected_prompt_cost = (
+        text_tokens * input_rate
+        + cached_tokens * cache_read_rate
+        + cache_write_tokens * cache_write_rate
+    )
+    assert prompt_cost == pytest.approx(expected_prompt_cost)
+
+
+@pytest.mark.parametrize(
     "model,input_cost,output_cost,cache_read_cost",
     [
         ("azure/gpt-5.6", 5e-6, 3e-5, 5e-7),
         ("azure/gpt-5.6-sol", 5e-6, 3e-5, 5e-7),
-        ("azure/gpt-5.6-terra", 2.5e-6, 1.5e-5, 2.5e-7),
-        ("azure/gpt-5.6-luna", 1e-6, 6e-6, 1e-7),
+        ("azure/gpt-5.6-terra", 2e-6, 1.2e-5, 2e-7),
+        ("azure/gpt-5.6-luna", 2e-7, 1.2e-6, 2e-8),
         ("azure/us/gpt-5.6", 5.5e-6, 3.3e-5, 5.5e-7),
-        ("azure/eu/gpt-5.6-terra", 2.75e-6, 1.65e-5, 2.75e-7),
-        ("azure/eu/gpt-5.6-luna", 1.1e-6, 6.6e-6, 1.1e-7),
+        ("azure/eu/gpt-5.6-terra", 2.2e-6, 1.32e-5, 2.2e-7),
+        ("azure/eu/gpt-5.6-luna", 2.2e-7, 1.32e-6, 2.2e-8),
     ],
 )
 def test_generic_cost_per_token_azure_gpt56(
@@ -2112,6 +2203,63 @@ def test_token_type_cost_breakdown_reads_cache_write_tokens():
     )
 
 
+def test_generic_cost_per_token_openai_cache_write_tokens_gpt_5_6():
+    """
+    Regression: OpenAI gpt-5.6 reports cache-write tokens under
+    prompt_tokens_details.cache_write_tokens (not the Anthropic cache_creation_tokens
+    name). Those tokens must be billed at the cache-write rate rather than the plain
+    input rate. Customer report: cache creation tokens were never counted for the
+    GPT-5.6 series, so cost was undercounted on cache-write requests.
+    """
+    os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
+    litellm.model_cost = litellm.get_model_cost_map(url="")
+
+    model = "gpt-5.6"
+    usage = Usage(
+        prompt_tokens=1000,
+        completion_tokens=10,
+        total_tokens=1010,
+        prompt_tokens_details=PromptTokensDetailsWrapper(cached_tokens=0, cache_write_tokens=800),
+    )
+
+    assert usage.prompt_tokens_details.cache_write_tokens == 800
+    assert usage.prompt_tokens_details.cache_creation_tokens == 800
+
+    prompt_cost, _ = generic_cost_per_token(model=model, usage=usage, custom_llm_provider="openai")
+
+    info = litellm.get_model_info(model=model, custom_llm_provider="openai")
+    expected_prompt = (1000 - 800) * info["input_cost_per_token"] + 800 * info["cache_creation_input_token_cost"]
+    assert prompt_cost == pytest.approx(expected_prompt)
+    assert info["cache_creation_input_token_cost"] > info["input_cost_per_token"]
+    assert prompt_cost > 1000 * info["input_cost_per_token"]
+
+
+def test_generic_cost_per_token_backs_out_cache_write_tokens_from_text_tokens():
+    """
+    Regression for #34801: when a provider reports text_tokens covering the whole
+    prompt alongside cache-write tokens (and no cache reads), the cache-write tokens
+    must be backed out of the text total instead of being billed twice.
+    """
+    os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
+    litellm.model_cost = litellm.get_model_cost_map(url="")
+
+    model = "gpt-5.6"
+    usage = Usage(
+        prompt_tokens=1000,
+        completion_tokens=10,
+        total_tokens=1010,
+        prompt_tokens_details=PromptTokensDetailsWrapper(
+            cached_tokens=0, cache_write_tokens=800, text_tokens=1000
+        ),
+    )
+
+    prompt_cost, _ = generic_cost_per_token(model=model, usage=usage, custom_llm_provider="openai")
+
+    info = litellm.get_model_info(model=model, custom_llm_provider="openai")
+    expected_prompt = 200 * info["input_cost_per_token"] + 800 * info["cache_creation_input_token_cost"]
+    assert prompt_cost == pytest.approx(expected_prompt)
+
+
 def test_token_type_cost_breakdown_reconciles_with_generic_total():
     """
     Both-ways check: the reasoning subset must sum with the remaining (text) output
@@ -2165,6 +2313,65 @@ def test_token_type_cost_breakdown_zero_without_special_tokens():
     assert breakdown == TokenTypeCostBreakdown(
         reasoning_cost=0.0, cache_read_cost=0.0, cache_creation_cost=0.0
     )
+
+
+@pytest.mark.parametrize(
+    "raw_usage, expect_read, expect_write",
+    [
+        (
+            {
+                "input_tokens": 5000,
+                "output_tokens": 10,
+                "total_tokens": 5010,
+                "input_tokens_details": {"cached_tokens": 0, "cache_write_tokens": 4012},
+            },
+            False,
+            True,
+        ),
+        (
+            {
+                "input_tokens": 5000,
+                "output_tokens": 10,
+                "total_tokens": 5010,
+                "input_tokens_details": {"cached_tokens": 4012, "cache_write_tokens": 0},
+            },
+            True,
+            False,
+        ),
+    ],
+)
+def test_token_type_cost_breakdown_openai_responses_api_cache_write_read(
+    raw_usage, expect_read, expect_write
+):
+    """Regression for #34309: OpenAI Responses API reports cache tokens under
+    input_tokens_details.{cached_tokens, cache_write_tokens}, not the Anthropic-style
+    top-level cache_creation_input_tokens. The itemized breakdown must still populate
+    cache_read_cost / cache_creation_cost from the transformed usage."""
+    from litellm.responses.utils import ResponseAPILoggingUtils
+
+    os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
+    litellm.model_cost = litellm.get_model_cost_map(url="")
+
+    model = "gpt-5.6"
+    usage = ResponseAPILoggingUtils._transform_response_api_usage_to_chat_usage(raw_usage)
+
+    breakdown = get_token_type_cost_breakdown(
+        model=model, custom_llm_provider="openai", usage=usage
+    )
+
+    info = litellm.get_model_info(model=model, custom_llm_provider="openai")
+    if expect_write:
+        assert breakdown.cache_creation_cost == pytest.approx(
+            4012 * info["cache_creation_input_token_cost"]
+        )
+        assert breakdown.cache_creation_cost > 0
+        assert breakdown.cache_read_cost == 0.0
+    if expect_read:
+        assert breakdown.cache_read_cost == pytest.approx(
+            4012 * info["cache_read_input_token_cost"]
+        )
+        assert breakdown.cache_read_cost > 0
+        assert breakdown.cache_creation_cost == 0.0
 
 
 def test_token_type_cost_breakdown_handles_unknown_model_gracefully():

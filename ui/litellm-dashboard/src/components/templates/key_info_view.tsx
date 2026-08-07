@@ -6,7 +6,7 @@ import { formatNumberWithCommas } from "@/utils/dataUtils";
 import { mapEmptyStringToNull } from "@/utils/keyUpdateUtils";
 import { ArrowLeftIcon } from "@heroicons/react/outline";
 import { Badge, Button, Card, Grid, Tab, TabGroup, TabList, TabPanel, TabPanels, Text, Title } from "@tremor/react";
-import { Form, Modal, Tag } from "antd";
+import { Modal, Tag } from "antd";
 import { KeyInfoHeader } from "./KeyInfoHeader";
 import { useEffect, useState } from "react";
 import { isProxyAdminRole, isUserTeamAdminForSingleTeam, rolesWithWriteAccess } from "../../utils/roles";
@@ -74,10 +74,8 @@ export default function KeyInfoView({
   const { data: uiSettingsData } = useUISettings();
   const enableProjectsUI = Boolean(uiSettingsData?.values?.enable_projects_ui);
   const [isEditing, setIsEditing] = useState(false);
-  const [form] = Form.useForm();
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
-  const [deleteConfirmInput, setDeleteConfirmInput] = useState("");
   const [isRegenerateModalOpen, setIsRegenerateModalOpen] = useState(false);
   const [isResetSpendModalOpen, setIsResetSpendModalOpen] = useState(false);
   const [isBlockModalOpen, setIsBlockModalOpen] = useState(false);
@@ -295,14 +293,15 @@ export default function KeyInfoView({
       }
       delete formValues.logging_settings;
 
-      // Convert budget_duration to API format
+      // Normalize any legacy word-form budget_duration to the canonical API format
       if (formValues.budget_duration) {
-        const durationMap: Record<string, string> = {
+        const wordToCanonical: Record<string, string> = {
+          hourly: "1h",
           daily: "24h",
           weekly: "7d",
           monthly: "30d",
         };
-        formValues.budget_duration = durationMap[formValues.budget_duration];
+        formValues.budget_duration = wordToCanonical[formValues.budget_duration] ?? formValues.budget_duration;
       }
 
       const newKeyValues = await keyUpdateCall(accessToken, formValues);
@@ -339,7 +338,6 @@ export default function KeyInfoView({
     } finally {
       setDeleteLoading(false);
       setIsDeleteModalOpen(false);
-      setDeleteConfirmInput("");
     }
   };
 
@@ -525,7 +523,6 @@ export default function KeyInfoView({
         ]}
         onCancel={() => {
           setIsDeleteModalOpen(false);
-          setDeleteConfirmInput("");
         }}
         onOk={handleDelete}
         confirmLoading={deleteLoading}
