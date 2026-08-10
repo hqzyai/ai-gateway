@@ -341,7 +341,7 @@ def _extract_openai_tool_exchange_spans(
     return spans, None
 
 
-def get_protected_indices(messages: Sequence[Mapping[str, Any]]) -> Sequence[int]:
+def get_protected_indices(messages: Sequence[Mapping[str, Any]]) -> tuple[int, ...]:
     """
     Return indices of messages that must never be compressed:
     - All system and developer messages
@@ -352,26 +352,14 @@ def get_protected_indices(messages: Sequence[Mapping[str, Any]]) -> Sequence[int
     so compressing it replaces the live instruction with a marker. Compression
     guardrails share this policy; see the Headroom guardrail.
     """
-    protected = []
-
-    last_user_idx = None
-    last_assistant_idx = None
-
-    for i, msg in enumerate(messages):
-        role = msg.get("role", "")
-        if role in ("system", "developer"):
-            protected.append(i)
-        elif role == "user":
-            last_user_idx = i
-        elif role == "assistant":
-            last_assistant_idx = i
-
-    if last_user_idx is not None:
-        protected.append(last_user_idx)
-    if last_assistant_idx is not None:
-        protected.append(last_assistant_idx)
-
-    return protected
+    system_indices: Final = tuple(
+        index for index, msg in enumerate(messages) if msg.get("role", "") in ("system", "developer")
+    )
+    last_user: Final = tuple(index for index, msg in enumerate(messages) if msg.get("role", "") == "user")[-1:]
+    last_assistant: Final = tuple(index for index, msg in enumerate(messages) if msg.get("role", "") == "assistant")[
+        -1:
+    ]
+    return system_indices + last_user + last_assistant
 
 
 def _normalize_scores(scores: list[float]) -> list[float]:

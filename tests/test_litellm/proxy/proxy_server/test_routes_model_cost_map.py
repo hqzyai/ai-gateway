@@ -352,8 +352,10 @@ def test_get_model_cost_map_reload_status_scheduled(client, auth_as, monkeypatch
     }
 
 
-def test_get_model_cost_map_reload_status_no_config_not_scheduled(client, auth_as, monkeypatch, mock_prisma):
-    """Config row exists but interval_hours=None → not scheduled."""
+def test_get_model_cost_map_reload_status_reports_persisted_last_run(client, auth_as, monkeypatch, mock_prisma):
+    """last_run/next_run come from the DB row, so status survives pod restarts."""
+    from datetime import datetime, timezone
+
     from litellm.proxy import proxy_server as ps
     from litellm.proxy._types import LitellmUserRoles
 
@@ -376,12 +378,8 @@ def test_get_model_cost_map_reload_status_no_config_not_scheduled(client, auth_a
     }
 
 
-def test_get_model_cost_map_reload_status_no_config_not_scheduled(
-    client, auth_as, monkeypatch, mock_prisma
-):
+def test_get_model_cost_map_reload_status_no_config_not_scheduled(client, auth_as, monkeypatch, mock_prisma):
     """A row left behind by a manual reload (interval_hours=None) → not scheduled."""
-    from datetime import datetime, timezone
-
     from litellm.proxy import proxy_server as ps
     from litellm.proxy._types import LitellmUserRoles
 

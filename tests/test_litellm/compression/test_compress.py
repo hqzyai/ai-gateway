@@ -53,3 +53,24 @@ def test_every_system_row_is_protected():
 def test_no_user_or_assistant_rows():
     assert sorted(get_protected_indices([{"role": "system", "content": "sys"}])) == [0]
     assert get_protected_indices([]) == ()
+
+
+def test_developer_rows_are_protected_like_system():
+    """The developer role carries instructions the same way system does, so it gets the
+    same protection. Upstream's policy only names system; this pins the wider behaviour
+    so a future sync cannot silently drop developer rows back into the compressible set."""
+    messages = [
+        {"role": "developer", "content": "dev instruction"},
+        {"role": "user", "content": "old question"},
+        {"role": "assistant", "content": "old answer"},
+        {"role": "user", "content": "live instruction"},
+    ]
+
+    assert sorted(get_protected_indices(messages)) == [0, 2, 3]
+
+
+def test_returns_a_tuple():
+    """compress() and the Headroom guardrail both feed this straight into set()/frozenset(),
+    and callers compare against (). Returning a list instead still satisfies those calls but
+    breaks the equality checks, so the concrete type is part of the contract."""
+    assert isinstance(get_protected_indices([{"role": "system", "content": "sys"}]), tuple)

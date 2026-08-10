@@ -759,9 +759,16 @@ def _reload_config_prisma_client() -> MagicMock:
     config_record.param_value = {"interval_hours": 6, "force_reload": True}
     config_record.reload_revision = 0
     config_record.last_run_at = None
+
+    # Each config param is its own row, so the schedule must not also answer lookups for
+    # unrelated params. The reload path reads model_cost_map_overrides too, and handing it a
+    # schedule payload makes it fail validation on a shape it would never see in production.
+    async def _find_unique(where):
+        return config_record if where["param_name"].endswith("_reload_config") else None
+
     prisma_client = MagicMock()
     prisma_client.get_generic_data = AsyncMock(return_value=config_record)
-    prisma_client.db.litellm_config.find_unique = AsyncMock(return_value=config_record)
+    prisma_client.db.litellm_config.find_unique = AsyncMock(side_effect=_find_unique)
     prisma_client.db.litellm_config.upsert = AsyncMock(return_value=config_record)
     prisma_client.db.litellm_config.update_many = AsyncMock(return_value=1)
     return prisma_client

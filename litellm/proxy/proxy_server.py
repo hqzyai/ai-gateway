@@ -3920,6 +3920,10 @@ class ProxyConfig:
         # whether an existing request predates the prices it just fetched, and re-serving one
         # costs a single fetch where skipping one leaves it priced wrong indefinitely
         self.model_cost_map_applied_revision: int = 0
+        # The revision counter only announces override *changes*, so a pod that boots into a
+        # database whose overrides were saved before it started would never hear about them.
+        # Cleared until the first poll applies whatever is already stored.
+        self.model_cost_map_overrides_applied: bool = False
         # Keys explicitly set in the YAML config file. Used to give YAML
         # precedence over stale DB-cached values for these specific keys
         # during periodic config reloads (_update_general_settings).
@@ -6605,12 +6609,39 @@ class ProxyConfig:
         if self._should_load_db_object(object_type="model_cost_map"):
             await self._check_and_reload_model_cost_map(prisma_client=prisma_client)
 
+    async def _apply_stored_model_cost_map_overrides(self, prisma_client: PrismaClient) -> None:
+        """Apply the database pricing overrides once per pod boot.
+
+        Overrides are stored in the database but take effect in each pod's in-process
+        ``litellm.model_cost``, and the revision counter only announces *changes*. Without this a
+        pod that booted after the last override was saved would serve unoverridden prices until
+        someone saved another one or the interval reload fired.
+
+        Failures are contained here rather than raised: this runs ahead of the scheduled reload,
+        so letting an unreadable override row propagate would block the reload behind it on every
+        poll. The flag stays clear on failure, so a transient error retries on the next poll while
+        a permanently malformed row only costs a log line.
+        """
+        if self.model_cost_map_overrides_applied:
+            return
+        try:
+            overrides: Final = await load_model_cost_map_overrides(prisma_client)
+        except Exception as e:
+            verbose_proxy_logger.exception("Could not read stored model cost map overrides: %s", e)
+            return
+        if overrides:
+            _swap_in_model_cost_map(merge_model_cost_map(litellm.model_cost, overrides))
+            verbose_proxy_logger.info("Applied %s stored model cost map override(s) on startup", len(overrides))
+        self.model_cost_map_overrides_applied = True
+
     async def _check_and_reload_model_cost_map(self, prisma_client: PrismaClient):
         """
         Check if model cost map needs to be reloaded based on database configuration.
         Runs on the periodic reload job, independently of `store_model_in_db`.
         """
         try:
+            await self._apply_stored_model_cost_map_overrides(prisma_client)
+
             schedule = await read_reload_schedule(prisma_client, MODEL_COST_MAP_RELOAD_PARAM_NAME)
             if schedule is None:
                 return

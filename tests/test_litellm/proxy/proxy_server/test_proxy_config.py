@@ -2639,3 +2639,75 @@ async def test_ProxyConfig__init_non_llm_configs_empty_agents_key_clears_remembe
     assert clean_agent_registry.config_agents == ()
     clean_agent_registry.load_agents_from_db_and_config(db_agents=None)
     assert clean_agent_registry.get_agent_list() == []
+
+
+# ---------------------------------------------------------------------------
+# ProxyConfig._apply_stored_model_cost_map_overrides
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_ProxyConfig__apply_stored_model_cost_map_overrides_applies_once(monkeypatch):
+    """A pod applies whatever overrides are already stored the first time it polls.
+
+    Overrides live in the database but take effect in each pod's in-process
+    ``litellm.model_cost``, and the shared revision counter only announces *changes*. Without
+    this pass a pod that booted after the last save would price requests with unoverridden
+    rates until someone saved another override or the interval reload fired.
+    """
+    from litellm.proxy import proxy_server as ps
+
+    monkeypatch.setattr(litellm, "model_cost", {"gpt-4": {"input_cost_per_token": 3e-5}}, raising=False)
+    monkeypatch.setattr(litellm, "add_known_models", lambda model_cost_map=None: None)
+    monkeypatch.setattr(ps, "_invalidate_model_cost_lowercase_map", lambda: None)
+    loads = []
+    monkeypatch.setattr(
+        ps,
+        "load_model_cost_map_overrides",
+        AsyncMock(side_effect=lambda _: loads.append(1) or {"gpt-4": {"input_cost_per_token": 9e-9}}),
+    )
+
+    pc = ProxyConfig()
+    assert pc.model_cost_map_overrides_applied is False
+
+    await pc._apply_stored_model_cost_map_overrides(MagicMock())
+
+    assert litellm.model_cost["gpt-4"] == {"input_cost_per_token": 9e-9}
+    assert pc.model_cost_map_overrides_applied is True
+
+    # Second poll is a no-op: the database is not re-read on every tick.
+    await pc._apply_stored_model_cost_map_overrides(MagicMock())
+    assert len(loads) == 1
+
+
+@pytest.mark.asyncio
+async def test_ProxyConfig__apply_stored_model_cost_map_overrides_swallows_db_error(monkeypatch):
+    """An unreadable override row must not block the scheduled reload that runs after it.
+
+    This pass runs ahead of the cost map reload, so a raised error would stop the pod refreshing
+    its pricing at all, on every poll. The flag stays clear so a transient failure retries.
+    """
+    from litellm.proxy import proxy_server as ps
+
+    monkeypatch.setattr(ps, "load_model_cost_map_overrides", AsyncMock(side_effect=RuntimeError("db down")))
+
+    pc = ProxyConfig()
+    await pc._apply_stored_model_cost_map_overrides(MagicMock())
+
+    assert pc.model_cost_map_overrides_applied is False
+
+
+@pytest.mark.asyncio
+async def test_ProxyConfig__check_and_reload_model_cost_map_reloads_despite_bad_overrides(monkeypatch):
+    """Regression: a malformed overrides row used to abort the whole poll before the reload."""
+    from litellm.proxy import proxy_server as ps
+
+    monkeypatch.setattr(ps, "load_model_cost_map_overrides", AsyncMock(side_effect=RuntimeError("bad row")))
+    read_schedule = AsyncMock(return_value=None)
+    monkeypatch.setattr(ps, "read_reload_schedule", read_schedule)
+
+    pc = ProxyConfig()
+    await pc._check_and_reload_model_cost_map(prisma_client=MagicMock())
+
+    # The poll got past the override pass and went on to consult the reload schedule.
+    read_schedule.assert_awaited_once()

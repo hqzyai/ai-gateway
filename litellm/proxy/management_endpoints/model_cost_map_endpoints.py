@@ -6,7 +6,12 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, TypeAdapter, field
 import litellm
 from litellm.proxy._types import LitellmUserRoles, UserAPIKeyAuth
 from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
-from litellm.proxy.utils import invalidate_config_param
+from litellm.proxy.common_utils.periodic_reload_schedule import (
+    MODEL_COST_MAP_RELOAD_PARAM_NAME,
+    record_manual_reload,
+    utc_now,
+)
+from litellm.proxy.utils import PrismaClient
 from litellm.repositories.config_repository import ConfigRepository
 from litellm.utils import invalidate_model_cost_cache
 
@@ -18,11 +23,6 @@ _CONFIG_NAME = "model_cost_map_overrides"
 _OVERRIDES_ADAPTER = TypeAdapter(ModelCostOverrides)
 _MODEL_COST_MAP_ADAPTER = TypeAdapter(ModelCostMap)
 UserAuth: TypeAlias = Annotated[UserAPIKeyAuth, Depends(user_api_key_auth)]
-
-
-class ModelCostMapReloadConfig(BaseModel):
-    interval_hours: int | None = None
-    force_reload: bool = False
 
 
 class ConfigParamValue(BaseModel):
@@ -98,22 +98,26 @@ async def load_model_cost_map_overrides(prisma_client: object) -> ModelCostOverr
     return parse_model_cost_map_overrides(raw_value)
 
 
-async def _schedule_cluster_reload(prisma_client: object) -> None:
-    repository = ConfigRepository(prisma_client)
-    existing = await repository.get_param("model_cost_map_reload_config")
-    reload_config = (
-        ModelCostMapReloadConfig.model_validate(ConfigParamValue.model_validate(existing).param_value)
-        if existing is not None
-        else ModelCostMapReloadConfig()
-    )
-    await repository.set_param(
-        "model_cost_map_reload_config",
-        {
-            "interval_hours": reload_config.interval_hours,
-            "force_reload": True,
-        },
-    )
-    await invalidate_config_param("model_cost_map_reload_config")
+async def _schedule_cluster_reload(prisma_client: PrismaClient) -> int:
+    """Publish an override change to the rest of the cluster and return the revision it published.
+
+    Overrides live in the database but are applied to each pod's in-process ``litellm.model_cost``,
+    so a save only reaches the pod that served it until every other pod reloads. Bumping the shared
+    revision is how that is announced: each pod records the revision it last applied and reloads
+    when the row's differs, so the request reaches every pod exactly once.
+    """
+    return await record_manual_reload(prisma_client, MODEL_COST_MAP_RELOAD_PARAM_NAME, utc_now())
+
+
+def _adopt_reload_revision(revision: int) -> None:
+    """The pod serving this request already applied the new prices, so record the revision it just
+    published. Without this it would read its own announcement on the next poll and refetch the
+    whole cost map for nothing. Only the revision is adopted: an override save does not refresh the
+    upstream pricing data, so it must not restart this pod's interval clock.
+    """
+    from litellm.proxy.proxy_server import proxy_config
+
+    proxy_config.model_cost_map_applied_revision = revision
 
 
 def _require_proxy_admin(user_api_key_dict: UserAPIKeyAuth) -> None:
@@ -129,7 +133,7 @@ def _require_admin_reader(user_api_key_dict: UserAPIKeyAuth) -> None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin role required")
 
 
-def _get_prisma_client() -> object:
+def _get_prisma_client() -> PrismaClient:
     from litellm.proxy.proxy_server import prisma_client
 
     if prisma_client is None:
@@ -185,8 +189,9 @@ async def upsert_model_cost_map_override(
     existing = await load_model_cost_map_overrides(prisma_client)
     updated = {**existing, data.model_name: data.values}
     await ConfigRepository(prisma_client).set_param(_CONFIG_NAME, updated)
-    await _schedule_cluster_reload(prisma_client)
+    revision = await _schedule_cluster_reload(prisma_client)
     _apply_cost_map(merge_model_cost_map(_load_latest_model_cost_map(), updated))
+    _adopt_reload_revision(revision)
     return ModelCostMapOverrideMutationResponse(
         status="success",
         model_name=data.model_name,
@@ -215,8 +220,9 @@ async def delete_model_cost_map_override(
         await repository.set_param(_CONFIG_NAME, updated)
     else:
         await repository.delete_param(_CONFIG_NAME)
-    await _schedule_cluster_reload(prisma_client)
+    revision = await _schedule_cluster_reload(prisma_client)
     _apply_cost_map(merge_model_cost_map(_load_latest_model_cost_map(), updated))
+    _adopt_reload_revision(revision)
     return ModelCostMapOverrideMutationResponse(
         status="success",
         model_name=model_name,
