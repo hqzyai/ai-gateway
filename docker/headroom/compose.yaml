@@ -1,0 +1,24 @@
+services:
+  headroom:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${HEADROOM_IMAGE:-ai-gateway-headroom:0.33.0}
+    restart: unless-stopped
+    environment:
+      HEADROOM_PROXY_TOKEN: ${HEADROOM_PROXY_TOKEN:?set HEADROOM_PROXY_TOKEN}
+    volumes:
+      - headroom-data:/home/headroom/.headroom
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8787/readyz', timeout=3)
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+
+volumes:
+  headroom-data:
