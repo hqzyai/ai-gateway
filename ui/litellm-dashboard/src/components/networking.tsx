@@ -2471,6 +2471,15 @@ export const userDailyActivityAggregatedCall = async (
   endTime: Date,
   userId: string | null = null,
 ) => {
+  return userDailyActivityAggregatedFilteredCall(accessToken, startTime, endTime, { userId });
+};
+
+export const userDailyActivityAggregatedFilteredCall = async (
+  accessToken: string,
+  startTime: Date,
+  endTime: Date,
+  filters: { userId?: string | null; apiKey?: string | null; model?: string | null } = {},
+) => {
   /**
    * Get aggregated daily user activity (no pagination)
    */
@@ -2487,7 +2496,9 @@ export const userDailyActivityAggregatedCall = async (
         start_date: formatDate(startTime),
         end_date: formatDate(endTime),
         timezone: new Date().getTimezoneOffset().toString(),
-        user_id: userId || undefined,
+        user_id: filters.userId || undefined,
+        api_key: filters.apiKey || undefined,
+        model: filters.model || undefined,
       },
     });
   } catch (error) {

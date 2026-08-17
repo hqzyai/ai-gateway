@@ -60,7 +60,7 @@ from litellm.proxy.db.db_transaction_queue.tool_discovery_queue import (
 )
 from litellm.proxy.route_llm_request import ROUTE_ENDPOINT_MAPPING
 from litellm.proxy.spend_tracking.compression_savings import (
-    extract_compression_saved_tokens,
+    extract_compression_token_savings,
 )
 from litellm.proxy.spend_tracking.savings import compute_savings_spend
 from litellm.proxy.spend_tracking.spend_log_error_logger import spend_log_error
@@ -1562,9 +1562,27 @@ class DBSpendUpdateWriter:
                                         common_data["compression_saved_tokens"] = transaction.get(
                                             "compression_saved_tokens", 0
                                         )
+                                    if "compression_gross_saved_tokens" in transaction:
+                                        common_data["compression_gross_saved_tokens"] = transaction.get(
+                                            "compression_gross_saved_tokens", 0
+                                        )
+                                    if "compression_extra_input_tokens" in transaction:
+                                        common_data["compression_extra_input_tokens"] = transaction.get(
+                                            "compression_extra_input_tokens", 0
+                                        )
+                                    if "compression_requests" in transaction:
+                                        common_data["compression_requests"] = transaction.get("compression_requests", 0)
                                     if "compression_savings_spend" in transaction:
                                         common_data["compression_savings_spend"] = transaction.get(
                                             "compression_savings_spend", 0
+                                        )
+                                    if "compression_gross_savings_spend" in transaction:
+                                        common_data["compression_gross_savings_spend"] = transaction.get(
+                                            "compression_gross_savings_spend", 0
+                                        )
+                                    if "compression_extra_input_spend" in transaction:
+                                        common_data["compression_extra_input_spend"] = transaction.get(
+                                            "compression_extra_input_spend", 0
                                         )
                                     if "prompt_caching_savings_spend" in transaction:
                                         common_data["prompt_caching_savings_spend"] = transaction.get(
@@ -1597,9 +1615,29 @@ class DBSpendUpdateWriter:
                                         update_data["compression_saved_tokens"] = {
                                             "increment": transaction.get("compression_saved_tokens", 0)
                                         }
+                                    if "compression_gross_saved_tokens" in transaction:
+                                        update_data["compression_gross_saved_tokens"] = {
+                                            "increment": transaction.get("compression_gross_saved_tokens", 0)
+                                        }
+                                    if "compression_extra_input_tokens" in transaction:
+                                        update_data["compression_extra_input_tokens"] = {
+                                            "increment": transaction.get("compression_extra_input_tokens", 0)
+                                        }
+                                    if "compression_requests" in transaction:
+                                        update_data["compression_requests"] = {
+                                            "increment": transaction.get("compression_requests", 0)
+                                        }
                                     if "compression_savings_spend" in transaction:
                                         update_data["compression_savings_spend"] = {
                                             "increment": transaction.get("compression_savings_spend", 0)
+                                        }
+                                    if "compression_gross_savings_spend" in transaction:
+                                        update_data["compression_gross_savings_spend"] = {
+                                            "increment": transaction.get("compression_gross_savings_spend", 0)
+                                        }
+                                    if "compression_extra_input_spend" in transaction:
+                                        update_data["compression_extra_input_spend"] = {
+                                            "increment": transaction.get("compression_extra_input_spend", 0)
                                         }
                                     if "prompt_caching_savings_spend" in transaction:
                                         update_data["prompt_caching_savings_spend"] = {
@@ -1855,11 +1893,13 @@ class DBSpendUpdateWriter:
                 endpoint = ROUTE_ENDPOINT_MAPPING.get(call_type, None)
 
             cache_read_input_tokens = _extract_cache_read_tokens(usage_obj)
-            compression_saved_tokens = extract_compression_saved_tokens(_metadata)
+            compression_token_savings = extract_compression_token_savings(_metadata)
             savings_spend = compute_savings_spend(
                 model=payload.get("model", None),
                 custom_llm_provider=payload.get("custom_llm_provider", None),
-                compression_saved_tokens=compression_saved_tokens,
+                compression_saved_tokens=compression_token_savings.net_saved,
+                compression_gross_saved_tokens=compression_token_savings.gross_saved,
+                compression_extra_input_tokens=compression_token_savings.extra_input,
                 cache_read_input_tokens=cache_read_input_tokens,
             )
 
@@ -1879,8 +1919,13 @@ class DBSpendUpdateWriter:
                 failed_requests=1 if request_status != "success" else 0,
                 cache_read_input_tokens=cache_read_input_tokens,
                 cache_creation_input_tokens=_extract_cache_creation_tokens(usage_obj),
-                compression_saved_tokens=compression_saved_tokens,
+                compression_saved_tokens=compression_token_savings.net_saved,
+                compression_gross_saved_tokens=compression_token_savings.gross_saved,
+                compression_extra_input_tokens=compression_token_savings.extra_input,
+                compression_requests=1 if compression_token_savings.gross_saved > 0 else 0,
                 compression_savings_spend=savings_spend.compression,
+                compression_gross_savings_spend=savings_spend.compression_gross,
+                compression_extra_input_spend=savings_spend.compression_extra_input,
                 prompt_caching_savings_spend=savings_spend.prompt_caching,
             )
             return daily_transaction

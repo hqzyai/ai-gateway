@@ -126,9 +126,29 @@ class DailySpendUpdateQueue(BaseUpdateQueue):
                         payload.get("compression_saved_tokens", 0) or 0
                     ) + daily_transaction.get("compression_saved_tokens", 0)
 
+                    daily_transaction["compression_gross_saved_tokens"] = (
+                        payload.get("compression_gross_saved_tokens", 0) or 0
+                    ) + daily_transaction.get("compression_gross_saved_tokens", 0)
+
+                    daily_transaction["compression_extra_input_tokens"] = (
+                        payload.get("compression_extra_input_tokens", 0) or 0
+                    ) + daily_transaction.get("compression_extra_input_tokens", 0)
+
+                    daily_transaction["compression_requests"] = (
+                        payload.get("compression_requests", 0) or 0
+                    ) + daily_transaction.get("compression_requests", 0)
+
                     daily_transaction["compression_savings_spend"] = (
                         payload.get("compression_savings_spend", 0) or 0
                     ) + daily_transaction.get("compression_savings_spend", 0)
+
+                    daily_transaction["compression_gross_savings_spend"] = (
+                        payload.get("compression_gross_savings_spend", 0) or 0
+                    ) + daily_transaction.get("compression_gross_savings_spend", 0)
+
+                    daily_transaction["compression_extra_input_spend"] = (
+                        payload.get("compression_extra_input_spend", 0) or 0
+                    ) + daily_transaction.get("compression_extra_input_spend", 0)
 
                     daily_transaction["prompt_caching_savings_spend"] = (
                         payload.get("prompt_caching_savings_spend", 0) or 0

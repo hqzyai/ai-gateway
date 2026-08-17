@@ -9,7 +9,12 @@ export interface SpendMetrics {
   cache_read_input_tokens: number;
   cache_creation_input_tokens: number;
   compression_saved_tokens?: number;
+  compression_gross_saved_tokens?: number;
+  compression_extra_input_tokens?: number;
+  compression_requests?: number;
   compression_savings_spend?: number;
+  compression_gross_savings_spend?: number;
+  compression_extra_input_spend?: number;
   prompt_caching_savings_spend?: number;
 }
 

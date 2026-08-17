@@ -45,6 +45,7 @@ export const MIGRATED_PAGES: Record<string, string> = {
   new_usage: "usage",
   usage: "old-usage",
   "cost-optimization": "cost-optimization",
+  "token-analytics": "token-analytics",
   agents: "agents",
   "router-settings": "router-settings",
   users: "users",

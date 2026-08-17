@@ -4472,9 +4472,14 @@ class BaseDailySpendTransaction(TypedDict):
     cache_read_input_tokens: int
     cache_creation_input_tokens: int
     compression_saved_tokens: int
+    compression_gross_saved_tokens: int
+    compression_extra_input_tokens: int
+    compression_requests: int
 
     # cost-savings metrics (dollars, priced per request before aggregation)
     compression_savings_spend: float
+    compression_gross_savings_spend: float
+    compression_extra_input_spend: float
     prompt_caching_savings_spend: float
 
     # request level metrics

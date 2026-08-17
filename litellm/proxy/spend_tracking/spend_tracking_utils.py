@@ -933,6 +933,10 @@ _NUMERIC_COMPRESSION_STAT_KEYS = (
     "ccr_hashes_requested",
     "ccr_hashes_retrieved",
     "ccr_retrieved_chars",
+    "ccr_retrieved_tokens",
+    "ccr_initial_input_tokens",
+    "ccr_followup_input_tokens",
+    "headroom_compressed_tokens",
 )
 
 _STRING_CCR_TELEMETRY_KEYS = (

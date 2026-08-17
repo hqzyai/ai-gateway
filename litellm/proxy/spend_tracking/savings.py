@@ -16,6 +16,8 @@ from litellm._logging import verbose_proxy_logger
 
 class SavingsSpend(NamedTuple):
     compression: float
+    compression_gross: float
+    compression_extra_input: float
     prompt_caching: float
 
 
@@ -49,6 +51,8 @@ def compute_savings_spend(
     custom_llm_provider: str | None,
     compression_saved_tokens: int,
     cache_read_input_tokens: int,
+    compression_gross_saved_tokens: int = 0,
+    compression_extra_input_tokens: int = 0,
 ) -> SavingsSpend:
     """
     Dollar savings for one request, split by optimization driver.
@@ -58,6 +62,13 @@ def compute_savings_spend(
     difference between the input rate and the discounted cache-read rate.
     """
     input_cost, cache_read_cost = _input_and_cache_read_cost(model, custom_llm_provider)
-    compression = max(compression_saved_tokens, 0) * input_cost
+    compression = compression_saved_tokens * input_cost
+    compression_gross = max(compression_gross_saved_tokens, 0) * input_cost
+    compression_extra_input = max(compression_extra_input_tokens, 0) * input_cost
     prompt_caching = max(cache_read_input_tokens, 0) * max(input_cost - cache_read_cost, 0.0)
-    return SavingsSpend(compression=compression, prompt_caching=prompt_caching)
+    return SavingsSpend(
+        compression=compression,
+        compression_gross=compression_gross,
+        compression_extra_input=compression_extra_input,
+        prompt_caching=prompt_caching,
+    )

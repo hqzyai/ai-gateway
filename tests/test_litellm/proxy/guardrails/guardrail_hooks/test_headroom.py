@@ -261,8 +261,41 @@ async def test_apply_guardrail_logs_messages_before_and_after_compression(
     assert response["messages_after"] == COMPRESSED_MESSAGES
     assert response["tokens_before"] == 1000
     assert response["tokens_after"] == 100
+    assert response["tokens_saved"] == 900
     assert response["compression_ratio"] == 0.1
     assert response["transforms_applied"] == ["router:smart_crusher:0.35"]
+
+
+@pytest.mark.asyncio
+async def test_apply_guardrail_preserves_headroom_net_loss_for_aggregation(
+    guardrail: HeadroomGuardrail,
+):
+    from litellm.proxy.spend_tracking.compression_savings import extract_compression_saved_tokens
+
+    logging_obj = _make_logging_obj("call-compression-net-loss")
+    compression_response = _make_compress_response(COMPRESSED_MESSAGES)
+    compression_response.json.return_value["tokens_before"] = 100
+    compression_response.json.return_value["tokens_after"] = 125
+    compression_response.json.return_value["tokens_saved"] = 0
+    with patch.object(
+        guardrail.async_handler,
+        "post",
+        new_callable=AsyncMock,
+        return_value=compression_response,
+    ):
+        await guardrail.apply_guardrail(
+            inputs=GenericGuardrailAPIInputs(texts=["A" * 5000], structured_messages=ORIGINAL_MESSAGES),
+            request_data={"model": "gpt-4o", "metadata": {}},
+            input_type="request",
+            logging_obj=logging_obj,
+        )
+
+    telemetry = _logged_headroom_response(logging_obj)
+    assert telemetry["tokens_saved"] == -25
+    metadata = {
+        "guardrail_information": logging_obj.litellm_params["metadata"]["standard_logging_guardrail_information"]
+    }
+    assert extract_compression_saved_tokens(metadata) == -25
 
 
 @pytest.mark.asyncio
@@ -297,6 +330,21 @@ async def test_apply_guardrail_injects_retrieve_tool_when_hashes_present(
     system_content = system_message["content"]
     assert isinstance(system_content, str)
     assert HEADROOM_CCR_SYSTEM_INSTRUCTION in system_content
+
+    retrieve_tool = next(
+        tool
+        for tool in tools
+        if isinstance(tool, dict) and tool.get("function", {}).get("name") == HEADROOM_RETRIEVE_TOOL_NAME
+    )
+    hash_schema = retrieve_tool["function"]["parameters"]["properties"]["hash"]
+    assert hash_schema == {
+        "type": "string",
+        "description": "Select the exact hash from the compression marker.",
+        "enum": ["b573993006976af767214fac"],
+        "minLength": 12,
+        "maxLength": 24,
+        "pattern": "^(?:[a-f0-9]{12}|[a-f0-9]{24})$",
+    }
 
 
 @pytest.mark.asyncio
@@ -435,6 +483,81 @@ async def test_apply_guardrail_preserves_existing_tools_when_injecting(
 
 
 @pytest.mark.asyncio
+async def test_apply_guardrail_replaces_client_retrieve_tool_with_request_hash_enum(
+    guardrail: HeadroomGuardrail,
+):
+    client_retrieve_tool = {
+        "type": "function",
+        "function": {
+            "name": HEADROOM_RETRIEVE_TOOL_NAME,
+            "parameters": {
+                "type": "object",
+                "properties": {"hash": {"type": "string", "enum": ["deadbeef000000000000dead"]}},
+            },
+        },
+    }
+    inputs = GenericGuardrailAPIInputs(
+        texts=["A" * 5000],
+        structured_messages=ORIGINAL_MESSAGES,
+        tools=[client_retrieve_tool],
+    )
+
+    with patch.object(
+        guardrail.async_handler,
+        "post",
+        new_callable=AsyncMock,
+        return_value=_make_compress_response(COMPRESSED_MESSAGES_WITH_HASH),
+    ):
+        result = await guardrail.apply_guardrail(
+            inputs=inputs,
+            request_data={"model": "gpt-4o"},
+            input_type="request",
+        )
+
+    tools = result.get("tools")
+    assert isinstance(tools, list)
+    assert len(tools) == 1
+    hash_schema = tools[0]["function"]["parameters"]["properties"]["hash"]
+    assert hash_schema["enum"] == ["b573993006976af767214fac"]
+    assert "deadbeef000000000000dead" not in hash_schema["enum"]
+
+
+@pytest.mark.asyncio
+async def test_apply_guardrail_includes_every_current_request_hash_in_enum(
+    guardrail: HeadroomGuardrail,
+):
+    compressed_messages = [
+        {"role": "system", "content": "You are a helpful assistant."},
+        {
+            "role": "user",
+            "content": (
+                "First hash=ffeeddccbbaa998877665544, "
+                "second hash=00112233445566778899aabb, "
+                "duplicate hash=ffeeddccbbaa998877665544"
+            ),
+        },
+    ]
+    inputs = GenericGuardrailAPIInputs(texts=["A" * 5000], structured_messages=ORIGINAL_MESSAGES)
+
+    with patch.object(
+        guardrail.async_handler,
+        "post",
+        new_callable=AsyncMock,
+        return_value=_make_compress_response(compressed_messages),
+    ):
+        result = await guardrail.apply_guardrail(
+            inputs=inputs,
+            request_data={"model": "gpt-4o"},
+            input_type="request",
+        )
+
+    tools = result.get("tools")
+    assert isinstance(tools, list)
+    hash_schema = tools[0]["function"]["parameters"]["properties"]["hash"]
+    assert hash_schema["enum"] == ["00112233445566778899aabb", "ffeeddccbbaa998877665544"]
+
+
+@pytest.mark.asyncio
 async def test_async_should_run_agentic_loop_returns_true_for_retrieve_call(
     guardrail: HeadroomGuardrail,
 ):
@@ -561,6 +684,9 @@ async def test_ccr_telemetry_tracks_not_triggered_retrieve_success_and_completed
     assert telemetry["ccr_hashes_requested"] == 1
     assert telemetry["ccr_hashes_retrieved"] == 1
     assert telemetry["ccr_retrieved_chars"] == len("recalled content")
+    assert telemetry["ccr_retrieved_tokens"] > 0
+    assert telemetry["tokens_after"] == 200 + telemetry["ccr_retrieved_tokens"]
+    assert telemetry["tokens_saved"] == 1000 - telemetry["tokens_after"]
     assert telemetry["ccr_followup_model"] == "openai/fallback-model"
     assert telemetry["ccr_error"] is None
 
@@ -575,6 +701,196 @@ async def test_ccr_telemetry_tracks_not_triggered_retrieve_success_and_completed
     await guardrail.async_agentic_loop_cleanup_hook(plan, {})
     assert telemetry["ccr_status"] == "completed"
     assert call_id not in guardrail._issued_hashes_by_call_id
+
+
+@pytest.mark.asyncio
+async def test_ccr_retrieval_net_loss_is_not_counted_as_saved_tokens(
+    guardrail: HeadroomGuardrail,
+):
+    from litellm.proxy.spend_tracking.compression_savings import extract_compression_saved_tokens
+
+    call_id = "call-telemetry-net-loss"
+    logging_obj = _make_logging_obj(call_id)
+    request_data = {"model": "gpt-4o", "litellm_call_id": call_id, "metadata": {}}
+    with patch.object(
+        guardrail.async_handler,
+        "post",
+        new_callable=AsyncMock,
+        return_value=_make_compress_response(COMPRESSED_MESSAGES_WITH_HASH),
+    ):
+        await guardrail.apply_guardrail(
+            inputs=GenericGuardrailAPIInputs(
+                texts=["A" * 5000],
+                structured_messages=ORIGINAL_MESSAGES,
+            ),
+            request_data=request_data,
+            input_type="request",
+            logging_obj=logging_obj,
+        )
+
+    cached_content = "restored content\n" * 5000
+    response = _make_openai_response_with_tool_call(
+        HEADROOM_RETRIEVE_TOOL_NAME,
+        {"hash": "b573993006976af767214fac"},
+    )
+    with patch.object(
+        guardrail.async_handler,
+        "get",
+        new_callable=AsyncMock,
+        return_value=_make_retrieve_response(cached_content),
+    ):
+        await guardrail.async_build_agentic_loop_plan(
+            tools={"tool_calls": _headroom_tool_calls("b573993006976af767214fac")},
+            model="gpt-4o",
+            messages=list(COMPRESSED_MESSAGES_WITH_HASH),
+            response=response,
+            anthropic_messages_provider_config=None,
+            anthropic_messages_optional_request_params={},
+            logging_obj=logging_obj,
+            stream=False,
+            kwargs={"litellm_call_id": call_id},
+        )
+
+    telemetry = _logged_headroom_response(logging_obj)
+    assert telemetry["tokens_saved"] < 0
+    metadata = {
+        "guardrail_information": logging_obj.litellm_params["metadata"]["standard_logging_guardrail_information"]
+    }
+    assert extract_compression_saved_tokens(metadata) < 0
+
+
+@pytest.mark.asyncio
+async def test_ccr_uses_followup_provider_usage_for_net_savings(
+    guardrail: HeadroomGuardrail,
+):
+    from litellm.proxy.spend_tracking.compression_savings import extract_compression_saved_tokens
+    from litellm.types.utils import Usage
+
+    call_id = "call-telemetry-provider-usage"
+    logging_obj = _make_logging_obj(call_id)
+    request_data = {"model": "gpt-4o", "litellm_call_id": call_id, "metadata": {}}
+    with patch.object(
+        guardrail.async_handler,
+        "post",
+        new_callable=AsyncMock,
+        return_value=_make_compress_response(COMPRESSED_MESSAGES_WITH_HASH),
+    ):
+        await guardrail.apply_guardrail(
+            inputs=GenericGuardrailAPIInputs(texts=["A" * 5000], structured_messages=ORIGINAL_MESSAGES),
+            request_data=request_data,
+            input_type="request",
+            logging_obj=logging_obj,
+        )
+
+    response = _make_openai_response_with_tool_call(
+        HEADROOM_RETRIEVE_TOOL_NAME,
+        {"hash": "b573993006976af767214fac"},
+    )
+    response.usage = Usage(prompt_tokens=120, completion_tokens=5, total_tokens=125)
+    with patch.object(
+        guardrail.async_handler,
+        "get",
+        new_callable=AsyncMock,
+        return_value=_make_retrieve_response("recalled content"),
+    ):
+        plan = await guardrail.async_build_agentic_loop_plan(
+            tools={"tool_calls": _headroom_tool_calls("b573993006976af767214fac")},
+            model="gpt-4o",
+            messages=list(COMPRESSED_MESSAGES_WITH_HASH),
+            response=response,
+            anthropic_messages_provider_config=None,
+            anthropic_messages_optional_request_params={},
+            logging_obj=logging_obj,
+            stream=False,
+            kwargs={"litellm_call_id": call_id},
+        )
+
+    followup_response = MagicMock()
+    followup_response.usage = Usage(prompt_tokens=950, completion_tokens=10, total_tokens=960)
+    await guardrail.async_post_agentic_loop_response_hook(followup_response, plan, {})
+
+    telemetry = _logged_headroom_response(logging_obj)
+    assert telemetry["headroom_compressed_tokens"] == 100
+    assert telemetry["ccr_initial_input_tokens"] == 120
+    assert telemetry["ccr_followup_input_tokens"] == 950
+    assert telemetry["tokens_after"] == 1070
+    assert telemetry["tokens_saved"] == -70
+    assert followup_response.usage.prompt_tokens == 950
+    metadata = {
+        "guardrail_information": logging_obj.litellm_params["metadata"]["standard_logging_guardrail_information"]
+    }
+    assert extract_compression_saved_tokens(metadata) == -70
+
+
+@pytest.mark.asyncio
+async def test_apply_guardrail_bypasses_internal_agentic_followup(
+    guardrail: HeadroomGuardrail,
+):
+    inputs = GenericGuardrailAPIInputs(texts=["A" * 5000], structured_messages=ORIGINAL_MESSAGES)
+
+    result = await guardrail.apply_guardrail(
+        inputs=inputs,
+        request_data={"litellm_metadata": {"_agentic_loop_depth": 1}},
+        input_type="request",
+    )
+
+    assert result == inputs
+
+
+@pytest.mark.asyncio
+async def test_ccr_followup_does_not_inherit_headroom_savings(
+    guardrail: HeadroomGuardrail,
+):
+    call_id = "call-followup-no-duplicate-savings"
+    logging_obj = _make_logging_obj(call_id)
+    request_data = {"model": "gpt-4o", "litellm_call_id": call_id, "metadata": {}}
+    with patch.object(
+        guardrail.async_handler,
+        "post",
+        new_callable=AsyncMock,
+        return_value=_make_compress_response(COMPRESSED_MESSAGES_WITH_HASH),
+    ):
+        await guardrail.apply_guardrail(
+            inputs=GenericGuardrailAPIInputs(texts=["A" * 5000], structured_messages=ORIGINAL_MESSAGES),
+            request_data=request_data,
+            input_type="request",
+            logging_obj=logging_obj,
+        )
+
+    headroom_entry = logging_obj.litellm_params["metadata"]["standard_logging_guardrail_information"][0]
+    other_entry = {"guardrail_provider": "other", "guardrail_response": {"allowed": True}}
+    response = _make_openai_response_with_tool_call(
+        HEADROOM_RETRIEVE_TOOL_NAME,
+        {"hash": "b573993006976af767214fac"},
+    )
+    with patch.object(
+        guardrail.async_handler,
+        "get",
+        new_callable=AsyncMock,
+        return_value=_make_retrieve_response("recalled content"),
+    ):
+        plan = await guardrail.async_build_agentic_loop_plan(
+            tools={"tool_calls": _headroom_tool_calls("b573993006976af767214fac")},
+            model="gpt-4o",
+            messages=list(COMPRESSED_MESSAGES_WITH_HASH),
+            response=response,
+            anthropic_messages_provider_config=None,
+            anthropic_messages_optional_request_params={},
+            logging_obj=logging_obj,
+            stream=True,
+            kwargs={
+                "litellm_call_id": call_id,
+                "litellm_metadata": {
+                    "standard_logging_guardrail_information": [headroom_entry, other_entry],
+                    "tenant": "keep-me",
+                },
+            },
+        )
+
+    assert plan.request_patch is not None
+    followup_metadata = plan.request_patch.kwargs["litellm_metadata"]
+    assert followup_metadata["standard_logging_guardrail_information"] == [other_entry]
+    assert followup_metadata["tenant"] == "keep-me"
 
 
 @pytest.mark.asyncio
@@ -1071,14 +1387,20 @@ def test_extract_hashes_from_messages_finds_hashes():
     messages = [
         {"role": "user", "content": "Retrieve more: hash=b573993006976af767214fac"},
         {"role": "assistant", "content": "Also: hash=aabbccdd001122334455aabb"},
+        {"role": "tool", "content": "Compressed payload: <<ccr:e60cbe778006,base64,512B>>"},
     ]
     hashes = extract_hashes_from_messages(messages)
     assert "b573993006976af767214fac" in hashes
     assert "aabbccdd001122334455aabb" in hashes
+    assert "e60cbe778006" in hashes
 
 
-def test_extract_hashes_from_messages_ignores_short_hashes():
-    messages = [{"role": "user", "content": "hash=tooshort"}]
+def test_extract_hashes_from_messages_ignores_invalid_hash_lengths():
+    messages = [
+        {"role": "user", "content": "hash=abc123"},
+        {"role": "assistant", "content": "hash=0011223344556"},
+        {"role": "tool", "content": "<<ccr:001122334455667788>>"},
+    ]
     hashes = extract_hashes_from_messages(messages)
     assert not hashes
 

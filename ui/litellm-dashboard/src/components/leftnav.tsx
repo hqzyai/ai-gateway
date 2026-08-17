@@ -55,6 +55,7 @@ import {
   ShieldCheck,
   Tags,
   Terminal,
+  ChartNoAxesCombined,
   User,
   Users,
   Wallet,
@@ -188,6 +189,13 @@ const menuGroups: MenuGroup[] = [
         icon: <PiggyBank {...ICON} />,
         roles: [...all_admin_roles, ...internalUserRoles],
         label: "Cost Optimization",
+      },
+      {
+        key: "token-analytics",
+        page: "token-analytics",
+        icon: <ChartNoAxesCombined {...ICON} />,
+        roles: [...all_admin_roles, ...internalUserRoles],
+        label: "Token 分析",
       },
       { key: "logs", page: "logs", label: "Logs", icon: <Activity {...ICON} /> },
       {

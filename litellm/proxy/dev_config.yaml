@@ -197,8 +197,6 @@ model_list:
       model: openai/gpt-4o-mini
       api_key: os.environ/OPENAI_API_KEY
 
-
-
 general_settings:
   master_key: sk-1234
   store_prompts_in_spend_logs: true
@@ -216,12 +214,8 @@ sandbox_tools:
 litellm_settings:
   drop_params: True
   telemetry: False
-  compression_interception_params:
-    enabled: true
-    safety_buffer_tokens: 4096
   code_interpreter_interception_params:
     enabled: true
     sandbox_tool_name: e2b_sandbox
   callbacks:
-    - compression_interception
     - code_interpreter_interception

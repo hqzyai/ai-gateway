@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 import time
 import uuid
@@ -25,6 +26,7 @@ from litellm.litellm_core_utils.prompt_templates.factory import (
     get_tool_calls_from_response,
     has_tool_with_name,
 )
+from litellm.litellm_core_utils.token_counter import token_counter
 from litellm.llms.custom_httpx.http_handler import (
     get_async_httpx_client,  # pyright: ignore[reportUnknownVariableType]
     httpxSpecialProvider,
@@ -46,7 +48,7 @@ HEADROOM_CCR_SYSTEM_INSTRUCTION = (
     "marker hash before calling `read_file`, `terminal`, search, or any other tool to re-read or re-fetch the same "
     "source. Do not guess from the compressed summary. Skip retrieval only when the omitted content is irrelevant."
 )
-_HASH_PATTERN = re.compile(r"hash=([a-f0-9]{24})")
+_HASH_PATTERN = re.compile(r"(?:hash=|<<ccr:)([a-f0-9]{12}(?:[a-f0-9]{12})?)(?=[^a-f0-9]|$)")
 _HASH_CACHE_TTL_SECONDS = 15 * 60
 _TOOL_RESULT_UNWRAP_KEYS = frozenset({"content", "output", "stdout", "stderr", "result", "text"})
 _TOOL_RESULT_UNWRAP_MIN_CHARS = 400
@@ -144,7 +146,7 @@ def extract_hashes_from_messages(messages: list[dict[str, object]]) -> list[str]
     return hashes
 
 
-def _build_headroom_retrieve_tool() -> dict[str, object]:
+def _build_headroom_retrieve_tool(valid_hashes: frozenset[str]) -> dict[str, object]:
     return {
         "type": "function",
         "function": {
@@ -159,7 +161,11 @@ def _build_headroom_retrieve_tool() -> dict[str, object]:
                 "properties": {
                     "hash": {
                         "type": "string",
-                        "description": "The 24-character hex hash from the compression marker.",
+                        "description": "Select the exact hash from the compression marker.",
+                        "enum": sorted(valid_hashes),
+                        "minLength": 12,
+                        "maxLength": 24,
+                        "pattern": "^(?:[a-f0-9]{12}|[a-f0-9]{24})$",
                     },
                     "query": {
                         "type": "string",
@@ -244,6 +250,124 @@ def _headroom_logging_responses(logging_obj: object) -> tuple[dict[str, object],
 def _update_ccr_logging(logging_obj: object, values: dict[str, object]) -> None:
     for response in _headroom_logging_responses(logging_obj):
         response.update(values)
+
+
+def _without_headroom_guardrail_information(value: object) -> object:
+    if not _is_str_object_dict(value):
+        return value
+    entries = value.get("standard_logging_guardrail_information")
+    if not _is_object_list(entries):
+        return value
+    retained = [
+        entry
+        for entry in entries
+        if not _is_str_object_dict(entry) or entry.get("guardrail_provider") != HEADROOM_GUARDRAIL_PROVIDER
+    ]
+    return {**value, "standard_logging_guardrail_information": retained}
+
+
+def _followup_kwargs_without_headroom_telemetry(kwargs: dict[str, object]) -> dict[str, object]:
+    return {
+        key: _without_headroom_guardrail_information(value) if key in ("metadata", "litellm_metadata") else value
+        for key, value in kwargs.items()
+        if not key.startswith("_headroom") and key != "litellm_logging_obj"
+    }
+
+
+def _non_negative_token_count(value: object) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
+        return None
+    return int(value)
+
+
+def _compression_stats(body: dict[str, object]) -> dict[str, object]:
+    stats = {
+        key: body[key]
+        for key in (
+            "tokens_before",
+            "tokens_after",
+            "tokens_saved",
+            "compression_ratio",
+            "transforms_applied",
+        )
+        if key in body
+    }
+    tokens_before = _non_negative_token_count(body.get("tokens_before"))
+    tokens_after = _non_negative_token_count(body.get("tokens_after"))
+    if tokens_before is None or tokens_after is None:
+        return stats
+    return {
+        **stats,
+        "tokens_before": tokens_before,
+        "tokens_after": tokens_after,
+        "tokens_saved": tokens_before - tokens_after,
+    }
+
+
+def _retrieved_token_count(model: str, retrieved: list[tuple[dict[str, object], str]]) -> int:
+    text = "".join(content for _, content in retrieved)
+    if not text:
+        return 0
+    try:
+        return token_counter(model=model, text=text)
+    except (KeyError, TypeError, ValueError):
+        return 0
+
+
+def _restate_headroom_savings_after_retrieval(
+    logging_obj: object,
+    model: str,
+    retrieved: list[tuple[dict[str, object], str]],
+) -> None:
+    refilled_tokens = _retrieved_token_count(model=model, retrieved=retrieved)
+    for response in _headroom_logging_responses(logging_obj):
+        tokens_before = _non_negative_token_count(response.get("tokens_before"))
+        compressed_tokens = _non_negative_token_count(response.get("headroom_compressed_tokens"))
+        if compressed_tokens is None:
+            compressed_tokens = _non_negative_token_count(response.get("tokens_after"))
+        if tokens_before is None or compressed_tokens is None:
+            continue
+        total_input_tokens = compressed_tokens * 2 + refilled_tokens
+        response.update(
+            {
+                "tokens_after": total_input_tokens,
+                "tokens_saved": tokens_before - total_input_tokens,
+                "ccr_retrieved_tokens": refilled_tokens,
+            }
+        )
+
+
+def _response_input_tokens(response: object) -> int | None:
+    usage = response.get("usage") if _is_str_object_dict(response) else getattr(response, "usage", None)
+    for key in ("prompt_tokens", "input_tokens"):
+        value = usage.get(key) if _is_str_object_dict(usage) else getattr(usage, key, None)
+        tokens = _non_negative_token_count(value)
+        if tokens is not None:
+            return tokens
+    return None
+
+
+def _restate_headroom_savings_after_followup(logging_obj: object, response: object) -> None:
+    followup_input_tokens = _response_input_tokens(response)
+    if followup_input_tokens is None:
+        return
+    for telemetry in _headroom_logging_responses(logging_obj):
+        tokens_before = _non_negative_token_count(telemetry.get("tokens_before"))
+        initial_input_tokens = _non_negative_token_count(telemetry.get("ccr_initial_input_tokens"))
+        if initial_input_tokens is None:
+            initial_input_tokens = _non_negative_token_count(telemetry.get("headroom_compressed_tokens"))
+        if initial_input_tokens is None:
+            initial_input_tokens = _non_negative_token_count(telemetry.get("tokens_after"))
+        if tokens_before is None or initial_input_tokens is None:
+            continue
+        total_input_tokens = initial_input_tokens + followup_input_tokens
+        telemetry.update(
+            {
+                "tokens_after": total_input_tokens,
+                "tokens_saved": tokens_before - total_input_tokens,
+                "ccr_followup_input_tokens": followup_input_tokens,
+            }
+        )
 
 
 def _ccr_status(logging_obj: object) -> str | None:
@@ -414,6 +538,12 @@ class HeadroomGuardrail(CustomGuardrail):
         )
 
     def _should_bypass(self, request_data: dict) -> bool:
+        metadata = request_data.get("litellm_metadata") or request_data.get("metadata")
+        depth = request_data.get("_agentic_loop_depth")
+        if depth is None and _is_str_object_dict(metadata):
+            depth = metadata.get("_agentic_loop_depth")
+        if _non_negative_token_count(depth) not in (None, 0):
+            return True
         psr = request_data.get("proxy_server_request")
         if not _is_str_object_dict(psr):
             return False
@@ -564,17 +694,7 @@ class HeadroomGuardrail(CustomGuardrail):
             body.get("compression_ratio", 0),
         )
 
-        stats = {
-            key: body[key]
-            for key in (
-                "tokens_before",
-                "tokens_after",
-                "tokens_saved",
-                "compression_ratio",
-                "transforms_applied",
-            )
-            if key in body
-        }
+        stats = _compression_stats(body)
         return filtered, True, stats
 
     async def _call_retrieve(self, hash_value: str, query: str | None = None) -> HeadroomRetrievalResult:
@@ -669,6 +789,7 @@ class HeadroomGuardrail(CustomGuardrail):
         self.add_standard_logging_guardrail_information_to_request_data(
             guardrail_json_response={
                 **stats,
+                "headroom_compressed_tokens": stats.get("tokens_after"),
                 "messages_before": [{**m} for m in messages],
                 "messages_after": [{**m} for m in messages_for_model],
                 "ccr_enabled": self.enable_ccr,
@@ -698,13 +819,15 @@ class HeadroomGuardrail(CustomGuardrail):
         self._issued_hashes_by_call_id[call_id] = (unique_hashes, time.monotonic() + _HASH_CACHE_TTL_SECONDS)
 
         existing_tools = inputs.get("tools")
-        retrieve_tool = _build_headroom_retrieve_tool()
-        if isinstance(existing_tools, list) and not has_headroom_retrieve_tool(existing_tools):
-            merged_tools: list[object] = list(existing_tools) + [retrieve_tool]
+        retrieve_tool = _build_headroom_retrieve_tool(unique_hashes)
+        if isinstance(existing_tools, list):
+            merged_tools: list[object] = [tool for tool in existing_tools if not has_headroom_retrieve_tool([tool])] + [
+                retrieve_tool
+            ]
         elif existing_tools is None:
             merged_tools = [retrieve_tool]
         else:
-            merged_tools = list(existing_tools) if isinstance(existing_tools, list) else [retrieve_tool]
+            merged_tools = [retrieve_tool]
 
         return {**inputs, "structured_messages": messages_for_model, "tools": merged_tools}  # pyright: ignore[reportReturnType]
 
@@ -745,6 +868,10 @@ class HeadroomGuardrail(CustomGuardrail):
     ) -> AgenticLoopPlan:
         tool_calls: list[dict[str, object]] = tools.get("tool_calls", [])  # type: ignore[assignment]
 
+        initial_input_tokens = _response_input_tokens(response)
+        if logging_obj is not None and initial_input_tokens is not None:
+            _update_ccr_logging(logging_obj, {"ccr_initial_input_tokens": initial_input_tokens})
+
         self._prune_expired_hashes()
         call_id = _resolve_call_id(logging_obj, kwargs)
         valid_hashes = self._issued_hashes_by_call_id.get(call_id, (frozenset(), 0.0))[0] if call_id else frozenset()
@@ -780,6 +907,12 @@ class HeadroomGuardrail(CustomGuardrail):
         retrieved = [(tc, result.content) for tc, result in retrieved_results]
         successful_results = tuple(result for _, result in retrieved_results if result.succeeded)
         failed_results = tuple(result for _, result in retrieved_results if not result.succeeded)
+        if logging_obj is not None:
+            _restate_headroom_savings_after_retrieval(
+                logging_obj=logging_obj,
+                model=model,
+                retrieved=retrieved,
+            )
 
         if _is_responses_api_response(response):
             follow_up_messages = list(messages) + _build_responses_followup_items(retrieved)
@@ -838,9 +971,7 @@ class HeadroomGuardrail(CustomGuardrail):
                 messages=follow_up_messages,
                 max_tokens=max_tokens,
                 optional_params=optional_params_without_max_tokens,
-                kwargs={
-                    k: v for k, v in kwargs.items() if not k.startswith("_headroom") and k != "litellm_logging_obj"
-                },
+                kwargs=_followup_kwargs_without_headroom_telemetry(kwargs),
             ),
             metadata={"tool_type": "headroom_ccr", "ccr_call_id": call_id},
         )
@@ -854,6 +985,7 @@ class HeadroomGuardrail(CustomGuardrail):
         call_id = plan.metadata.get("ccr_call_id")
         logging_obj = self._ccr_logging_objects_by_call_id.get(call_id) if isinstance(call_id, str) else None
         if logging_obj is not None and _ccr_status(logging_obj) == "retrieve_success":
+            _restate_headroom_savings_after_followup(logging_obj=logging_obj, response=response)
             _update_ccr_logging(
                 logging_obj,
                 {

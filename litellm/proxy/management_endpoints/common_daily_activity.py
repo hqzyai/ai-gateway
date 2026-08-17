@@ -34,6 +34,45 @@ _PRISMA_TO_PG_TABLE: Dict[str, str] = {
 }
 
 
+def _net_compression_savings_rate(metrics: SpendMetrics) -> float:
+    baseline_input_tokens = metrics.prompt_tokens + metrics.compression_saved_tokens
+    if baseline_input_tokens <= 0:
+        return 0.0
+    return metrics.compression_saved_tokens / baseline_input_tokens
+
+
+def _daily_spend_metadata(
+    metrics: SpendMetrics,
+    *,
+    page: int,
+    total_pages: int,
+    has_more: bool,
+) -> DailySpendMetadata:
+    return DailySpendMetadata(
+        total_spend=metrics.spend,
+        total_prompt_tokens=metrics.prompt_tokens,
+        total_completion_tokens=metrics.completion_tokens,
+        total_tokens=metrics.total_tokens,
+        total_api_requests=metrics.api_requests,
+        total_successful_requests=metrics.successful_requests,
+        total_failed_requests=metrics.failed_requests,
+        total_cache_read_input_tokens=metrics.cache_read_input_tokens,
+        total_cache_creation_input_tokens=metrics.cache_creation_input_tokens,
+        total_compression_saved_tokens=metrics.compression_saved_tokens,
+        total_compression_gross_saved_tokens=metrics.compression_gross_saved_tokens,
+        total_compression_extra_input_tokens=metrics.compression_extra_input_tokens,
+        total_compression_requests=metrics.compression_requests,
+        total_compression_net_savings_rate=_net_compression_savings_rate(metrics),
+        total_compression_savings_spend=metrics.compression_savings_spend,
+        total_compression_gross_savings_spend=metrics.compression_gross_savings_spend,
+        total_compression_extra_input_spend=metrics.compression_extra_input_spend,
+        total_prompt_caching_savings_spend=metrics.prompt_caching_savings_spend,
+        page=page,
+        total_pages=total_pages,
+        has_more=has_more,
+    )
+
+
 def update_metrics(existing_metrics: SpendMetrics, record: Any) -> SpendMetrics:
     """Update metrics with new record data.
 
@@ -50,7 +89,12 @@ def update_metrics(existing_metrics: SpendMetrics, record: Any) -> SpendMetrics:
     existing_metrics.cache_read_input_tokens += record.cache_read_input_tokens or 0
     existing_metrics.cache_creation_input_tokens += record.cache_creation_input_tokens or 0
     existing_metrics.compression_saved_tokens += record.compression_saved_tokens or 0
+    existing_metrics.compression_gross_saved_tokens += getattr(record, "compression_gross_saved_tokens", 0) or 0
+    existing_metrics.compression_extra_input_tokens += getattr(record, "compression_extra_input_tokens", 0) or 0
+    existing_metrics.compression_requests += getattr(record, "compression_requests", 0) or 0
     existing_metrics.compression_savings_spend += record.compression_savings_spend or 0
+    existing_metrics.compression_gross_savings_spend += getattr(record, "compression_gross_savings_spend", 0) or 0
+    existing_metrics.compression_extra_input_spend += getattr(record, "compression_extra_input_spend", 0) or 0
     existing_metrics.prompt_caching_savings_spend += record.prompt_caching_savings_spend or 0
     existing_metrics.api_requests += record.api_requests or 0
     existing_metrics.successful_requests += record.successful_requests or 0
@@ -477,7 +521,12 @@ def _build_aggregated_sql_query(
             SUM(cache_read_input_tokens)::bigint AS cache_read_input_tokens,
             SUM(cache_creation_input_tokens)::bigint AS cache_creation_input_tokens,
             SUM(compression_saved_tokens)::bigint AS compression_saved_tokens,
+            SUM(compression_gross_saved_tokens)::bigint AS compression_gross_saved_tokens,
+            SUM(compression_extra_input_tokens)::bigint AS compression_extra_input_tokens,
+            SUM(compression_requests)::bigint AS compression_requests,
             SUM(compression_savings_spend)::float AS compression_savings_spend,
+            SUM(compression_gross_savings_spend)::float AS compression_gross_savings_spend,
+            SUM(compression_extra_input_spend)::float AS compression_extra_input_spend,
             SUM(prompt_caching_savings_spend)::float AS prompt_caching_savings_spend,
             SUM(api_requests)::bigint AS api_requests,
             SUM(successful_requests)::bigint AS successful_requests,
@@ -619,7 +668,12 @@ def _record_to_spend_metrics(record: Any) -> SpendMetrics:
         cache_read_input_tokens=record.cache_read_input_tokens or 0,
         cache_creation_input_tokens=record.cache_creation_input_tokens or 0,
         compression_saved_tokens=record.compression_saved_tokens or 0,
+        compression_gross_saved_tokens=getattr(record, "compression_gross_saved_tokens", 0) or 0,
+        compression_extra_input_tokens=getattr(record, "compression_extra_input_tokens", 0) or 0,
+        compression_requests=getattr(record, "compression_requests", 0) or 0,
         compression_savings_spend=record.compression_savings_spend or 0,
+        compression_gross_savings_spend=getattr(record, "compression_gross_savings_spend", 0) or 0,
+        compression_extra_input_spend=getattr(record, "compression_extra_input_spend", 0) or 0,
         prompt_caching_savings_spend=record.prompt_caching_savings_spend or 0,
         api_requests=record.api_requests or 0,
         successful_requests=record.successful_requests or 0,
@@ -861,19 +915,8 @@ async def get_daily_activity(
 
         return SpendAnalyticsPaginatedResponse(
             results=aggregated["results"],
-            metadata=DailySpendMetadata(
-                total_spend=metadata_metrics.spend,
-                total_prompt_tokens=metadata_metrics.prompt_tokens,
-                total_completion_tokens=metadata_metrics.completion_tokens,
-                total_tokens=metadata_metrics.total_tokens,
-                total_api_requests=metadata_metrics.api_requests,
-                total_successful_requests=metadata_metrics.successful_requests,
-                total_failed_requests=metadata_metrics.failed_requests,
-                total_cache_read_input_tokens=metadata_metrics.cache_read_input_tokens,
-                total_cache_creation_input_tokens=metadata_metrics.cache_creation_input_tokens,
-                total_compression_saved_tokens=metadata_metrics.compression_saved_tokens,
-                total_compression_savings_spend=metadata_metrics.compression_savings_spend,
-                total_prompt_caching_savings_spend=metadata_metrics.prompt_caching_savings_spend,
+            metadata=_daily_spend_metadata(
+                metadata_metrics,
                 page=page,
                 total_pages=-(-total_count // page_size),  # Ceiling division
                 has_more=(page * page_size) < total_count,
@@ -950,19 +993,8 @@ async def get_daily_activity_aggregated(
 
         return SpendAnalyticsPaginatedResponse(
             results=aggregated["results"],
-            metadata=DailySpendMetadata(
-                total_spend=aggregated["totals"].spend,
-                total_prompt_tokens=aggregated["totals"].prompt_tokens,
-                total_completion_tokens=aggregated["totals"].completion_tokens,
-                total_tokens=aggregated["totals"].total_tokens,
-                total_api_requests=aggregated["totals"].api_requests,
-                total_successful_requests=aggregated["totals"].successful_requests,
-                total_failed_requests=aggregated["totals"].failed_requests,
-                total_cache_read_input_tokens=aggregated["totals"].cache_read_input_tokens,
-                total_cache_creation_input_tokens=aggregated["totals"].cache_creation_input_tokens,
-                total_compression_saved_tokens=aggregated["totals"].compression_saved_tokens,
-                total_compression_savings_spend=aggregated["totals"].compression_savings_spend,
-                total_prompt_caching_savings_spend=aggregated["totals"].prompt_caching_savings_spend,
+            metadata=_daily_spend_metadata(
+                aggregated["totals"],
                 page=1,
                 total_pages=1,
                 has_more=False,

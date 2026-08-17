@@ -1,19 +1,23 @@
 # 本地压缩代理
 
-LiteLLM 默认不启用压缩代理。设置 `COMPRESSION_BACKEND=headroom` 或 `COMPRESSION_BACKEND=lean-ctx` 可显式启用对应代理，但 LiteLLM 不会负责启动或停止它们。请先在单独的终端启动所选代理，再运行 `./scripts/start_local.sh`
+LiteLLM 默认不启用压缩代理。设置 `COMPRESSION_BACKEND=headroom` 或 `COMPRESSION_BACKEND=lean-ctx` 可显式启用对应代理，但 LiteLLM 不会负责启动或停止它们。启用代理时只加载 Headroom guardrail 的压缩和 CCR 召回链路，不加载 `compression_interception`。请先在单独的终端启动所选代理，再运行 `./scripts/start_local.sh`
+
+`start_local.sh` 会先构建最新 Dashboard 源码，再由 LiteLLM 在 `4000` 端口直接提供页面。Token 分析页地址为 `http://localhost:4000/ui/token-analytics/`
 
 ## 启动 Headroom
 
-复制下面一行即可在前台启动 lossless 模式，默认地址是 `http://127.0.0.1:8787`
+复制下面一行即可在前台启动带 CCR 召回的 token 模式，默认地址是 `http://127.0.0.1:8787`
 
 ```bash
-cd /Users/cizai/ai-gateway && headroom proxy --lossless
+cd /path/to/ai-gateway && headroom proxy --mode token
 ```
+
+不要使用 `--lossless` 测试这条链路；Headroom 的 lossless 模式不会生成 CCR marker，因此 LiteLLM 不会注入 `headroom_retrieve` 或进行二次召回
 
 在另一个终端切换并启动 LiteLLM：
 
 ```bash
-cd /Users/cizai/ai-gateway && COMPRESSION_BACKEND=headroom ./scripts/start_local.sh
+cd /path/to/ai-gateway && COMPRESSION_BACKEND=headroom ./scripts/start_local.sh
 ```
 
 也可以把选择写入仓库根目录的 `.env`，之后只需运行 `./scripts/start_local.sh`：
@@ -27,7 +31,7 @@ COMPRESSION_BACKEND=headroom
 复制下面整段即可应用当前的 unwrap + CCR 配置，并在后台启动代理，默认地址是 `http://127.0.0.1:4444`
 
 ```bash
-cd /Users/cizai/ai-gateway && \
+cd /path/to/ai-gateway && \
 lean-ctx config set crush_verbatim_json true && \
 lean-ctx config set compression_level standard && \
 lean-ctx config set reference_results true && \
@@ -41,7 +45,7 @@ lean-ctx proxy start --port=4444 --detach
 在另一个终端切换并启动 LiteLLM：
 
 ```bash
-cd /Users/cizai/ai-gateway && COMPRESSION_BACKEND=lean-ctx ./scripts/start_local.sh
+cd /path/to/ai-gateway && COMPRESSION_BACKEND=lean-ctx ./scripts/start_local.sh
 ```
 
 持久化选择：

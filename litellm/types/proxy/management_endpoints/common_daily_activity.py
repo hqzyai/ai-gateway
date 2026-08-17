@@ -23,7 +23,12 @@ class SpendMetrics(BaseModel):
     cache_read_input_tokens: int = Field(default=0)
     cache_creation_input_tokens: int = Field(default=0)
     compression_saved_tokens: int = Field(default=0)
+    compression_gross_saved_tokens: int = Field(default=0)
+    compression_extra_input_tokens: int = Field(default=0)
+    compression_requests: int = Field(default=0)
     compression_savings_spend: float = Field(default=0.0)
+    compression_gross_savings_spend: float = Field(default=0.0)
+    compression_extra_input_spend: float = Field(default=0.0)
     prompt_caching_savings_spend: float = Field(default=0.0)
     total_tokens: int = Field(default=0)
     successful_requests: int = Field(default=0)
@@ -83,7 +88,13 @@ class DailySpendMetadata(BaseModel):
     total_cache_read_input_tokens: int = Field(default=0)
     total_cache_creation_input_tokens: int = Field(default=0)
     total_compression_saved_tokens: int = Field(default=0)
+    total_compression_gross_saved_tokens: int = Field(default=0)
+    total_compression_extra_input_tokens: int = Field(default=0)
+    total_compression_requests: int = Field(default=0)
+    total_compression_net_savings_rate: float = Field(default=0.0)
     total_compression_savings_spend: float = Field(default=0.0)
+    total_compression_gross_savings_spend: float = Field(default=0.0)
+    total_compression_extra_input_spend: float = Field(default=0.0)
     total_prompt_caching_savings_spend: float = Field(default=0.0)
     page: int = Field(default=1)
     total_pages: int = Field(default=1)
@@ -109,7 +120,12 @@ class LiteLLM_DailyUserSpend(BaseModel):
     cache_read_input_tokens: int = 0
     cache_creation_input_tokens: int = 0
     compression_saved_tokens: int = 0
+    compression_gross_saved_tokens: int = 0
+    compression_extra_input_tokens: int = 0
+    compression_requests: int = 0
     compression_savings_spend: float = 0.0
+    compression_gross_savings_spend: float = 0.0
+    compression_extra_input_spend: float = 0.0
     prompt_caching_savings_spend: float = 0.0
     spend: float = 0.0
     api_requests: int = 0

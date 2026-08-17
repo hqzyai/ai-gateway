@@ -6,6 +6,7 @@ import pytest
 
 from litellm.proxy.spend_tracking.compression_savings import (
     extract_compression_saved_tokens,
+    extract_compression_token_savings,
 )
 
 NATIVE_SAVINGS = {
@@ -70,7 +71,6 @@ def test_non_headroom_guardrail_entries_ignored():
         {"tokens_saved": None},
         {"tokens_saved": "7000"},
         {"tokens_saved": True},
-        {"tokens_saved": -5},
         {"tokens_before": 100, "tokens_after": 50},
     ],
 )
@@ -90,7 +90,6 @@ def test_malformed_native_key_contributes_zero(compression_savings):
         [{"guardrail_provider": "headroom"}],
         [{"guardrail_provider": "headroom", "guardrail_response": "REDACTED"}],
         [{"guardrail_provider": "headroom", "guardrail_response": {"tokens_saved": "600"}}],
-        [{"guardrail_provider": "headroom", "guardrail_response": {"tokens_saved": -600}}],
         [{"guardrail_response": {"tokens_saved": 600}}],
     ],
 )
@@ -107,6 +106,48 @@ def test_valid_headroom_entry_survives_alongside_malformed_ones():
         ]
     }
     assert extract_compression_saved_tokens(metadata) == 600
+
+
+def test_negative_native_savings_are_preserved():
+    metadata = {"compression_savings": {"tokens_saved": -5}}
+    assert extract_compression_token_savings(metadata) == (0, 5, -5)
+    assert extract_compression_saved_tokens(metadata) == -5
+
+
+def test_headroom_breakdown_uses_gross_extra_and_signed_net_tokens():
+    metadata = {
+        "guardrail_information": [
+            {
+                "guardrail_provider": "headroom",
+                "guardrail_response": {
+                    "tokens_before": 1000,
+                    "headroom_compressed_tokens": 400,
+                    "ccr_initial_input_tokens": 450,
+                    "tokens_after": 1100,
+                    "tokens_saved": -100,
+                },
+            }
+        ]
+    }
+    assert extract_compression_token_savings(metadata) == (550, 650, -100)
+    assert extract_compression_saved_tokens(metadata) == -100
+
+
+def test_headroom_compression_expansion_counts_as_extra_input():
+    metadata = {
+        "guardrail_information": [
+            {
+                "guardrail_provider": "headroom",
+                "guardrail_response": {
+                    "tokens_before": 100,
+                    "headroom_compressed_tokens": 125,
+                    "tokens_after": 125,
+                    "tokens_saved": -25,
+                },
+            }
+        ]
+    }
+    assert extract_compression_token_savings(metadata) == (0, 25, -25)
 
 
 def test_float_tokens_saved_counts_as_int():

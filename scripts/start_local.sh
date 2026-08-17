@@ -144,10 +144,12 @@ PY
 
 case "$compression_backend" in
   none)
+    proxy_config_path="litellm/proxy/dev_config.yaml"
     ;;
   headroom)
     export COMPRESSION_PROXY_URL="${configured_compression_url:-http://127.0.0.1:${headroom_proxy_port}}"
     export COMPRESSION_PROXY_TOKEN="${configured_compression_token:-}"
+    proxy_config_path="litellm/proxy/dev_config_headroom.yaml"
     ;;
   lean-ctx)
     if ! command -v lean-ctx >/dev/null 2>&1; then
@@ -156,6 +158,7 @@ case "$compression_backend" in
     fi
     export COMPRESSION_PROXY_URL="${configured_compression_url:-http://127.0.0.1:${lean_ctx_proxy_port}}"
     export COMPRESSION_PROXY_TOKEN="${configured_compression_token:-$(lean-ctx proxy token)}"
+    proxy_config_path="litellm/proxy/dev_config_headroom.yaml"
     ;;
   *)
     echo "COMPRESSION_BACKEND must be 'none', 'headroom', or 'lean-ctx'" >&2
@@ -168,9 +171,27 @@ if [[ "$compression_backend" == "none" ]]; then
 else
   echo "Compression backend: ${compression_backend} (${COMPRESSION_PROXY_URL})"
 fi
+
+if [[ ! -x "ui/litellm-dashboard/node_modules/.bin/next" ]]; then
+  echo "Dashboard dependencies are missing. Run 'npm install' in ui/litellm-dashboard first" >&2
+  exit 1
+fi
+
+echo "Building Dashboard for http://localhost:4000/ui/"
+npm --prefix ui/litellm-dashboard run build
+
+dashboard_output_path="$repo_dir/ui/litellm-dashboard/out"
+if [[ ! -f "$dashboard_output_path/index.html" || ! -f "$dashboard_output_path/token-analytics/index.html" ]]; then
+  echo "Dashboard build is incomplete" >&2
+  exit 1
+fi
+
+export LITELLM_UI_PATH="$dashboard_output_path"
 echo "LiteLLM Dashboard: http://localhost:4000/ui/"
+echo "Token Analytics: http://localhost:4000/ui/token-analytics/"
+
 exec uv run --env-file .env python litellm/proxy/proxy_cli.py \
-  --config litellm/proxy/dev_config.yaml \
+  --config "$proxy_config_path" \
   --host 0.0.0.0 \
   --port 4000 \
   --use_v2_migration_resolver \

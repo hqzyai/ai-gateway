@@ -1,0 +1,13 @@
+include:
+  - dev_config.yaml
+
+guardrails:
+  - guardrail_name: context-compression
+    litellm_params:
+      guardrail: headroom
+      mode: pre_call
+      api_base: os.environ/COMPRESSION_PROXY_URL
+      api_key: os.environ/COMPRESSION_PROXY_TOKEN
+      default_on: true
+      unreachable_fallback: fail_open
+      enable_ccr: true

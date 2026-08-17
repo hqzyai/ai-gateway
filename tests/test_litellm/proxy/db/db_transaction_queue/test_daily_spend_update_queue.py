@@ -6,9 +6,7 @@ import sys
 import pytest
 from fastapi.testclient import TestClient
 
-sys.path.insert(
-    0, os.path.abspath("../../..")
-)  # Adds the parent directory to the system path
+sys.path.insert(0, os.path.abspath("../../.."))  # Adds the parent directory to the system path
 import litellm
 from litellm.constants import MAX_SIZE_IN_MEMORY_QUEUE
 from litellm.proxy._types import (
@@ -107,9 +105,7 @@ async def test_add_multiple_updates(daily_spend_update_queue):
 @pytest.mark.asyncio
 async def test_aggregated_daily_spend_update_empty(daily_spend_update_queue):
     """Test aggregating updates from an empty queue"""
-    result = (
-        await daily_spend_update_queue.flush_and_get_aggregated_daily_spend_update_transactions()
-    )
+    result = await daily_spend_update_queue.flush_and_get_aggregated_daily_spend_update_transactions()
     assert result == {}
 
 
@@ -129,9 +125,7 @@ async def test_get_aggregated_daily_spend_update_transactions_single_key():
     updates = [{test_key: test_transaction}]
 
     # Test aggregation
-    result = DailySpendUpdateQueue.get_aggregated_daily_spend_update_transactions(
-        updates
-    )
+    result = DailySpendUpdateQueue.get_aggregated_daily_spend_update_transactions(updates)
 
     assert len(result) == 1
     assert test_key in result
@@ -164,9 +158,7 @@ async def test_get_aggregated_daily_spend_update_transactions_multiple_keys():
     updates = [{test_key1: test_transaction1}, {test_key2: test_transaction2}]
 
     # Test aggregation
-    result = DailySpendUpdateQueue.get_aggregated_daily_spend_update_transactions(
-        updates
-    )
+    result = DailySpendUpdateQueue.get_aggregated_daily_spend_update_transactions(updates)
 
     assert len(result) == 2
     assert test_key1 in result
@@ -207,16 +199,19 @@ async def test_get_aggregated_daily_spend_update_transactions_same_key():
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 0,
         "compression_saved_tokens": 0,
+        "compression_gross_saved_tokens": 0,
+        "compression_extra_input_tokens": 0,
+        "compression_requests": 0,
         "compression_savings_spend": 0,
+        "compression_gross_savings_spend": 0,
+        "compression_extra_input_spend": 0,
         "prompt_caching_savings_spend": 0,
     }
 
     updates = [{test_key: test_transaction1}, {test_key: test_transaction2}]
 
     # Test aggregation
-    result = DailySpendUpdateQueue.get_aggregated_daily_spend_update_transactions(
-        updates
-    )
+    result = DailySpendUpdateQueue.get_aggregated_daily_spend_update_transactions(updates)
 
     assert len(result) == 1
     assert test_key in result
@@ -257,7 +252,12 @@ async def test_flush_and_get_aggregated_daily_spend_update_transactions(
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 0,
         "compression_saved_tokens": 0,
+        "compression_gross_saved_tokens": 0,
+        "compression_extra_input_tokens": 0,
+        "compression_requests": 0,
         "compression_savings_spend": 0,
+        "compression_gross_savings_spend": 0,
+        "compression_extra_input_spend": 0,
         "prompt_caching_savings_spend": 0,
     }
 
@@ -266,9 +266,7 @@ async def test_flush_and_get_aggregated_daily_spend_update_transactions(
     await daily_spend_update_queue.add_update({test_key: test_transaction2})
 
     # Flush and get aggregated transactions
-    result = (
-        await daily_spend_update_queue.flush_and_get_aggregated_daily_spend_update_transactions()
-    )
+    result = await daily_spend_update_queue.flush_and_get_aggregated_daily_spend_update_transactions()
 
     assert len(result) == 1
     assert test_key in result
@@ -276,9 +274,7 @@ async def test_flush_and_get_aggregated_daily_spend_update_transactions(
 
 
 @pytest.mark.asyncio
-async def test_queue_max_size_triggers_aggregation(
-    monkeypatch, daily_spend_update_queue
-):
+async def test_queue_max_size_triggers_aggregation(monkeypatch, daily_spend_update_queue):
     """Test that reaching MAX_SIZE_IN_MEMORY_QUEUE triggers aggregation"""
     # Override MAX_SIZE_IN_MEMORY_QUEUE for testing
     litellm._turn_on_debug()
@@ -302,9 +298,7 @@ async def test_queue_max_size_triggers_aggregation(
     assert daily_spend_update_queue.update_queue.qsize() == 1
 
     # Verify the aggregated values
-    result = (
-        await daily_spend_update_queue.flush_and_get_aggregated_daily_spend_update_transactions()
-    )
+    result = await daily_spend_update_queue.flush_and_get_aggregated_daily_spend_update_transactions()
     assert result[test_key]["spend"] == 6.0
     assert result[test_key]["prompt_tokens"] == 600
     assert result[test_key]["completion_tokens"] == 300
@@ -421,9 +415,7 @@ async def test_cache_token_fields_aggregation(daily_spend_update_queue):
 
 
 @pytest.mark.asyncio
-async def test_queue_size_reduction_with_large_volume(
-    monkeypatch, daily_spend_update_queue
-):
+async def test_queue_size_reduction_with_large_volume(monkeypatch, daily_spend_update_queue):
     """Test that queue size is actually reduced when dealing with many items"""
     # Set a smaller MAX_SIZE for testing
     monkeypatch.setattr(daily_spend_update_queue, "MAX_SIZE_IN_MEMORY_QUEUE", 10)
@@ -464,9 +456,7 @@ async def test_queue_size_reduction_with_large_volume(
     assert daily_spend_update_queue.update_queue.qsize() <= 10
 
     # Verify total costs are correct
-    result = (
-        await daily_spend_update_queue.flush_and_get_aggregated_daily_spend_update_transactions()
-    )
+    result = await daily_spend_update_queue.flush_and_get_aggregated_daily_spend_update_transactions()
     print("RESULT", json.dumps(result, indent=4))
 
     assert result[user1_key]["spend"] == 200 * 0.5  # 10.0
@@ -527,3 +517,57 @@ async def test_compression_saved_tokens_aggregation(daily_spend_update_queue):
     assert agg["cache_creation_input_tokens"] == 7
     assert agg["compression_savings_spend"] == pytest.approx(0.0076)
     assert agg["prompt_caching_savings_spend"] == pytest.approx(0.0108)
+
+
+@pytest.mark.asyncio
+async def test_compression_net_savings_aggregation_preserves_negative_values(daily_spend_update_queue):
+    test_key = "user1_2023-01-01_key123_model_provider"
+    base = {
+        "spend": 0.0,
+        "prompt_tokens": 100,
+        "completion_tokens": 10,
+        "api_requests": 1,
+        "successful_requests": 1,
+        "failed_requests": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "prompt_caching_savings_spend": 0.0,
+    }
+    await daily_spend_update_queue.add_update(
+        {
+            test_key: {
+                **base,
+                "compression_saved_tokens": 600,
+                "compression_gross_saved_tokens": 900,
+                "compression_extra_input_tokens": 300,
+                "compression_requests": 1,
+                "compression_savings_spend": 0.006,
+                "compression_gross_savings_spend": 0.009,
+                "compression_extra_input_spend": 0.003,
+            }
+        }
+    )
+    await daily_spend_update_queue.add_update(
+        {
+            test_key: {
+                **base,
+                "compression_saved_tokens": -250,
+                "compression_gross_saved_tokens": 400,
+                "compression_extra_input_tokens": 650,
+                "compression_requests": 1,
+                "compression_savings_spend": -0.0025,
+                "compression_gross_savings_spend": 0.004,
+                "compression_extra_input_spend": 0.0065,
+            }
+        }
+    )
+
+    aggregated = await daily_spend_update_queue.flush_and_get_aggregated_daily_spend_update_transactions()
+    result = aggregated[test_key]
+    assert result["compression_saved_tokens"] == 350
+    assert result["compression_gross_saved_tokens"] == 1300
+    assert result["compression_extra_input_tokens"] == 950
+    assert result["compression_requests"] == 2
+    assert result["compression_savings_spend"] == pytest.approx(0.0035)
+    assert result["compression_gross_savings_spend"] == pytest.approx(0.013)
+    assert result["compression_extra_input_spend"] == pytest.approx(0.0095)

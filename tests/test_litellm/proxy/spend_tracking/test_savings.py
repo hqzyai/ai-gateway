@@ -67,12 +67,17 @@ def test_missing_model_fails_open_to_zero():
     assert result.prompt_caching == 0.0
 
 
-def test_negative_token_counts_clamp_to_zero():
+def test_negative_compression_tokens_produce_negative_net_savings():
+    input_cost, _ = _anthropic_costs("claude-sonnet-5")
     result = compute_savings_spend(
         model="claude-sonnet-5",
         custom_llm_provider="anthropic",
         compression_saved_tokens=-500,
+        compression_gross_saved_tokens=1000,
+        compression_extra_input_tokens=1500,
         cache_read_input_tokens=-500,
     )
-    assert result.compression == 0.0
+    assert result.compression == pytest.approx(-500 * input_cost)
+    assert result.compression_gross == pytest.approx(1000 * input_cost)
+    assert result.compression_extra_input == pytest.approx(1500 * input_cost)
     assert result.prompt_caching == 0.0

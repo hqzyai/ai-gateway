@@ -5,9 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-sys.path.insert(
-    0, os.path.abspath("../../../..")
-)  # Adds the parent directory to the system path
+sys.path.insert(0, os.path.abspath("../../../.."))  # Adds the parent directory to the system path
 
 from litellm.proxy.management_endpoints.common_daily_activity import (
     _adjust_dates_for_timezone,
@@ -103,8 +101,7 @@ async def test_get_daily_activity_order_has_id_tiebreaker():
     mock_table.find_many.assert_called_once()
     order = mock_table.find_many.call_args[1]["order"]
     assert order == [{"date": "desc"}, {"id": "asc"}], (
-        f"order must include the id tiebreaker after date for stable offset "
-        f"pagination (see #30164); got {order!r}"
+        f"order must include the id tiebreaker after date for stable offset pagination (see #30164); got {order!r}"
     )
 
 
@@ -280,8 +277,112 @@ async def test_get_daily_activity_aggregated_with_endpoint_breakdown():
     assert "key-2" in embeddings_endpoint.api_key_breakdown
     assert embeddings_endpoint.api_key_breakdown["key-2"].metrics.spend == 3.0
 
-    # Verify query_raw was called (not find_many)
     mock_prisma.db.query_raw.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_get_daily_activity_aggregated_returns_exact_cost_optimization_totals():
+    mock_prisma = MagicMock()
+    mock_prisma.db = MagicMock()
+    base = {
+        "api_key": None,
+        "model": None,
+        "model_group": None,
+        "custom_llm_provider": None,
+        "mcp_namespaced_tool_name": None,
+        "endpoint": None,
+        "spend": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "api_requests": 1,
+        "successful_requests": 1,
+        "failed_requests": 0,
+    }
+    mock_prisma.db.query_raw = AsyncMock(
+        return_value=[
+            {
+                **base,
+                "date": "2026-08-12",
+                "group_level": 63,
+                "cache_read_input_tokens": 80,
+                "cache_creation_input_tokens": 30,
+                "compression_saved_tokens": 500,
+                "compression_gross_saved_tokens": 900,
+                "compression_extra_input_tokens": 400,
+                "compression_requests": 1,
+                "compression_savings_spend": 0.005,
+                "compression_gross_savings_spend": 0.009,
+                "compression_extra_input_spend": 0.004,
+                "prompt_caching_savings_spend": 0.0008,
+            },
+            {
+                **base,
+                "date": "2026-08-13",
+                "group_level": 63,
+                "cache_read_input_tokens": 45,
+                "cache_creation_input_tokens": 20,
+                "compression_saved_tokens": -250,
+                "compression_gross_saved_tokens": 300,
+                "compression_extra_input_tokens": 550,
+                "compression_requests": 1,
+                "compression_savings_spend": -0.0025,
+                "compression_gross_savings_spend": 0.003,
+                "compression_extra_input_spend": 0.0055,
+                "prompt_caching_savings_spend": 0.00045,
+            },
+            {
+                **base,
+                "date": None,
+                "group_level": 127,
+                "api_requests": 2,
+                "successful_requests": 2,
+                "cache_read_input_tokens": 125,
+                "cache_creation_input_tokens": 50,
+                "compression_saved_tokens": 250,
+                "compression_gross_saved_tokens": 1200,
+                "compression_extra_input_tokens": 950,
+                "compression_requests": 2,
+                "compression_savings_spend": 0.0025,
+                "compression_gross_savings_spend": 0.012,
+                "compression_extra_input_spend": 0.0095,
+                "prompt_caching_savings_spend": 0.00125,
+            },
+        ]
+    )
+
+    result = await get_daily_activity_aggregated(
+        prisma_client=mock_prisma,
+        table_name="litellm_dailyuserspend",
+        entity_id_field="user_id",
+        entity_id=None,
+        entity_metadata_field=None,
+        start_date="2026-08-12",
+        end_date="2026-08-13",
+        model=None,
+        api_key=None,
+    )
+
+    assert result.metadata.total_cache_read_input_tokens == 125
+    assert result.metadata.total_cache_creation_input_tokens == 50
+    assert result.metadata.total_compression_saved_tokens == 250
+    assert result.metadata.total_compression_gross_saved_tokens == 1200
+    assert result.metadata.total_compression_extra_input_tokens == 950
+    assert result.metadata.total_compression_requests == 2
+    assert result.metadata.total_compression_net_savings_rate == pytest.approx(1.0)
+    assert result.metadata.total_compression_savings_spend == pytest.approx(0.0025)
+    assert result.metadata.total_compression_gross_savings_spend == pytest.approx(0.012)
+    assert result.metadata.total_compression_extra_input_spend == pytest.approx(0.0095)
+    assert result.metadata.total_prompt_caching_savings_spend == pytest.approx(0.00125)
+    assert [day.metrics.compression_saved_tokens for day in result.results] == [-250, 500]
+    assert [day.metrics.cache_read_input_tokens for day in result.results] == [45, 80]
+
+    sql = mock_prisma.db.query_raw.await_args.args[0]
+    assert "SUM(cache_read_input_tokens)::bigint AS cache_read_input_tokens" in sql
+    assert "SUM(compression_saved_tokens)::bigint AS compression_saved_tokens" in sql
+    assert "SUM(compression_gross_saved_tokens)::bigint AS compression_gross_saved_tokens" in sql
+    assert "SUM(compression_extra_input_tokens)::bigint AS compression_extra_input_tokens" in sql
+    assert "SUM(compression_requests)::bigint AS compression_requests" in sql
+    assert "SUM(prompt_caching_savings_spend)::float AS prompt_caching_savings_spend" in sql
 
 
 @pytest.mark.asyncio
@@ -295,9 +396,7 @@ async def test_get_api_key_metadata_returns_active_key_metadata():
     mock_active_key.key_alias = "my-active-key"
     mock_active_key.team_id = "team-abc"
 
-    mock_prisma.db.litellm_verificationtoken.find_many = AsyncMock(
-        return_value=[mock_active_key]
-    )
+    mock_prisma.db.litellm_verificationtoken.find_many = AsyncMock(return_value=[mock_active_key])
 
     result = await get_api_key_metadata(
         prisma_client=mock_prisma,
@@ -323,9 +422,7 @@ async def test_get_api_key_metadata_falls_back_to_deleted_keys():
     mock_deleted_key.key_alias = "toto-test-2"
     mock_deleted_key.team_id = "team-xyz"
 
-    mock_prisma.db.litellm_deletedverificationtoken.find_many = AsyncMock(
-        return_value=[mock_deleted_key]
-    )
+    mock_prisma.db.litellm_deletedverificationtoken.find_many = AsyncMock(return_value=[mock_deleted_key])
 
     result = await get_api_key_metadata(
         prisma_client=mock_prisma,
@@ -354,9 +451,7 @@ async def test_get_api_key_metadata_mixed_active_and_deleted_keys():
     mock_active_key.key_alias = "active-alias"
     mock_active_key.team_id = "team-active"
 
-    mock_prisma.db.litellm_verificationtoken.find_many = AsyncMock(
-        return_value=[mock_active_key]
-    )
+    mock_prisma.db.litellm_verificationtoken.find_many = AsyncMock(return_value=[mock_active_key])
 
     # One deleted key found
     mock_deleted_key = MagicMock()
@@ -364,9 +459,7 @@ async def test_get_api_key_metadata_mixed_active_and_deleted_keys():
     mock_deleted_key.key_alias = "deleted-alias"
     mock_deleted_key.team_id = "team-deleted"
 
-    mock_prisma.db.litellm_deletedverificationtoken.find_many = AsyncMock(
-        return_value=[mock_deleted_key]
-    )
+    mock_prisma.db.litellm_deletedverificationtoken.find_many = AsyncMock(return_value=[mock_deleted_key])
 
     result = await get_api_key_metadata(
         prisma_client=mock_prisma,
@@ -391,13 +484,9 @@ async def test_get_api_key_metadata_deleted_table_not_queried_when_all_keys_foun
     mock_active_key.key_alias = "alias-1"
     mock_active_key.team_id = "team-1"
 
-    mock_prisma.db.litellm_verificationtoken.find_many = AsyncMock(
-        return_value=[mock_active_key]
-    )
+    mock_prisma.db.litellm_verificationtoken.find_many = AsyncMock(return_value=[mock_active_key])
     mock_prisma.db.litellm_deletedverificationtoken = MagicMock()
-    mock_prisma.db.litellm_deletedverificationtoken.find_many = AsyncMock(
-        return_value=[]
-    )
+    mock_prisma.db.litellm_deletedverificationtoken.find_many = AsyncMock(return_value=[])
 
     result = await get_api_key_metadata(
         prisma_client=mock_prisma,
@@ -419,9 +508,7 @@ async def test_get_api_key_metadata_deleted_table_error_handled_gracefully():
     mock_prisma.db.litellm_verificationtoken.find_many = AsyncMock(return_value=[])
 
     # Deleted table raises an error (e.g., table doesn't exist in older schema)
-    mock_prisma.db.litellm_deletedverificationtoken.find_many = AsyncMock(
-        side_effect=Exception("Table not found")
-    )
+    mock_prisma.db.litellm_deletedverificationtoken.find_many = AsyncMock(side_effect=Exception("Table not found"))
 
     result = await get_api_key_metadata(
         prisma_client=mock_prisma,
@@ -452,9 +539,7 @@ async def test_get_api_key_metadata_regenerated_key_uses_most_recent_deleted_rec
     mock_deleted_2.team_id = "older-team"
 
     # Ordered by deleted_at desc, so first record is the most recent
-    mock_prisma.db.litellm_deletedverificationtoken.find_many = AsyncMock(
-        return_value=[mock_deleted_1, mock_deleted_2]
-    )
+    mock_prisma.db.litellm_deletedverificationtoken.find_many = AsyncMock(return_value=[mock_deleted_1, mock_deleted_2])
 
     result = await get_api_key_metadata(
         prisma_client=mock_prisma,
@@ -624,9 +709,7 @@ async def test_aggregated_activity_preserves_metadata_for_deleted_keys():
     mock_deleted_key.team_id = "69cd4b77-b095-4489-8c46-4f2f31d840a2"
 
     mock_prisma.db.litellm_deletedverificationtoken = MagicMock()
-    mock_prisma.db.litellm_deletedverificationtoken.find_many = AsyncMock(
-        return_value=[mock_deleted_key]
-    )
+    mock_prisma.db.litellm_deletedverificationtoken.find_many = AsyncMock(return_value=[mock_deleted_key])
 
     result = await get_daily_activity_aggregated(
         prisma_client=mock_prisma,
@@ -761,9 +844,7 @@ class TestAdjustDatesForTimezone:
         ],
     )
     def test_returns_input_dates_unchanged_for_any_offset(self, offset_minutes):
-        start, end = _adjust_dates_for_timezone(
-            "2026-05-29", "2026-05-29", offset_minutes
-        )
+        start, end = _adjust_dates_for_timezone("2026-05-29", "2026-05-29", offset_minutes)
         assert start == "2026-05-29"
         assert end == "2026-05-29"
 
@@ -791,9 +872,7 @@ class TestAdjustDatesForTimezone:
         exceeded the multi-day total by ~50% over a 5-day IST window.
         """
         days = ["2026-05-29", "2026-05-30", "2026-05-31", "2026-06-01", "2026-06-02"]
-        single_day_ranges = [
-            _adjust_dates_for_timezone(d, d, offset_minutes) for d in days
-        ]
+        single_day_ranges = [_adjust_dates_for_timezone(d, d, offset_minutes) for d in days]
         multi_day_range = _adjust_dates_for_timezone(days[0], days[-1], offset_minutes)
 
         per_day_starts = [r[0] for r in single_day_ranges]
