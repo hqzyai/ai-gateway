@@ -2532,6 +2532,22 @@ def test_add_litellm_metadata_from_request_headers_x_litellm_session_id_sets_cha
     assert data["litellm_trace_id"] == "bar"
 
 
+@pytest.mark.parametrize("header_name", ["SESSION_ID", "session_id", "SeSsIoN_Id"])
+def test_add_litellm_metadata_from_request_headers_bare_session_id_is_case_insensitive(
+    header_name: str,
+):
+    data = {"metadata": {}}
+    LiteLLMProxyRequestSetup.add_litellm_metadata_from_request_headers(
+        headers={header_name: "agent-session-42"},
+        data=data,
+        _metadata_variable_name="metadata",
+    )
+    assert data["metadata"]["session_id"] == "agent-session-42"
+    assert data["metadata"]["session_id_source"] == "header"
+    assert data["litellm_session_id"] == "agent-session-42"
+    assert data["litellm_trace_id"] == "agent-session-42"
+
+
 def test_add_litellm_metadata_from_request_headers_both_headers_trace_id_precedence():
     """When both x-litellm-trace-id and x-litellm-session-id are present, trace-id takes precedence for chain_id."""
     headers = {

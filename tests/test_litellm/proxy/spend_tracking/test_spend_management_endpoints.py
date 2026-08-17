@@ -1574,6 +1574,84 @@ async def test_ui_view_session_spend_logs_pagination(client, monkeypatch):
     assert data["data"][0]["request_id"] == "req1"
 
 
+def test_session_usage_analytics_returns_header_sessions_with_usage_metrics(client, monkeypatch):
+    timestamp = datetime.datetime(2026, 8, 17, 8, 0, tzinfo=timezone.utc)
+
+    class MockDB:
+        async def query_raw(self, query, *params):
+            assert "metadata->>'session_id_source' = 'header'" in query
+            assert "GROUP BY session_id" in query
+            assert "session_id ILIKE $3" in query
+            assert params[2] == "%agent-session%"
+            assert params[-2:] == (25, 0)
+            return [
+                {
+                    "session_id": "agent-session-42",
+                    "first_activity": timestamp,
+                    "last_activity": timestamp,
+                    "models": ["gpt-4o"],
+                    "spend": 0.12,
+                    "prompt_tokens": 1000,
+                    "completion_tokens": 200,
+                    "total_tokens": 1200,
+                    "api_requests": 3,
+                    "successful_requests": 2,
+                    "failed_requests": 1,
+                    "cache_read_input_tokens": 400,
+                    "cache_creation_input_tokens": 50,
+                    "compression_saved_tokens": 300,
+                    "compression_gross_saved_tokens": 350,
+                    "compression_extra_input_tokens": 50,
+                    "compression_requests": 2,
+                    "total_sessions": 1,
+                    "all_spend": 0.12,
+                    "all_prompt_tokens": 1000,
+                    "all_completion_tokens": 200,
+                    "all_total_tokens": 1200,
+                    "all_api_requests": 3,
+                    "all_successful_requests": 2,
+                    "all_failed_requests": 1,
+                    "all_cache_read_input_tokens": 400,
+                    "all_cache_creation_input_tokens": 50,
+                    "all_compression_saved_tokens": 300,
+                    "all_compression_gross_saved_tokens": 350,
+                    "all_compression_extra_input_tokens": 50,
+                    "all_compression_requests": 2,
+                }
+            ]
+
+    class MockPrismaClient:
+        def __init__(self):
+            self.db = MockDB()
+
+    monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", MockPrismaClient())
+    app.dependency_overrides[ps.user_api_key_auth] = lambda: UserAPIKeyAuth(
+        user_role=LitellmUserRoles.PROXY_ADMIN,
+        user_id="admin",
+    )
+    try:
+        response = client.get(
+            "/spend/sessions/analytics",
+            params={
+                "start_date": "2026-08-01",
+                "end_date": "2026-08-17",
+                "session_id": "agent-session",
+                "page_size": 25,
+            },
+            headers={"Authorization": "Bearer sk-test"},
+        )
+    finally:
+        app.dependency_overrides.pop(ps.user_api_key_auth, None)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total_sessions"] == 1
+    assert data["totals"]["total_tokens"] == 1200
+    assert data["sessions"][0]["session_id"] == "agent-session-42"
+    assert data["sessions"][0]["cache_read_input_tokens"] == 400
+    assert data["sessions"][0]["compression_requests"] == 2
+
+
 @pytest.mark.asyncio
 async def test_ui_view_spend_logs_date_range_filter(client, monkeypatch):
     today = datetime.datetime.now(timezone.utc)

@@ -3251,6 +3251,11 @@ class SpendLogsMetadata(TypedDict):
     max_retries: Optional[int]  # Max retries configured for this request
     cost_breakdown: Optional[CostBreakdown]  # Detailed cost breakdown (input_cost, output_cost, margin, discount, etc.)
     compression_savings: CompressionSavingsMetadata | None
+    session_id_source: Literal["header"] | None
+    compression_saved_tokens: int | None
+    compression_gross_saved_tokens: int | None
+    compression_extra_input_tokens: int | None
+    compression_requests: int | None
 
 
 class SpendLogsPayload(TypedDict):
@@ -3286,6 +3291,38 @@ class SpendLogsPayload(TypedDict):
     session_id: Optional[str]
     request_duration_ms: Optional[int]
     status: Literal["success", "failure"]
+
+
+class SessionUsageMetrics(BaseModel):
+    spend: float = 0
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+    api_requests: int = 0
+    successful_requests: int = 0
+    failed_requests: int = 0
+    cache_read_input_tokens: int = 0
+    cache_creation_input_tokens: int = 0
+    compression_saved_tokens: int = 0
+    compression_gross_saved_tokens: int = 0
+    compression_extra_input_tokens: int = 0
+    compression_requests: int = 0
+
+
+class SessionUsageSummary(SessionUsageMetrics):
+    session_id: str
+    first_activity: datetime
+    last_activity: datetime
+    models: tuple[str, ...] = ()
+
+
+class SessionAnalyticsResponse(BaseModel):
+    sessions: tuple[SessionUsageSummary, ...]
+    totals: SessionUsageMetrics
+    total_sessions: int
+    page: int
+    page_size: int
+    total_pages: int
 
 
 class SpanAttributes(str, enum.Enum):
@@ -3910,6 +3947,7 @@ class LitellmMetadataFromRequestHeaders(TypedDict, total=False):
     agent_id: Optional[str]
     trace_id: Optional[str]
     session_id: Optional[str]
+    session_id_source: Literal["header"]
 
 
 class JWTKeyItem(TypedDict, total=False):

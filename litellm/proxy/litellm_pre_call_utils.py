@@ -429,6 +429,7 @@ def get_chain_id_from_headers(headers: Optional[Dict[str, str]]) -> Optional[str
     return (
         normalized.get("x-litellm-trace-id")
         or normalized.get("x-litellm-session-id")
+        or normalized.get("session_id")
         or _extract_generic_session_id_from_headers(normalized)
     )
 
@@ -971,6 +972,7 @@ class LiteLLMProxyRequestSetup:
         if chain_id:
             metadata_from_headers["trace_id"] = chain_id
             metadata_from_headers["session_id"] = chain_id
+            metadata_from_headers["session_id_source"] = "header"
             data["litellm_session_id"] = chain_id
             data["litellm_trace_id"] = chain_id
             verbose_proxy_logger.debug(f"Extracted chain_id from header (trace-id/session-id): {chain_id}")

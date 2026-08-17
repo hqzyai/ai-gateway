@@ -5,6 +5,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import (
     TYPE_CHECKING,
+    Annotated,
     Any,
     Dict,
     List,
@@ -3237,6 +3238,210 @@ async def ui_get_spend_by_tags(
         )
 
     return {"spend_per_tag": ui_tags}
+
+
+def _session_usage_metrics_from_row(row: Mapping[str, Any] | None, prefix: str = "") -> SessionUsageMetrics:
+    if row is None:
+        return SessionUsageMetrics()
+    return SessionUsageMetrics(
+        spend=float(row.get(f"{prefix}spend") or 0),
+        prompt_tokens=int(row.get(f"{prefix}prompt_tokens") or 0),
+        completion_tokens=int(row.get(f"{prefix}completion_tokens") or 0),
+        total_tokens=int(row.get(f"{prefix}total_tokens") or 0),
+        api_requests=int(row.get(f"{prefix}api_requests") or 0),
+        successful_requests=int(row.get(f"{prefix}successful_requests") or 0),
+        failed_requests=int(row.get(f"{prefix}failed_requests") or 0),
+        cache_read_input_tokens=int(row.get(f"{prefix}cache_read_input_tokens") or 0),
+        cache_creation_input_tokens=int(row.get(f"{prefix}cache_creation_input_tokens") or 0),
+        compression_saved_tokens=int(row.get(f"{prefix}compression_saved_tokens") or 0),
+        compression_gross_saved_tokens=int(row.get(f"{prefix}compression_gross_saved_tokens") or 0),
+        compression_extra_input_tokens=int(row.get(f"{prefix}compression_extra_input_tokens") or 0),
+        compression_requests=int(row.get(f"{prefix}compression_requests") or 0),
+    )
+
+
+def _session_analytics_date_range(start_date: str, end_date: str) -> tuple[datetime, datetime]:
+    try:
+        range_start = datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        range_end = datetime.strptime(end_date, "%Y-%m-%d").replace(tzinfo=timezone.utc) + timedelta(days=1)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="start_date and end_date must use YYYY-MM-DD",
+        ) from exc
+    if range_end <= range_start:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="end_date must not be before start_date")
+    return range_start, range_end
+
+
+@router.get(
+    "/spend/sessions/analytics",
+    response_model=SessionAnalyticsResponse,
+)
+async def session_usage_analytics(
+    user_api_key_dict: Annotated[UserAPIKeyAuth, Depends(user_api_key_auth)],
+    start_date: str = fastapi.Query(description="First day to include, formatted as YYYY-MM-DD"),
+    end_date: str = fastapi.Query(description="Last day to include, formatted as YYYY-MM-DD"),
+    session_id: str | None = fastapi.Query(default=None, description="Filter session IDs by partial match"),
+    api_key: str | None = fastapi.Query(default=None, description="Filter by API key hash"),
+    model: str | None = fastapi.Query(default=None, description="Filter by model"),
+    user_id: str | None = fastapi.Query(default=None, description="Filter by owning user"),
+    page: int = fastapi.Query(default=1, ge=1),
+    page_size: int = fastapi.Query(default=50, ge=1, le=100),
+) -> SessionAnalyticsResponse:
+    from litellm.proxy.proxy_server import prisma_client
+
+    if prisma_client is None:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database not connected")
+
+    range_start, range_end = _session_analytics_date_range(start_date, end_date)
+
+    escaped_session_id = (
+        session_id.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") if session_id else None
+    )
+    filter_specs = tuple(
+        (condition, value)
+        for condition, value in (
+            ("session_id ILIKE ${index} ESCAPE '\\\\'", f"%{escaped_session_id}%" if escaped_session_id else None),
+            ("api_key = ${index}", api_key),
+            ("model = ${index}", model),
+        )
+        if value
+    )
+    filter_conditions = tuple(
+        condition.format(index=index) for index, (condition, _) in enumerate(filter_specs, start=3)
+    )
+    filter_params = tuple(value for _, value in filter_specs)
+    auth_index = 3 + len(filter_specs)
+
+    if _is_admin_view_safe(user_api_key_dict=user_api_key_dict):
+        auth_conditions = ('"user" = ${}'.format(auth_index),) if user_id else ()
+        auth_params: tuple[Any, ...] = (user_id,) if user_id else ()
+    else:
+        if not _can_user_view_spend_log(user_api_key_dict=user_api_key_dict):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to view session usage")
+        permitted_team_ids = await _get_permitted_team_ids_for_spend_logs(
+            prisma_client=prisma_client,
+            user_api_key_dict=user_api_key_dict,
+        )
+        auth_conditions = (
+            (f'("user" = ${auth_index} OR team_id = ANY(${auth_index + 1}::text[]))',)
+            if permitted_team_ids
+            else (f'"user" = ${auth_index}',)
+        )
+        auth_params = (
+            (user_api_key_dict.user_id, permitted_team_ids) if permitted_team_ids else (user_api_key_dict.user_id,)
+        )
+
+    conditions = (
+        "\"startTime\" >= ($1::timestamptz AT TIME ZONE 'UTC')",
+        "\"startTime\" < ($2::timestamptz AT TIME ZONE 'UTC')",
+        "session_id IS NOT NULL",
+        "metadata->>'session_id_source' = 'header'",
+        *filter_conditions,
+        *auth_conditions,
+    )
+    params = (range_start, range_end, *filter_params, *auth_params)
+    limit_index = len(params) + 1
+    offset_index = limit_index + 1
+    query = f"""
+        WITH request_metrics AS (
+            SELECT
+                session_id,
+                spend,
+                prompt_tokens,
+                completion_tokens,
+                total_tokens,
+                "startTime",
+                model,
+                status,
+                CASE
+                    WHEN COALESCE(metadata->'additional_usage_values'->>'cache_read_input_tokens', '') ~ '^[0-9]+$'
+                    THEN (metadata->'additional_usage_values'->>'cache_read_input_tokens')::bigint
+                    ELSE 0
+                END AS cache_read_input_tokens,
+                CASE
+                    WHEN COALESCE(metadata->'additional_usage_values'->>'cache_creation_input_tokens', '') ~ '^[0-9]+$'
+                    THEN (metadata->'additional_usage_values'->>'cache_creation_input_tokens')::bigint
+                    WHEN COALESCE(metadata->'additional_usage_values'->'prompt_tokens_details'->>'cache_write_tokens', '') ~ '^[0-9]+$'
+                    THEN (metadata->'additional_usage_values'->'prompt_tokens_details'->>'cache_write_tokens')::bigint
+                    WHEN COALESCE(metadata->'additional_usage_values'->'prompt_tokens_details'->>'cache_creation_tokens', '') ~ '^[0-9]+$'
+                    THEN (metadata->'additional_usage_values'->'prompt_tokens_details'->>'cache_creation_tokens')::bigint
+                    ELSE 0
+                END AS cache_creation_input_tokens,
+                CASE WHEN COALESCE(metadata->>'compression_saved_tokens', '') ~ '^-?[0-9]+$'
+                    THEN (metadata->>'compression_saved_tokens')::bigint ELSE 0 END AS compression_saved_tokens,
+                CASE WHEN COALESCE(metadata->>'compression_gross_saved_tokens', '') ~ '^[0-9]+$'
+                    THEN (metadata->>'compression_gross_saved_tokens')::bigint ELSE 0 END AS compression_gross_saved_tokens,
+                CASE WHEN COALESCE(metadata->>'compression_extra_input_tokens', '') ~ '^[0-9]+$'
+                    THEN (metadata->>'compression_extra_input_tokens')::bigint ELSE 0 END AS compression_extra_input_tokens,
+                CASE WHEN COALESCE(metadata->>'compression_requests', '') ~ '^[0-9]+$'
+                    THEN (metadata->>'compression_requests')::bigint ELSE 0 END AS compression_requests
+            FROM "LiteLLM_SpendLogs"
+            WHERE {" AND ".join(conditions)}
+        ), session_totals AS (
+            SELECT
+                session_id,
+                MIN("startTime") AS first_activity,
+                MAX("startTime") AS last_activity,
+                ARRAY_REMOVE(ARRAY_AGG(DISTINCT NULLIF(model, '')), NULL) AS models,
+                COALESCE(SUM(spend), 0)::double precision AS spend,
+                COALESCE(SUM(prompt_tokens), 0)::bigint AS prompt_tokens,
+                COALESCE(SUM(completion_tokens), 0)::bigint AS completion_tokens,
+                COALESCE(SUM(total_tokens), 0)::bigint AS total_tokens,
+                COUNT(*)::bigint AS api_requests,
+                COUNT(*) FILTER (WHERE status = 'success' OR status IS NULL)::bigint AS successful_requests,
+                COUNT(*) FILTER (WHERE status IS NOT NULL AND status <> 'success')::bigint AS failed_requests,
+                COALESCE(SUM(cache_read_input_tokens), 0)::bigint AS cache_read_input_tokens,
+                COALESCE(SUM(cache_creation_input_tokens), 0)::bigint AS cache_creation_input_tokens,
+                COALESCE(SUM(compression_saved_tokens), 0)::bigint AS compression_saved_tokens,
+                COALESCE(SUM(compression_gross_saved_tokens), 0)::bigint AS compression_gross_saved_tokens,
+                COALESCE(SUM(compression_extra_input_tokens), 0)::bigint AS compression_extra_input_tokens,
+                COALESCE(SUM(compression_requests), 0)::bigint AS compression_requests
+            FROM request_metrics
+            GROUP BY session_id
+        )
+        SELECT
+            *,
+            COUNT(*) OVER ()::bigint AS total_sessions,
+            COALESCE(SUM(spend) OVER (), 0)::double precision AS all_spend,
+            COALESCE(SUM(prompt_tokens) OVER (), 0)::bigint AS all_prompt_tokens,
+            COALESCE(SUM(completion_tokens) OVER (), 0)::bigint AS all_completion_tokens,
+            COALESCE(SUM(total_tokens) OVER (), 0)::bigint AS all_total_tokens,
+            COALESCE(SUM(api_requests) OVER (), 0)::bigint AS all_api_requests,
+            COALESCE(SUM(successful_requests) OVER (), 0)::bigint AS all_successful_requests,
+            COALESCE(SUM(failed_requests) OVER (), 0)::bigint AS all_failed_requests,
+            COALESCE(SUM(cache_read_input_tokens) OVER (), 0)::bigint AS all_cache_read_input_tokens,
+            COALESCE(SUM(cache_creation_input_tokens) OVER (), 0)::bigint AS all_cache_creation_input_tokens,
+            COALESCE(SUM(compression_saved_tokens) OVER (), 0)::bigint AS all_compression_saved_tokens,
+            COALESCE(SUM(compression_gross_saved_tokens) OVER (), 0)::bigint AS all_compression_gross_saved_tokens,
+            COALESCE(SUM(compression_extra_input_tokens) OVER (), 0)::bigint AS all_compression_extra_input_tokens,
+            COALESCE(SUM(compression_requests) OVER (), 0)::bigint AS all_compression_requests
+        FROM session_totals
+        ORDER BY last_activity DESC, session_id ASC
+        LIMIT ${limit_index} OFFSET ${offset_index}
+    """
+    rows = await prisma_client.db.query_raw(query, *params, page_size, (page - 1) * page_size)
+    first_row = rows[0] if rows else None
+    total_sessions = int(first_row.get("total_sessions") or 0) if first_row is not None else 0
+    sessions = tuple(
+        SessionUsageSummary(
+            session_id=str(row["session_id"]),
+            first_activity=row["first_activity"],
+            last_activity=row["last_activity"],
+            models=tuple(str(value) for value in (row.get("models") or ())),
+            **_session_usage_metrics_from_row(row).model_dump(),
+        )
+        for row in rows
+    )
+    return SessionAnalyticsResponse(
+        sessions=sessions,
+        totals=_session_usage_metrics_from_row(first_row, "all_"),
+        total_sessions=total_sessions,
+        page=page,
+        page_size=page_size,
+        total_pages=(total_sessions + page_size - 1) // page_size,
+    )
 
 
 @router.get(

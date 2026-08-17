@@ -1236,6 +1236,26 @@ def test_get_spend_logs_metadata_guardrail_info_fallback_from_metadata():
     assert result["guardrail_information"] is None
 
 
+def test_get_spend_logs_metadata_persists_session_analytics_fields():
+    result = _get_spend_logs_metadata(
+        metadata={
+            "session_id_source": "header",
+            "compression_savings": {
+                "tokens_before": 1000,
+                "tokens_after": 700,
+                "tokens_saved": 300,
+                "source": "compression_interception",
+            },
+        }
+    )
+
+    assert result["session_id_source"] == "header"
+    assert result["compression_saved_tokens"] == 300
+    assert result["compression_gross_saved_tokens"] == 300
+    assert result["compression_extra_input_tokens"] == 0
+    assert result["compression_requests"] == 1
+
+
 @patch("litellm.proxy.spend_tracking.spend_tracking_utils._should_store_prompts_and_responses_in_spend_logs")
 def test_sanitize_guardrail_information_redacts_all_prompt_carrying_fields_when_flag_false(
     mock_should_store,

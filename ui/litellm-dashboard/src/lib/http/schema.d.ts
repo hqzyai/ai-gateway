@@ -12590,6 +12590,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/spend/sessions/analytics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Session Usage Analytics */
+        get: operations["session_usage_analytics_spend_sessions_analytics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/spend/tags": {
         parameters: {
             query?: never;
@@ -30901,6 +30918,170 @@ export interface components {
             search_provider: string;
             /** Timeout */
             timeout?: number | null;
+        };
+        /** SessionAnalyticsResponse */
+        SessionAnalyticsResponse: {
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Sessions */
+            sessions: components["schemas"]["SessionUsageSummary"][];
+            /** Total Pages */
+            total_pages: number;
+            /** Total Sessions */
+            total_sessions: number;
+            totals: components["schemas"]["SessionUsageMetrics"];
+        };
+        /** SessionUsageMetrics */
+        SessionUsageMetrics: {
+            /**
+             * Api Requests
+             * @default 0
+             */
+            api_requests: number;
+            /**
+             * Cache Creation Input Tokens
+             * @default 0
+             */
+            cache_creation_input_tokens: number;
+            /**
+             * Cache Read Input Tokens
+             * @default 0
+             */
+            cache_read_input_tokens: number;
+            /**
+             * Completion Tokens
+             * @default 0
+             */
+            completion_tokens: number;
+            /**
+             * Compression Extra Input Tokens
+             * @default 0
+             */
+            compression_extra_input_tokens: number;
+            /**
+             * Compression Gross Saved Tokens
+             * @default 0
+             */
+            compression_gross_saved_tokens: number;
+            /**
+             * Compression Requests
+             * @default 0
+             */
+            compression_requests: number;
+            /**
+             * Compression Saved Tokens
+             * @default 0
+             */
+            compression_saved_tokens: number;
+            /**
+             * Failed Requests
+             * @default 0
+             */
+            failed_requests: number;
+            /**
+             * Prompt Tokens
+             * @default 0
+             */
+            prompt_tokens: number;
+            /**
+             * Spend
+             * @default 0
+             */
+            spend: number;
+            /**
+             * Successful Requests
+             * @default 0
+             */
+            successful_requests: number;
+            /**
+             * Total Tokens
+             * @default 0
+             */
+            total_tokens: number;
+        };
+        /** SessionUsageSummary */
+        SessionUsageSummary: {
+            /**
+             * Api Requests
+             * @default 0
+             */
+            api_requests: number;
+            /**
+             * Cache Creation Input Tokens
+             * @default 0
+             */
+            cache_creation_input_tokens: number;
+            /**
+             * Cache Read Input Tokens
+             * @default 0
+             */
+            cache_read_input_tokens: number;
+            /**
+             * Completion Tokens
+             * @default 0
+             */
+            completion_tokens: number;
+            /**
+             * Compression Extra Input Tokens
+             * @default 0
+             */
+            compression_extra_input_tokens: number;
+            /**
+             * Compression Gross Saved Tokens
+             * @default 0
+             */
+            compression_gross_saved_tokens: number;
+            /**
+             * Compression Requests
+             * @default 0
+             */
+            compression_requests: number;
+            /**
+             * Compression Saved Tokens
+             * @default 0
+             */
+            compression_saved_tokens: number;
+            /**
+             * Failed Requests
+             * @default 0
+             */
+            failed_requests: number;
+            /**
+             * First Activity
+             * Format: date-time
+             */
+            first_activity: string;
+            /**
+             * Last Activity
+             * Format: date-time
+             */
+            last_activity: string;
+            /** Models */
+            models?: string[];
+            /**
+             * Prompt Tokens
+             * @default 0
+             */
+            prompt_tokens: number;
+            /** Session Id */
+            session_id: string;
+            /**
+             * Spend
+             * @default 0
+             */
+            spend: number;
+            /**
+             * Successful Requests
+             * @default 0
+             */
+            successful_requests: number;
+            /**
+             * Total Tokens
+             * @default 0
+             */
+            total_tokens: number;
         };
         /**
          * Skill
@@ -49388,6 +49569,50 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    session_usage_analytics_spend_sessions_analytics_get: {
+        parameters: {
+            query: {
+                /** @description First day to include, formatted as YYYY-MM-DD */
+                start_date: string;
+                /** @description Last day to include, formatted as YYYY-MM-DD */
+                end_date: string;
+                /** @description Filter session IDs by partial match */
+                session_id?: string | null;
+                /** @description Filter by API key hash */
+                api_key?: string | null;
+                /** @description Filter by model */
+                model?: string | null;
+                /** @description Filter by owning user */
+                user_id?: string | null;
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionAnalyticsResponse"];
                 };
             };
             /** @description Validation Error */

@@ -2507,6 +2507,40 @@ export const userDailyActivityAggregatedFilteredCall = async (
   }
 };
 
+export const sessionUsageAnalyticsCall = async (
+  accessToken: string,
+  startTime: Date,
+  endTime: Date,
+  filters: {
+    userId?: string | null;
+    sessionId?: string | null;
+    apiKey?: string | null;
+    model?: string | null;
+    page?: number;
+    pageSize?: number;
+  } = {},
+) => {
+  const formatDate = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+  return await apiClient.get(`/spend/sessions/analytics`, {
+    accessToken,
+    query: {
+      start_date: formatDate(startTime),
+      end_date: formatDate(endTime),
+      user_id: filters.userId || undefined,
+      session_id: filters.sessionId || undefined,
+      api_key: filters.apiKey || undefined,
+      model: filters.model || undefined,
+      page: String(filters.page ?? 1),
+      page_size: String(filters.pageSize ?? 50),
+    },
+  });
+};
+
 export const getPossibleUserRoles = async (accessToken: string) => {
   try {
     const data = (await apiClient.get(`/user/available_roles`, { accessToken })) as Record<

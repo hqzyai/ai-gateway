@@ -41,6 +41,7 @@ import {
   KeyRound,
   LayoutGrid,
   Network,
+  MessagesSquare,
   Palette,
   PanelLeftClose,
   PanelLeftOpen,
@@ -196,6 +197,13 @@ const menuGroups: MenuGroup[] = [
         icon: <ChartNoAxesCombined {...ICON} />,
         roles: [...all_admin_roles, ...internalUserRoles],
         label: "Token 分析",
+      },
+      {
+        key: "session-analytics",
+        page: "session-analytics",
+        icon: <MessagesSquare {...ICON} />,
+        roles: [...all_admin_roles, ...internalUserRoles],
+        label: "会话计费",
       },
       { key: "logs", page: "logs", label: "Logs", icon: <Activity {...ICON} /> },
       {
