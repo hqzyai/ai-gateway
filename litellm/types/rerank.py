@@ -34,16 +34,22 @@ class OptionalRerankParams(TypedDict, total=False):
     max_chunks_per_doc: Optional[int]
     max_tokens_per_doc: Optional[int]
     instruction: Optional[str]
+    overlap_tokens: Optional[int]
 
 
 class RerankBilledUnits(TypedDict, total=False):
     search_units: Optional[int]
     total_tokens: Optional[int]
+    input_tokens: Optional[int]
+    output_tokens: Optional[int]
+    image_tokens: Optional[int]
+    classifications: Optional[int]
 
 
 class RerankTokens(TypedDict, total=False):
     input_tokens: Optional[int]
     output_tokens: Optional[int]
+    image_tokens: Optional[int]
 
 
 class RerankResponseMeta(TypedDict, total=False):
@@ -52,8 +58,9 @@ class RerankResponseMeta(TypedDict, total=False):
     tokens: Optional[RerankTokens]
 
 
-class RerankResponseDocument(TypedDict):
+class RerankResponseDocument(TypedDict, total=False):
     text: str
+    image: str
 
 
 class RerankResponseResult(TypedDict, total=False):

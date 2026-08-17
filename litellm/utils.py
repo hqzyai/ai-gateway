@@ -8032,6 +8032,8 @@ class ProviderConfigManager:
             )
 
             return DashScopeRerankConfig()
+        elif litellm.LlmProviders.SILICONFLOW == provider:
+            return litellm.SiliconFlowRerankConfig()
         return litellm.CohereRerankConfig()
 
     @staticmethod

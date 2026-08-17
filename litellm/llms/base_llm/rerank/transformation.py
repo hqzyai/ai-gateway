@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Dict, List, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Sequence, Tuple, Union
 
 import httpx
 
@@ -68,7 +68,7 @@ class BaseRerankConfig(ABC):
         return api_base or ""
 
     @abstractmethod
-    def get_supported_cohere_rerank_params(self, model: str) -> list:
+    def get_supported_cohere_rerank_params(self, model: str) -> Sequence[str]:
         pass
 
     @abstractmethod

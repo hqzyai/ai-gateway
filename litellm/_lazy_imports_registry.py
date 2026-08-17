@@ -157,6 +157,7 @@ LLM_CONFIG_NAMES = (
     "FireworksAIRerankConfig",
     "VoyageRerankConfig",
     "IBMWatsonXRerankConfig",
+    "SiliconFlowRerankConfig",
     "ClarifaiConfig",
     "AI21ChatConfig",
     "LlamaAPIConfig",
@@ -696,6 +697,10 @@ _LLM_CONFIGS_IMPORT_MAP = {
     "IBMWatsonXRerankConfig": (
         ".llms.watsonx.rerank.transformation",
         "IBMWatsonXRerankConfig",
+    ),
+    "SiliconFlowRerankConfig": (
+        ".llms.siliconflow.rerank.transformation",
+        "SiliconFlowRerankConfig",
     ),
     "ClarifaiConfig": (".llms.clarifai.chat.transformation", "ClarifaiConfig"),
     "AI21ChatConfig": (".llms.ai21.chat.transformation", "AI21ChatConfig"),
