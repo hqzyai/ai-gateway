@@ -3305,7 +3305,7 @@ async def session_usage_analytics(
         (condition, value)
         for condition, value in (
             (
-                "metadata->>'hermes_session_id' ILIKE ${index} ESCAPE '\\\\'",
+                "metadata->>'hermes_session_id' ILIKE ${index} ESCAPE E'\\\\'",
                 f"%{escaped_hermes_session_id}%" if escaped_hermes_session_id else None,
             ),
             ("api_key = ${index}", api_key),

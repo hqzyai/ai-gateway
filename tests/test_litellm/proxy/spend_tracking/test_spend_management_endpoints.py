@@ -1582,6 +1582,7 @@ def test_session_usage_analytics_returns_hermes_sessions_with_usage_metrics(clie
             assert "NULLIF(metadata->>'hermes_session_id', '') IS NOT NULL" in query
             assert "GROUP BY hermes_session_id" in query
             assert "metadata->>'hermes_session_id' ILIKE $3" in query
+            assert "ESCAPE E'\\\\'" in query
             assert "status = 'failure' OR total_tokens <= 0" in query
             assert "metadata->'usage_object'->>'prompt_tokens'" in query
             assert params[2] == "%hermes-session%"
