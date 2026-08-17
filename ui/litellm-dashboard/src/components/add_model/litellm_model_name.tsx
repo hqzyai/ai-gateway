@@ -25,31 +25,23 @@ const LiteLLMModelNameField: React.FC<LiteLLMModelNameFieldProps> = ({
     if (values.includes("all-wildcard")) {
       form.setFieldsValue({ model_name: undefined, model_mappings: [] });
     } else {
-      // Get current model value to check if we need to update
-      const currentModel = form.getFieldValue("model");
-
-      // Only update if the value has actually changed
-      if (JSON.stringify(currentModel) !== JSON.stringify(values)) {
-        // Create mappings first
-        const mappings = values.map((model) => {
-          if (selectedProvider === Providers.Azure) {
-            return {
-              public_name: model,
-              litellm_model: `azure/${model}`,
-            };
-          }
+      const mappings = values.map((model) => {
+        if (selectedProvider === Providers.Azure) {
           return {
             public_name: model,
-            litellm_model: model,
+            litellm_model: `azure/${model}`,
           };
-        });
+        }
+        return {
+          public_name: model,
+          litellm_model: model,
+        };
+      });
 
-        // Update both fields in one call to reduce re-renders
-        form.setFieldsValue({
-          model: values,
-          model_mappings: mappings,
-        });
-      }
+      form.setFieldsValue({
+        model: values,
+        model_mappings: mappings,
+      });
     }
   };
 
@@ -127,10 +119,10 @@ const LiteLLMModelNameField: React.FC<LiteLLMModelNameFieldProps> = ({
           ) : providerModels.length > 0 ? (
             <AntSelect
               data-testid="model-name-select"
-              mode="multiple"
+              mode="tags"
               allowClear
               showSearch
-              placeholder="Select models"
+              placeholder="Select or enter models"
               onChange={handleModelChange}
               optionFilterProp="children"
               filterOption={(input, option) => (option?.label ?? "").toLowerCase().includes(input.toLowerCase())}
