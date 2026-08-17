@@ -9,7 +9,7 @@ import {
 
 const session = (overrides: Partial<SessionUsageSummary> = {}): SessionUsageSummary => ({
   ...emptySessionMetrics(),
-  session_id: "agent-session-42",
+  hermes_session_id: "hermes-session-42",
   first_activity: "2026-08-17T08:00:00Z",
   last_activity: "2026-08-17T09:00:00Z",
   models: ["gpt-4o"],
@@ -18,7 +18,13 @@ const session = (overrides: Partial<SessionUsageSummary> = {}): SessionUsageSumm
 
 describe("session analytics calculations", () => {
   it("calculates a signed compression rate from the original input baseline", () => {
-    expect(compressionNetRate(session({ prompt_tokens: 1250, compression_saved_tokens: -250 }))).toBe(-0.25);
+    expect(
+      compressionNetRate(session({ prompt_tokens: 1250, total_tokens: 1250, compression_saved_tokens: -250 })),
+    ).toBe(-0.25);
+  });
+
+  it("does not report compression savings when no model tokens were consumed", () => {
+    expect(compressionNetRate(session({ compression_saved_tokens: 6459 }))).toBe(0);
   });
 
   it("exports cache and compression metrics as separate billing columns", () => {
@@ -31,7 +37,7 @@ describe("session analytics calculations", () => {
       compression_saved_tokens: 300,
     };
     const expectedRow = {
-      会话ID: "agent-session-42",
+      Hermes会话ID: "hermes-session-42",
       缓存读取Token: 400,
       缓存写入Token: 50,
       压缩次数: 2,

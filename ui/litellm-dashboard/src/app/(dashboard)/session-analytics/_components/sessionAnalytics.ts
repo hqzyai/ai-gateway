@@ -15,7 +15,7 @@ export interface SessionUsageMetrics {
 }
 
 export interface SessionUsageSummary extends SessionUsageMetrics {
-  session_id: string;
+  hermes_session_id: string;
   first_activity: string;
   last_activity: string;
   models: string[];
@@ -47,13 +47,14 @@ export const emptySessionMetrics = (): SessionUsageMetrics => ({
 });
 
 export const compressionNetRate = (metrics: SessionUsageMetrics): number => {
+  if (metrics.total_tokens <= 0 || metrics.prompt_tokens <= 0) return 0;
   const baseline = metrics.prompt_tokens + metrics.compression_saved_tokens;
   return baseline > 0 ? metrics.compression_saved_tokens / baseline : 0;
 };
 
 export const sessionExportRows = (sessions: SessionUsageSummary[]) =>
   sessions.map((session) => ({
-    会话ID: session.session_id,
+    Hermes会话ID: session.hermes_session_id,
     首次请求: session.first_activity,
     最近请求: session.last_activity,
     模型: session.models.join(", "),

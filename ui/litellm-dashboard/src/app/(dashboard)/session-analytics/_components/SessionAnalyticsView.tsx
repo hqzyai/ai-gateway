@@ -24,6 +24,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatNumberWithCommas } from "@/utils/dataUtils";
+import { extractErrorMessage } from "@/utils/errorUtils";
 
 import {
   compressionNetRate,
@@ -78,7 +79,7 @@ const MetricCard = ({
 const MetricsGrid = ({ metrics, sessionCount }: { metrics: SessionUsageMetrics; sessionCount?: number }) => (
   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
     {sessionCount !== undefined && (
-      <MetricCard label="会话数" value={token(sessionCount)} hint="由 SESSION_ID 请求头识别" />
+      <MetricCard label="会话数" value={token(sessionCount)} hint="由 HERMES_SESSION_ID 请求头识别" />
     )}
     <MetricCard
       label="请求数"
@@ -134,7 +135,7 @@ const SessionTable = ({
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>会话 ID</TableHead>
+          <TableHead>Hermes 会话 ID</TableHead>
           <TableHead>模型</TableHead>
           <TableHead>最近请求</TableHead>
           <TableHead className="text-right">请求数</TableHead>
@@ -151,24 +152,24 @@ const SessionTable = ({
         {sessions.length === 0 ? (
           <TableRow>
             <TableCell colSpan={11} className="h-32 text-center text-muted-foreground">
-              当前筛选范围内暂无带 SESSION_ID 请求头的会话
+              当前筛选范围内暂无带 HERMES_SESSION_ID 请求头的会话
             </TableCell>
           </TableRow>
         ) : (
           sessions.map((session) => (
             <TableRow
-              key={session.session_id}
-              data-state={selectedSessionId === session.session_id ? "selected" : undefined}
+              key={session.hermes_session_id}
+              data-state={selectedSessionId === session.hermes_session_id ? "selected" : undefined}
             >
               <TableCell>
                 <button
                   type="button"
                   className="max-w-64 truncate text-left font-mono text-sm font-medium text-blue-600 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  title={session.session_id}
-                  aria-label={`查看会话 ${session.session_id}`}
-                  onClick={() => onSelect(session.session_id)}
+                  title={session.hermes_session_id}
+                  aria-label={`查看会话 ${session.hermes_session_id}`}
+                  onClick={() => onSelect(session.hermes_session_id)}
                 >
-                  {session.session_id}
+                  {session.hermes_session_id}
                 </button>
               </TableCell>
               <TableCell>
@@ -215,7 +216,8 @@ const SessionPageHeader = ({
         <h1 className="text-xl font-semibold text-foreground">会话计费</h1>
       </div>
       <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-        按请求头中的 SESSION_ID 聚合 Agent 会话，统一查看 Token、缓存、压缩次数和实际花费。请求头名称不区分大小写。
+        仅按请求头中的 HERMES_SESSION_ID 聚合 Agent 会话，与 LiteLLM 原有 session_id、trace_id
+        逻辑完全独立。请求头名称不区分大小写。
       </p>
     </div>
     <div className="flex items-center gap-2">
@@ -261,7 +263,7 @@ const SessionFilters = ({
       <CardTitle className="flex items-center gap-2">
         <CalendarDays className="size-4" /> 筛选条件
       </CardTitle>
-      <CardDescription>会话 ID 支持模糊搜索；API Key 与模型使用精确匹配。</CardDescription>
+      <CardDescription>Hermes 会话 ID 支持模糊搜索；API Key 与模型使用精确匹配。</CardDescription>
     </CardHeader>
     <CardContent>
       <form
@@ -291,13 +293,13 @@ const SessionFilters = ({
           />
         </label>
         <label className="min-w-60 flex-1 space-y-1 text-sm">
-          <span className="font-medium">会话 ID</span>
+          <span className="font-medium">Hermes 会话 ID</span>
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
             <input
-              aria-label="会话 ID"
+              aria-label="Hermes 会话 ID"
               className="block h-9 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm"
-              placeholder="输入 SESSION_ID"
+              placeholder="输入 HERMES_SESSION_ID"
               value={draftSessionId}
               onChange={(event) => onSessionIdChange(event.target.value)}
             />
@@ -386,7 +388,7 @@ const SessionResults = ({
           <CardTitle className="flex items-center gap-2">
             <Wallet className="size-4 text-violet-600" /> 会话详情
           </CardTitle>
-          <CardDescription className="break-all font-mono">{selectedSession.session_id}</CardDescription>
+          <CardDescription className="break-all font-mono">{selectedSession.hermes_session_id}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
@@ -406,7 +408,7 @@ const SessionResults = ({
           <CardTitle className="flex items-center gap-2">
             <Database className="size-4" /> 会话明细
           </CardTitle>
-          <CardDescription className="mt-1">点击会话 ID 查看完整指标；每页最多显示 50 个会话。</CardDescription>
+          <CardDescription className="mt-1">点击 Hermes 会话 ID 查看完整指标；每页最多显示 50 个会话。</CardDescription>
         </div>
         {loading && data && <span className="text-xs text-muted-foreground">正在更新...</span>}
       </CardHeader>
@@ -458,7 +460,7 @@ export default function SessionAnalyticsView({ accessToken, userId }: SessionAna
     let active = true;
     const requestFilters = {
       userId,
-      sessionId,
+      hermesSessionId: sessionId,
       apiKey,
       model,
       page,
@@ -471,9 +473,9 @@ export default function SessionAnalyticsView({ accessToken, userId }: SessionAna
         setError("");
         setLoading(false);
       })
-      .catch(() => {
+      .catch((requestError: unknown) => {
         if (!active) return;
-        setError("会话计费数据加载失败，请检查时间范围后重试。");
+        setError(`会话计费数据加载失败：${extractErrorMessage(requestError)}`);
         setLoading(false);
       });
     return () => {
@@ -482,7 +484,7 @@ export default function SessionAnalyticsView({ accessToken, userId }: SessionAna
   }, [accessToken, apiKey, end, model, page, reload, sessionId, start, userId]);
 
   const selectedSession = useMemo(
-    () => data?.sessions.find((session) => session.session_id === selectedSessionId) ?? null,
+    () => data?.sessions.find((session) => session.hermes_session_id === selectedSessionId) ?? null,
     [data, selectedSessionId],
   );
   const draftFilterSignature = [draftSessionId.trim(), draftApiKey.trim(), draftModel.trim()].join("\u0000");
@@ -590,8 +592,8 @@ export default function SessionAnalyticsView({ accessToken, userId }: SessionAna
         <CardContent className="flex items-start gap-3 pt-4 text-sm text-muted-foreground">
           <Sparkles className="mt-0.5 size-4 shrink-0 text-violet-600" />
           <p>
-            Agent 应用只需在每次模型请求中携带同一个 SESSION_ID
-            请求头。系统按会话聚合统计；未携带该请求头的普通请求不会出现在这里。
+            Agent 应用只需在每次模型请求中携带同一个 HERMES_SESSION_ID 请求头。系统仅按该字段聚合；原有
+            SESSION_ID、x-litellm-session-id 和 trace_id 不会进入这里。
           </p>
         </CardContent>
       </Card>

@@ -2513,7 +2513,7 @@ export const sessionUsageAnalyticsCall = async (
   endTime: Date,
   filters: {
     userId?: string | null;
-    sessionId?: string | null;
+    hermesSessionId?: string | null;
     apiKey?: string | null;
     model?: string | null;
     page?: number;
@@ -2532,7 +2532,7 @@ export const sessionUsageAnalyticsCall = async (
       start_date: formatDate(startTime),
       end_date: formatDate(endTime),
       user_id: filters.userId || undefined,
-      session_id: filters.sessionId || undefined,
+      hermes_session_id: filters.hermesSessionId || undefined,
       api_key: filters.apiKey || undefined,
       model: filters.model || undefined,
       page: String(filters.page ?? 1),

@@ -429,7 +429,6 @@ def get_chain_id_from_headers(headers: Optional[Dict[str, str]]) -> Optional[str
     return (
         normalized.get("x-litellm-trace-id")
         or normalized.get("x-litellm-session-id")
-        or normalized.get("session_id")
         or _extract_generic_session_id_from_headers(normalized)
     )
 
@@ -964,6 +963,13 @@ class LiteLLMProxyRequestSetup:
         agent_id_from_header = headers.get("x-litellm-agent-id")
         # Explicit litellm headers take precedence; fall back to any x-*-session-id header.
         chain_id = get_chain_id_from_headers(dict(headers))
+        hermes_session_id = next(
+            (value for key, value in headers.items() if str(key).lower() == "hermes_session_id"),
+            None,
+        )
+
+        if isinstance(hermes_session_id, str) and hermes_session_id:
+            metadata_from_headers["hermes_session_id"] = hermes_session_id
 
         if agent_id_from_header:
             metadata_from_headers["agent_id"] = agent_id_from_header
@@ -972,7 +978,6 @@ class LiteLLMProxyRequestSetup:
         if chain_id:
             metadata_from_headers["trace_id"] = chain_id
             metadata_from_headers["session_id"] = chain_id
-            metadata_from_headers["session_id_source"] = "header"
             data["litellm_session_id"] = chain_id
             data["litellm_trace_id"] = chain_id
             verbose_proxy_logger.debug(f"Extracted chain_id from header (trace-id/session-id): {chain_id}")

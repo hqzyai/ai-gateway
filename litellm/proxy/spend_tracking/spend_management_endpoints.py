@@ -3282,7 +3282,9 @@ async def session_usage_analytics(
     user_api_key_dict: Annotated[UserAPIKeyAuth, Depends(user_api_key_auth)],
     start_date: str = fastapi.Query(description="First day to include, formatted as YYYY-MM-DD"),
     end_date: str = fastapi.Query(description="Last day to include, formatted as YYYY-MM-DD"),
-    session_id: str | None = fastapi.Query(default=None, description="Filter session IDs by partial match"),
+    hermes_session_id: str | None = fastapi.Query(
+        default=None, description="Filter Hermes session IDs by partial match"
+    ),
     api_key: str | None = fastapi.Query(default=None, description="Filter by API key hash"),
     model: str | None = fastapi.Query(default=None, description="Filter by model"),
     user_id: str | None = fastapi.Query(default=None, description="Filter by owning user"),
@@ -3296,13 +3298,16 @@ async def session_usage_analytics(
 
     range_start, range_end = _session_analytics_date_range(start_date, end_date)
 
-    escaped_session_id = (
-        session_id.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") if session_id else None
+    escaped_hermes_session_id = (
+        hermes_session_id.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") if hermes_session_id else None
     )
     filter_specs = tuple(
         (condition, value)
         for condition, value in (
-            ("session_id ILIKE ${index} ESCAPE '\\\\'", f"%{escaped_session_id}%" if escaped_session_id else None),
+            (
+                "metadata->>'hermes_session_id' ILIKE ${index} ESCAPE '\\\\'",
+                f"%{escaped_hermes_session_id}%" if escaped_hermes_session_id else None,
+            ),
             ("api_key = ${index}", api_key),
             ("model = ${index}", model),
         )
@@ -3336,8 +3341,7 @@ async def session_usage_analytics(
     conditions = (
         "\"startTime\" >= ($1::timestamptz AT TIME ZONE 'UTC')",
         "\"startTime\" < ($2::timestamptz AT TIME ZONE 'UTC')",
-        "session_id IS NOT NULL",
-        "metadata->>'session_id_source' = 'header'",
+        "NULLIF(metadata->>'hermes_session_id', '') IS NOT NULL",
         *filter_conditions,
         *auth_conditions,
     )
@@ -3345,13 +3349,37 @@ async def session_usage_analytics(
     limit_index = len(params) + 1
     offset_index = limit_index + 1
     query = f"""
-        WITH request_metrics AS (
+        WITH normalized_request_metrics AS (
             SELECT
-                session_id,
+                metadata->>'hermes_session_id' AS hermes_session_id,
                 spend,
-                prompt_tokens,
-                completion_tokens,
-                total_tokens,
+                COALESCE(
+                    NULLIF(prompt_tokens, 0),
+                    CASE WHEN COALESCE(metadata->'usage_object'->>'prompt_tokens', '') ~ '^[0-9]+$'
+                        THEN (metadata->'usage_object'->>'prompt_tokens')::bigint ELSE 0 END
+                )::bigint AS prompt_tokens,
+                COALESCE(
+                    NULLIF(completion_tokens, 0),
+                    CASE WHEN COALESCE(metadata->'usage_object'->>'completion_tokens', '') ~ '^[0-9]+$'
+                        THEN (metadata->'usage_object'->>'completion_tokens')::bigint ELSE 0 END
+                )::bigint AS completion_tokens,
+                COALESCE(
+                    NULLIF(total_tokens, 0),
+                    NULLIF(
+                        CASE WHEN COALESCE(metadata->'usage_object'->>'total_tokens', '') ~ '^[0-9]+$'
+                            THEN (metadata->'usage_object'->>'total_tokens')::bigint ELSE 0 END,
+                        0
+                    ),
+                    COALESCE(
+                        NULLIF(prompt_tokens, 0),
+                        CASE WHEN COALESCE(metadata->'usage_object'->>'prompt_tokens', '') ~ '^[0-9]+$'
+                            THEN (metadata->'usage_object'->>'prompt_tokens')::bigint ELSE 0 END
+                    ) + COALESCE(
+                        NULLIF(completion_tokens, 0),
+                        CASE WHEN COALESCE(metadata->'usage_object'->>'completion_tokens', '') ~ '^[0-9]+$'
+                            THEN (metadata->'usage_object'->>'completion_tokens')::bigint ELSE 0 END
+                    )
+                )::bigint AS total_tokens,
                 "startTime",
                 model,
                 status,
@@ -3370,18 +3398,41 @@ async def session_usage_analytics(
                     ELSE 0
                 END AS cache_creation_input_tokens,
                 CASE WHEN COALESCE(metadata->>'compression_saved_tokens', '') ~ '^-?[0-9]+$'
-                    THEN (metadata->>'compression_saved_tokens')::bigint ELSE 0 END AS compression_saved_tokens,
+                    THEN (metadata->>'compression_saved_tokens')::bigint ELSE 0 END AS raw_compression_saved_tokens,
                 CASE WHEN COALESCE(metadata->>'compression_gross_saved_tokens', '') ~ '^[0-9]+$'
-                    THEN (metadata->>'compression_gross_saved_tokens')::bigint ELSE 0 END AS compression_gross_saved_tokens,
+                    THEN (metadata->>'compression_gross_saved_tokens')::bigint ELSE 0
+                    END AS raw_compression_gross_saved_tokens,
                 CASE WHEN COALESCE(metadata->>'compression_extra_input_tokens', '') ~ '^[0-9]+$'
-                    THEN (metadata->>'compression_extra_input_tokens')::bigint ELSE 0 END AS compression_extra_input_tokens,
+                    THEN (metadata->>'compression_extra_input_tokens')::bigint ELSE 0
+                    END AS raw_compression_extra_input_tokens,
                 CASE WHEN COALESCE(metadata->>'compression_requests', '') ~ '^[0-9]+$'
-                    THEN (metadata->>'compression_requests')::bigint ELSE 0 END AS compression_requests
+                    THEN (metadata->>'compression_requests')::bigint ELSE 0 END AS raw_compression_requests
             FROM "LiteLLM_SpendLogs"
             WHERE {" AND ".join(conditions)}
+        ), request_metrics AS (
+            SELECT
+                hermes_session_id,
+                spend,
+                prompt_tokens,
+                completion_tokens,
+                total_tokens,
+                "startTime",
+                model,
+                status,
+                cache_read_input_tokens,
+                cache_creation_input_tokens,
+                CASE WHEN status = 'failure' OR total_tokens <= 0 THEN 0
+                    ELSE raw_compression_saved_tokens END AS compression_saved_tokens,
+                CASE WHEN status = 'failure' OR total_tokens <= 0 THEN 0
+                    ELSE raw_compression_gross_saved_tokens END AS compression_gross_saved_tokens,
+                CASE WHEN status = 'failure' OR total_tokens <= 0 THEN 0
+                    ELSE raw_compression_extra_input_tokens END AS compression_extra_input_tokens,
+                CASE WHEN status = 'failure' OR total_tokens <= 0 THEN 0
+                    ELSE raw_compression_requests END AS compression_requests
+            FROM normalized_request_metrics
         ), session_totals AS (
             SELECT
-                session_id,
+                hermes_session_id,
                 MIN("startTime") AS first_activity,
                 MAX("startTime") AS last_activity,
                 ARRAY_REMOVE(ARRAY_AGG(DISTINCT NULLIF(model, '')), NULL) AS models,
@@ -3390,8 +3441,8 @@ async def session_usage_analytics(
                 COALESCE(SUM(completion_tokens), 0)::bigint AS completion_tokens,
                 COALESCE(SUM(total_tokens), 0)::bigint AS total_tokens,
                 COUNT(*)::bigint AS api_requests,
-                COUNT(*) FILTER (WHERE status = 'success' OR status IS NULL)::bigint AS successful_requests,
-                COUNT(*) FILTER (WHERE status IS NOT NULL AND status <> 'success')::bigint AS failed_requests,
+                COUNT(*) FILTER (WHERE status IS DISTINCT FROM 'failure')::bigint AS successful_requests,
+                COUNT(*) FILTER (WHERE status = 'failure')::bigint AS failed_requests,
                 COALESCE(SUM(cache_read_input_tokens), 0)::bigint AS cache_read_input_tokens,
                 COALESCE(SUM(cache_creation_input_tokens), 0)::bigint AS cache_creation_input_tokens,
                 COALESCE(SUM(compression_saved_tokens), 0)::bigint AS compression_saved_tokens,
@@ -3399,7 +3450,7 @@ async def session_usage_analytics(
                 COALESCE(SUM(compression_extra_input_tokens), 0)::bigint AS compression_extra_input_tokens,
                 COALESCE(SUM(compression_requests), 0)::bigint AS compression_requests
             FROM request_metrics
-            GROUP BY session_id
+            GROUP BY hermes_session_id
         )
         SELECT
             *,
@@ -3418,7 +3469,7 @@ async def session_usage_analytics(
             COALESCE(SUM(compression_extra_input_tokens) OVER (), 0)::bigint AS all_compression_extra_input_tokens,
             COALESCE(SUM(compression_requests) OVER (), 0)::bigint AS all_compression_requests
         FROM session_totals
-        ORDER BY last_activity DESC, session_id ASC
+        ORDER BY last_activity DESC, hermes_session_id ASC
         LIMIT ${limit_index} OFFSET ${offset_index}
     """
     rows = await prisma_client.db.query_raw(query, *params, page_size, (page - 1) * page_size)
@@ -3426,7 +3477,7 @@ async def session_usage_analytics(
     total_sessions = int(first_row.get("total_sessions") or 0) if first_row is not None else 0
     sessions = tuple(
         SessionUsageSummary(
-            session_id=str(row["session_id"]),
+            hermes_session_id=str(row["hermes_session_id"]),
             first_activity=row["first_activity"],
             last_activity=row["last_activity"],
             models=tuple(str(value) for value in (row.get("models") or ())),

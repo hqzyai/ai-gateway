@@ -13,7 +13,7 @@ const response = (): SessionAnalyticsResponse => ({
   sessions: [
     {
       ...emptySessionMetrics(),
-      session_id: "agent-session-42",
+      hermes_session_id: "hermes-session-42",
       first_activity: "2026-08-17T08:00:00Z",
       last_activity: "2026-08-17T09:00:00Z",
       models: ["gpt-4o"],
@@ -63,11 +63,11 @@ describe("SessionAnalyticsView", () => {
   it("shows session billing totals and expands a selected session", async () => {
     render(<SessionAnalyticsView accessToken="token" userId={null} />);
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "查看会话 agent-session-42" })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("button", { name: "查看会话 hermes-session-42" })).toBeInTheDocument());
     expect(screen.getByText("会话计费")).toBeInTheDocument();
     expect(screen.getAllByText("缓存读取 Token")).not.toHaveLength(0);
     expect(screen.getAllByText("压缩次数")).not.toHaveLength(0);
-    fireEvent.click(screen.getByRole("button", { name: "查看会话 agent-session-42" }));
+    fireEvent.click(screen.getByRole("button", { name: "查看会话 hermes-session-42" }));
     expect(screen.getByText("会话详情")).toBeInTheDocument();
     expect(screen.getAllByText("净节省率 23.08%")).not.toHaveLength(0);
   });
@@ -77,14 +77,14 @@ describe("SessionAnalyticsView", () => {
     await waitFor(() => expect(analyticsCall).toHaveBeenCalledTimes(1));
     analyticsCall.mockClear();
 
-    fireEvent.change(screen.getByLabelText("会话 ID"), { target: { value: "session-42" } });
+    fireEvent.change(screen.getByLabelText("Hermes 会话 ID"), { target: { value: "hermes-session-42" } });
     fireEvent.change(screen.getByLabelText("API Key"), { target: { value: "key-hash" } });
     fireEvent.change(screen.getByLabelText("模型"), { target: { value: "gpt-4o" } });
     fireEvent.click(screen.getByRole("button", { name: "应用筛选" }));
 
     const expectedFilters = {
       userId: "user-1",
-      sessionId: "session-42",
+      hermesSessionId: "hermes-session-42",
       apiKey: "key-hash",
       model: "gpt-4o",
       page: 1,

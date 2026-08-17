@@ -1574,19 +1574,21 @@ async def test_ui_view_session_spend_logs_pagination(client, monkeypatch):
     assert data["data"][0]["request_id"] == "req1"
 
 
-def test_session_usage_analytics_returns_header_sessions_with_usage_metrics(client, monkeypatch):
+def test_session_usage_analytics_returns_hermes_sessions_with_usage_metrics(client, monkeypatch):
     timestamp = datetime.datetime(2026, 8, 17, 8, 0, tzinfo=timezone.utc)
 
     class MockDB:
         async def query_raw(self, query, *params):
-            assert "metadata->>'session_id_source' = 'header'" in query
-            assert "GROUP BY session_id" in query
-            assert "session_id ILIKE $3" in query
-            assert params[2] == "%agent-session%"
+            assert "NULLIF(metadata->>'hermes_session_id', '') IS NOT NULL" in query
+            assert "GROUP BY hermes_session_id" in query
+            assert "metadata->>'hermes_session_id' ILIKE $3" in query
+            assert "status = 'failure' OR total_tokens <= 0" in query
+            assert "metadata->'usage_object'->>'prompt_tokens'" in query
+            assert params[2] == "%hermes-session%"
             assert params[-2:] == (25, 0)
             return [
                 {
-                    "session_id": "agent-session-42",
+                    "hermes_session_id": "hermes-session-42",
                     "first_activity": timestamp,
                     "last_activity": timestamp,
                     "models": ["gpt-4o"],
@@ -1635,7 +1637,7 @@ def test_session_usage_analytics_returns_header_sessions_with_usage_metrics(clie
             params={
                 "start_date": "2026-08-01",
                 "end_date": "2026-08-17",
-                "session_id": "agent-session",
+                "hermes_session_id": "hermes-session",
                 "page_size": 25,
             },
             headers={"Authorization": "Bearer sk-test"},
@@ -1647,7 +1649,7 @@ def test_session_usage_analytics_returns_header_sessions_with_usage_metrics(clie
     data = response.json()
     assert data["total_sessions"] == 1
     assert data["totals"]["total_tokens"] == 1200
-    assert data["sessions"][0]["session_id"] == "agent-session-42"
+    assert data["sessions"][0]["hermes_session_id"] == "hermes-session-42"
     assert data["sessions"][0]["cache_read_input_tokens"] == 400
     assert data["sessions"][0]["compression_requests"] == 2
 

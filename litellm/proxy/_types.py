@@ -3251,7 +3251,7 @@ class SpendLogsMetadata(TypedDict):
     max_retries: Optional[int]  # Max retries configured for this request
     cost_breakdown: Optional[CostBreakdown]  # Detailed cost breakdown (input_cost, output_cost, margin, discount, etc.)
     compression_savings: CompressionSavingsMetadata | None
-    session_id_source: Literal["header"] | None
+    hermes_session_id: str | None
     compression_saved_tokens: int | None
     compression_gross_saved_tokens: int | None
     compression_extra_input_tokens: int | None
@@ -3310,7 +3310,7 @@ class SessionUsageMetrics(BaseModel):
 
 
 class SessionUsageSummary(SessionUsageMetrics):
-    session_id: str
+    hermes_session_id: str
     first_activity: datetime
     last_activity: datetime
     models: tuple[str, ...] = ()
@@ -3947,7 +3947,7 @@ class LitellmMetadataFromRequestHeaders(TypedDict, total=False):
     agent_id: Optional[str]
     trace_id: Optional[str]
     session_id: Optional[str]
-    session_id_source: Literal["header"]
+    hermes_session_id: str
 
 
 class JWTKeyItem(TypedDict, total=False):

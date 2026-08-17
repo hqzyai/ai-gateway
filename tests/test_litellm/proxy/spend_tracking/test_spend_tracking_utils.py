@@ -1236,10 +1236,10 @@ def test_get_spend_logs_metadata_guardrail_info_fallback_from_metadata():
     assert result["guardrail_information"] is None
 
 
-def test_get_spend_logs_metadata_persists_session_analytics_fields():
+def test_get_spend_logs_metadata_persists_hermes_session_analytics_fields():
     result = _get_spend_logs_metadata(
         metadata={
-            "session_id_source": "header",
+            "hermes_session_id": "hermes-session-42",
             "compression_savings": {
                 "tokens_before": 1000,
                 "tokens_after": 700,
@@ -1249,11 +1249,37 @@ def test_get_spend_logs_metadata_persists_session_analytics_fields():
         }
     )
 
-    assert result["session_id_source"] == "header"
+    assert result["hermes_session_id"] == "hermes-session-42"
     assert result["compression_saved_tokens"] == 300
     assert result["compression_gross_saved_tokens"] == 300
     assert result["compression_extra_input_tokens"] == 0
     assert result["compression_requests"] == 1
+
+
+def test_get_logging_payload_keeps_hermes_session_separate_from_litellm_session():
+    now = datetime.datetime.now(timezone.utc)
+    payload = get_logging_payload(
+        kwargs={
+            "model": "gpt-4o-mini",
+            "litellm_params": {
+                "litellm_metadata": {
+                    "hermes_session_id": "hermes-session-42",
+                    "user_api_key": "test-key",
+                }
+            },
+        },
+        response_obj=litellm.ModelResponse(
+            id="chatcmpl-hermes",
+            choices=[],
+            usage=litellm.Usage(prompt_tokens=10, completion_tokens=2, total_tokens=12),
+        ),
+        start_time=now,
+        end_time=now,
+    )
+
+    metadata = json.loads(payload["metadata"])
+    assert metadata["hermes_session_id"] == "hermes-session-42"
+    assert payload["session_id"] != "hermes-session-42"
 
 
 @patch("litellm.proxy.spend_tracking.spend_tracking_utils._should_store_prompts_and_responses_in_spend_logs")

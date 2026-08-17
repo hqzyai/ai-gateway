@@ -23302,6 +23302,36 @@ export interface components {
              */
             total_completion_tokens: number;
             /**
+             * Total Compression Extra Input Spend
+             * @default 0
+             */
+            total_compression_extra_input_spend: number;
+            /**
+             * Total Compression Extra Input Tokens
+             * @default 0
+             */
+            total_compression_extra_input_tokens: number;
+            /**
+             * Total Compression Gross Saved Tokens
+             * @default 0
+             */
+            total_compression_gross_saved_tokens: number;
+            /**
+             * Total Compression Gross Savings Spend
+             * @default 0
+             */
+            total_compression_gross_savings_spend: number;
+            /**
+             * Total Compression Net Savings Rate
+             * @default 0
+             */
+            total_compression_net_savings_rate: number;
+            /**
+             * Total Compression Requests
+             * @default 0
+             */
+            total_compression_requests: number;
+            /**
              * Total Compression Saved Tokens
              * @default 0
              */
@@ -31053,20 +31083,23 @@ export interface components {
              * Format: date-time
              */
             first_activity: string;
+            /** Hermes Session Id */
+            hermes_session_id: string;
             /**
              * Last Activity
              * Format: date-time
              */
             last_activity: string;
-            /** Models */
-            models?: string[];
+            /**
+             * Models
+             * @default []
+             */
+            models: string[];
             /**
              * Prompt Tokens
              * @default 0
              */
             prompt_tokens: number;
-            /** Session Id */
-            session_id: string;
             /**
              * Spend
              * @default 0
@@ -31145,6 +31178,31 @@ export interface components {
              * @default 0
              */
             completion_tokens: number;
+            /**
+             * Compression Extra Input Spend
+             * @default 0
+             */
+            compression_extra_input_spend: number;
+            /**
+             * Compression Extra Input Tokens
+             * @default 0
+             */
+            compression_extra_input_tokens: number;
+            /**
+             * Compression Gross Saved Tokens
+             * @default 0
+             */
+            compression_gross_saved_tokens: number;
+            /**
+             * Compression Gross Savings Spend
+             * @default 0
+             */
+            compression_gross_savings_spend: number;
+            /**
+             * Compression Requests
+             * @default 0
+             */
+            compression_requests: number;
             /**
              * Compression Saved Tokens
              * @default 0
@@ -49589,8 +49647,8 @@ export interface operations {
                 start_date: string;
                 /** @description Last day to include, formatted as YYYY-MM-DD */
                 end_date: string;
-                /** @description Filter session IDs by partial match */
-                session_id?: string | null;
+                /** @description Filter Hermes session IDs by partial match */
+                hermes_session_id?: string | null;
                 /** @description Filter by API key hash */
                 api_key?: string | null;
                 /** @description Filter by model */

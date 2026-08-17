@@ -2532,20 +2532,29 @@ def test_add_litellm_metadata_from_request_headers_x_litellm_session_id_sets_cha
     assert data["litellm_trace_id"] == "bar"
 
 
-@pytest.mark.parametrize("header_name", ["SESSION_ID", "session_id", "SeSsIoN_Id"])
-def test_add_litellm_metadata_from_request_headers_bare_session_id_is_case_insensitive(
+@pytest.mark.parametrize("header_name", ["HERMES_SESSION_ID", "hermes_session_id", "HeRmEs_SeSsIoN_Id"])
+@pytest.mark.parametrize("metadata_variable_name", ["metadata", "litellm_metadata"])
+def test_add_litellm_metadata_from_request_headers_hermes_session_id_is_case_insensitive_and_independent(
     header_name: str,
+    metadata_variable_name: str,
 ):
+    data = {metadata_variable_name: {}}
+    LiteLLMProxyRequestSetup.add_litellm_metadata_from_request_headers(
+        headers={header_name: "hermes-session-42"},
+        data=data,
+        _metadata_variable_name=metadata_variable_name,
+    )
+    assert data == {metadata_variable_name: {"hermes_session_id": "hermes-session-42"}}
+
+
+def test_add_litellm_metadata_from_request_headers_bare_session_id_does_not_change_litellm_session():
     data = {"metadata": {}}
     LiteLLMProxyRequestSetup.add_litellm_metadata_from_request_headers(
-        headers={header_name: "agent-session-42"},
+        headers={"SESSION_ID": "legacy-session-42"},
         data=data,
         _metadata_variable_name="metadata",
     )
-    assert data["metadata"]["session_id"] == "agent-session-42"
-    assert data["metadata"]["session_id_source"] == "header"
-    assert data["litellm_session_id"] == "agent-session-42"
-    assert data["litellm_trace_id"] == "agent-session-42"
+    assert data == {"metadata": {}}
 
 
 def test_add_litellm_metadata_from_request_headers_both_headers_trace_id_precedence():
