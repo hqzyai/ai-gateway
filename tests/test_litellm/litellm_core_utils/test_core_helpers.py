@@ -4,10 +4,34 @@ import pytest
 
 from litellm.litellm_core_utils.core_helpers import (
     _FINISH_REASON_MAP,
+    get_litellm_metadata_from_kwargs,
     map_finish_reason,
     reconstruct_model_name,
     redact_nested_match_and_regex_keys,
 )
+
+
+def test_get_litellm_metadata_keeps_explicit_spend_tracking_fields():
+    result = get_litellm_metadata_from_kwargs(
+        {
+            "litellm_params": {
+                "litellm_metadata": {"deployment": "local/model"},
+                "metadata": {
+                    "hermes_session_id": "hermes-session-42",
+                    "spend_logs_metadata": {"hermes_session_id": "hermes-session-42"},
+                    "user_api_key_alias": "test-key",
+                    "unrelated_request_metadata": "excluded",
+                },
+            }
+        }
+    )
+
+    assert result == {
+        "deployment": "local/model",
+        "hermes_session_id": "hermes-session-42",
+        "spend_logs_metadata": {"hermes_session_id": "hermes-session-42"},
+        "user_api_key_alias": "test-key",
+    }
 
 
 def test_reconstruct_model_name_prefers_deployment_value():

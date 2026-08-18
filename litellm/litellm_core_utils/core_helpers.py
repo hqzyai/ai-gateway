@@ -172,8 +172,9 @@ def add_missing_spend_metadata_to_litellm_metadata(litellm_metadata: dict, metad
     and user_api_key values are in 'metadata'.
     """
     potential_spend_tracking_metadata_substring = "user_api_key"
+    explicit_spend_tracking_metadata = frozenset({"hermes_session_id", "spend_logs_metadata"})
     for key, value in metadata.items():
-        if potential_spend_tracking_metadata_substring in key:
+        if potential_spend_tracking_metadata_substring in key or key in explicit_spend_tracking_metadata:
             litellm_metadata[key] = value
     return litellm_metadata
 
