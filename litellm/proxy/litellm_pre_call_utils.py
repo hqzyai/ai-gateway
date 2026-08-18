@@ -970,6 +970,10 @@ class LiteLLMProxyRequestSetup:
 
         if isinstance(hermes_session_id, str) and hermes_session_id:
             metadata_from_headers["hermes_session_id"] = hermes_session_id
+            metadata_from_headers["spend_logs_metadata"] = {
+                **(spend_logs_metadata if isinstance(spend_logs_metadata, dict) else {}),
+                "hermes_session_id": hermes_session_id,
+            }
 
         if agent_id_from_header:
             metadata_from_headers["agent_id"] = agent_id_from_header

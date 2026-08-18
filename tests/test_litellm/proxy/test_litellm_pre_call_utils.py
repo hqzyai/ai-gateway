@@ -2544,7 +2544,12 @@ def test_add_litellm_metadata_from_request_headers_hermes_session_id_is_case_ins
         data=data,
         _metadata_variable_name=metadata_variable_name,
     )
-    assert data == {metadata_variable_name: {"hermes_session_id": "hermes-session-42"}}
+    assert data == {
+        metadata_variable_name: {
+            "hermes_session_id": "hermes-session-42",
+            "spend_logs_metadata": {"hermes_session_id": "hermes-session-42"},
+        }
+    }
 
 
 def test_add_litellm_metadata_from_request_headers_bare_session_id_does_not_change_litellm_session():

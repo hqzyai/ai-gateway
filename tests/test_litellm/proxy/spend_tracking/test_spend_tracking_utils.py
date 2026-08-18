@@ -1256,6 +1256,14 @@ def test_get_spend_logs_metadata_persists_hermes_session_analytics_fields():
     assert result["compression_requests"] == 1
 
 
+def test_get_spend_logs_metadata_promotes_nested_hermes_session_id():
+    result = _get_spend_logs_metadata(
+        metadata={"spend_logs_metadata": {"hermes_session_id": "hermes-session-42"}}
+    )
+
+    assert result["hermes_session_id"] == "hermes-session-42"
+
+
 def test_get_logging_payload_keeps_hermes_session_separate_from_litellm_session():
     now = datetime.datetime.now(timezone.utc)
     payload = get_logging_payload(

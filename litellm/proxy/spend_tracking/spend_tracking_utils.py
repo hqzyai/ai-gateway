@@ -74,6 +74,15 @@ def _is_master_key(api_key: str | None, _master_key: str | None) -> bool:
     return secrets.compare_digest(api_key, _master_key)
 
 
+def _get_hermes_session_id(metadata: Mapping[str, object]) -> str | None:
+    spend_logs_metadata = metadata.get("spend_logs_metadata")
+    nested_value = spend_logs_metadata.get("hermes_session_id") if isinstance(spend_logs_metadata, Mapping) else None
+    return next(
+        (value for value in (metadata.get("hermes_session_id"), nested_value) if isinstance(value, str) and value),
+        None,
+    )
+
+
 def _get_spend_logs_metadata(
     metadata: dict | None,
     applied_guardrails: List[str] | None = None,
@@ -125,10 +134,11 @@ def _get_spend_logs_metadata(
     )
 
     # Filter the metadata dictionary to include only the specified keys
+    filtered_metadata = {key: metadata.get(key) for key in SpendLogsMetadata.__annotations__.keys()}
     clean_metadata = SpendLogsMetadata(
-        **{  # type: ignore
-            key: metadata.get(key) for key in SpendLogsMetadata.__annotations__.keys()
-        }
+        **(  # pyright: ignore[reportArgumentType]  # keys are constrained to SpendLogsMetadata annotations
+            filtered_metadata | {"hermes_session_id": _get_hermes_session_id(metadata)}
+        )
     )
     raw_user_api_key = clean_metadata.get("user_api_key")
     if raw_user_api_key is not None and isinstance(raw_user_api_key, str):
