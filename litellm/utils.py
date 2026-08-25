@@ -8744,6 +8744,12 @@ class ProviderConfigManager:
             )
 
             return SiliconFlowVideoConfig()
+        elif LlmProviders.DASHSCOPE == provider:
+            from litellm.llms.dashscope.videos.transformation import (
+                DashScopeVideoConfig,
+            )
+
+            return DashScopeVideoConfig()
         return None
 
     @staticmethod

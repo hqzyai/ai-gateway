@@ -104,7 +104,10 @@ class FakeSandboxConfig:
         self.deleted += 1
 
 
-def _tool_call_model_response(usage: Optional[Usage] = None) -> ModelResponse:
+def _tool_call_model_response(
+    usage: Optional[Usage] = None,
+    tool_name: str = "litellm_code_execution",
+) -> ModelResponse:
     response = ModelResponse(
         choices=[
             Choices(
@@ -117,7 +120,7 @@ def _tool_call_model_response(usage: Optional[Usage] = None) -> ModelResponse:
                             id="call_abc",
                             type="function",
                             function=Function(
-                                name="litellm_code_execution",
+                                name=tool_name,
                                 arguments='{"code": "print(6*7)"}',
                             ),
                         )
@@ -843,6 +846,38 @@ async def test_dispatcher_raises_when_depth_reaches_max_agentic_loops(
                 stream=False,
             )
 
+    acompletion_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_headroom_safety_limit_preserves_final_turn_usage(restore_callbacks):
+    logger = _GateOnlyLogger(
+        plan=AgenticLoopPlan(run_agentic_loop=True),
+        tool_calls={"tool_calls": [{"id": "call_abc"}]},
+    )
+    litellm.callbacks = [logger]
+    usage = Usage(prompt_tokens=80_000, completion_tokens=400, total_tokens=80_400)
+    response = _tool_call_model_response(usage=usage, tool_name="headroom_retrieve")
+
+    acompletion_mock = AsyncMock()
+    with patch.object(litellm, "acompletion", acompletion_mock):
+        result = await maybe_run_chat_completion_agentic_loop(
+            response=response,
+            model="qwen3.8-max",
+            messages=[{"role": "user", "content": "hi"}],
+            optional_params={},
+            kwargs={"_agentic_loop_depth": 3, "max_agentic_loops": 3},
+            logging_obj=_LoggingStub(),
+            custom_llm_provider="openai",
+            stream=False,
+        )
+
+    assert isinstance(result, ModelResponse)
+    assert result.usage.prompt_tokens == 80_000
+    assert result.usage.completion_tokens == 400
+    assert result.usage.total_tokens == 80_400
+    assert result.choices[0].finish_reason == "stop"
+    assert result.choices[0].message.tool_calls is None
     acompletion_mock.assert_not_awaited()
 
 

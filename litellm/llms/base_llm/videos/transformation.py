@@ -1,6 +1,6 @@
 import types
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, Literal, Optional, Tuple, Union
 
 import httpx
 from httpx._types import RequestFiles
@@ -319,6 +319,7 @@ class BaseVideoConfig(ABC):
         api_base: str,
         litellm_params: GenericLiteLLMParams,
         headers: dict,
+        extra_body: Optional[Dict[str, Any]] = None,
     ) -> Optional[Tuple[str, Dict]]:
         """
         Return (url, body) for a pre-fetch HTTP call that must be made before
@@ -329,6 +330,15 @@ class BaseVideoConfig(ABC):
         uses the existing shared httpx client so the call is properly async.
         """
         return None
+
+    def get_video_edit_prefetch_method(
+        self,
+        video_id: str,
+        api_base: str,
+        litellm_params: GenericLiteLLMParams,
+        headers: dict,
+    ) -> Literal["GET", "POST"]:
+        return "POST"
 
     def transform_video_edit_request(
         self,

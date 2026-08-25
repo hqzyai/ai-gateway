@@ -2,11 +2,10 @@
 
 import json
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import nullcontext
 from contextvars import ContextVar, Token
 from dataclasses import dataclass
-from typing import cast
 
 from litellm._internal_context import suppressed_sub_call_billing
 from litellm._logging import verbose_logger
@@ -132,6 +131,7 @@ def sanitize_response_hiding_proxy_owned_tools(response: ModelResponse) -> Model
         created=getattr(response, "created", 0),
         model=getattr(response, "model", None),
         object="chat.completion",
+        usage=getattr(response, "usage", None),
     )
 
 
@@ -157,11 +157,11 @@ def _coerce_int(value: object, default: int) -> int:
     return int(value) if isinstance(value, (int, str)) else default
 
 
-def _agentic_loop_settings(kwargs: dict[str, object]) -> tuple[int, int, list[str]]:
+def _agentic_loop_settings(kwargs: Mapping[str, object]) -> tuple[int, int, tuple[str, ...]]:
     depth = _coerce_int(kwargs.get("_agentic_loop_depth"), 0)
     max_loops = max(_coerce_int(kwargs.get("max_agentic_loops"), 3), 1)
     raw_fingerprints = kwargs.get("_agentic_loop_fingerprints")
-    fingerprints = [str(fp) for fp in raw_fingerprints] if isinstance(raw_fingerprints, list) else []
+    fingerprints = tuple(str(fp) for fp in raw_fingerprints) if isinstance(raw_fingerprints, list) else ()
     return depth, max_loops, fingerprints
 
 
@@ -174,7 +174,7 @@ def _fingerprint_tools(tool_calls: object) -> str:
 
 def _check_agentic_loop_safety(
     tool_calls: object,
-    fingerprints: list[str],
+    fingerprints: Sequence[str],
     depth: int,
     max_loops: int,
     model: str,
@@ -187,28 +187,32 @@ def _check_agentic_loop_safety(
     return fingerprint
 
 
-def _wrap_response_as_fake_stream(response: object) -> object:
+def _wrap_response_as_fake_stream(response: ModelResponse) -> ModelResponse:
     if getattr(response, "object", None) == "chat.completion.chunk":
-        return response
-    if not hasattr(response, "choices"):
         return response
     from litellm.llms.base_llm.base_model_iterator import (
         convert_model_response_to_streaming,
     )
 
-    return convert_model_response_to_streaming(cast(ModelResponse, response))
+    return convert_model_response_to_streaming(response)
 
 
-def _add_agentic_loop_metadata(kwargs_for_followup: dict[str, object]) -> None:
+def _add_agentic_loop_metadata(kwargs_for_followup: Mapping[str, object]) -> Mapping[str, object]:
     existing = kwargs_for_followup.get("litellm_metadata")
     metadata = without_request_scoped_metadata(existing) if isinstance(existing, dict) else {}
-    for key, value in kwargs_for_followup.items():
-        if key.startswith("_agentic_loop") or key == "max_agentic_loops" or is_interception_internal_key(key):
-            metadata[key] = value
-    kwargs_for_followup["litellm_metadata"] = metadata
+    agentic_metadata = {
+        key: value
+        for key, value in kwargs_for_followup.items()
+        if key.startswith("_agentic_loop") or key == "max_agentic_loops" or is_interception_internal_key(key)
+    }
+    merged_metadata = {**metadata, **agentic_metadata}
+    if isinstance(kwargs_for_followup, dict):
+        kwargs_for_followup["litellm_metadata"] = merged_metadata
+        return kwargs_for_followup
+    return {**kwargs_for_followup, "litellm_metadata": merged_metadata}
 
 
-def _filter_followup_kwargs(source: dict[str, object]) -> dict[str, object]:
+def _filter_followup_kwargs(source: Mapping[str, object]) -> Mapping[str, object]:
     return {
         k: v
         for k, v in source.items()
@@ -222,13 +226,13 @@ async def _execute_chat_completion_agentic_plan(
     plan: AgenticLoopPlan,
     callback: CustomLogger,
     model: str,
-    optional_params: dict[str, object],
-    kwargs: dict[str, object],
+    optional_params: Mapping[str, object],
+    kwargs: Mapping[str, object],
     logging_obj: object,
     custom_llm_provider: str,
     depth: int,
     max_loops: int,
-    fingerprints: list[str],
+    fingerprints: Sequence[str],
     fingerprint: str,
     routing_context: AgenticLoopRoutingContext | None,
     previous_response: ModelResponse,
@@ -260,16 +264,22 @@ async def _execute_chat_completion_agentic_plan(
     if "tool_choice" not in patch.optional_params:
         optional_params_for_followup.pop("tool_choice", None)
 
-    kwargs_for_followup = _filter_followup_kwargs(kwargs)
-    kwargs_for_followup.update(
-        {k: v for k, v in _filter_followup_kwargs(patch.kwargs).items() if k not in optional_params_for_followup}
+    filtered_kwargs = _filter_followup_kwargs(kwargs)
+    patch_kwargs = {
+        key: value
+        for key, value in _filter_followup_kwargs(patch.kwargs).items()
+        if key not in optional_params_for_followup
+    }
+    kwargs_for_followup = _add_agentic_loop_metadata(
+        {
+            **filtered_kwargs,
+            **patch_kwargs,
+            "_agentic_loop_depth": depth + 1,
+            "max_agentic_loops": max_loops,
+            "_agentic_loop_fingerprints": (*fingerprints, fingerprint),
+            **({"litellm_call_id": str(uuid.uuid4())} if parent_already_billed else {}),
+        }
     )
-    kwargs_for_followup["_agentic_loop_depth"] = depth + 1
-    kwargs_for_followup["max_agentic_loops"] = max_loops
-    kwargs_for_followup["_agentic_loop_fingerprints"] = fingerprints + [fingerprint]
-    if parent_already_billed:
-        kwargs_for_followup["litellm_call_id"] = str(uuid.uuid4())
-    _add_agentic_loop_metadata(kwargs_for_followup)
 
     followup: Callable[..., Awaitable[object]]
     if routing_context is None:
@@ -314,7 +324,11 @@ async def _execute_chat_completion_agentic_plan(
                 previous_response=previous_response,
                 followup_response=response_followup,
             )
-        if kwargs.get("_code_interpreter_interception_converted_stream") and not depth:
+        if (
+            kwargs.get("_code_interpreter_interception_converted_stream")
+            and not depth
+            and isinstance(response_followup, ModelResponse)
+        ):
             return _wrap_response_as_fake_stream(response_followup)
         return response_followup
     finally:
@@ -330,13 +344,149 @@ async def _execute_chat_completion_agentic_plan(
             )
 
 
+def _check_agentic_loop_safety_response(
+    *,
+    tool_calls: object,
+    fingerprints: Sequence[str],
+    depth: int,
+    max_loops: int,
+    model: str,
+    response: ModelResponse,
+) -> str | ModelResponse:
+    try:
+        return _check_agentic_loop_safety(
+            tool_calls=tool_calls,
+            fingerprints=fingerprints,
+            depth=depth,
+            max_loops=max_loops,
+            model=model,
+        )
+    except ValueError:
+        sanitized = sanitize_response_hiding_proxy_owned_tools(response)
+        if sanitized is None:
+            raise
+        return sanitized
+
+
+async def _run_chat_completion_agentic_callback(
+    *,
+    callback: CustomLogger,
+    response: ModelResponse,
+    model: str,
+    messages: Sequence[object],
+    optional_params: Mapping[str, object],
+    kwargs: Mapping[str, object],
+    logging_obj: object,
+    custom_llm_provider: str,
+    stream: bool,
+    depth: int,
+    max_loops: int,
+    fingerprints: Sequence[str],
+    tools: object,
+    routing_context: AgenticLoopRoutingContext | None,
+) -> tuple[bool, object]:
+    hook_kwargs = {
+        **kwargs,
+        "_agentic_loop_api_surface": CHAT_COMPLETION_AGENTIC_SURFACE,
+        "custom_llm_provider": custom_llm_provider,
+    }
+    try:
+        should_run, tool_calls = await callback.async_should_run_agentic_loop(
+            response=response,
+            model=model,
+            messages=messages,
+            tools=tools,
+            stream=stream,
+            custom_llm_provider=custom_llm_provider,
+            kwargs=hook_kwargs,
+        )
+    except Exception as e:
+        verbose_logger.exception(
+            "LiteLLM.AgenticHookError: Exception in chat completion agentic gate: %s",
+            str(e),
+        )
+        return False, None
+
+    if not should_run:
+        return False, None
+
+    safety_response = _check_agentic_loop_safety_response(
+        tool_calls=tool_calls,
+        fingerprints=fingerprints,
+        depth=depth,
+        max_loops=max_loops,
+        model=model,
+        response=response,
+    )
+    if isinstance(safety_response, ModelResponse):
+        return True, safety_response
+    fingerprint = safety_response
+
+    try:
+        if not _build_plan_overridden(callback):
+            return True, await callback.async_run_agentic_loop(
+                tools=tool_calls,
+                model=model,
+                messages=messages,
+                response=response,
+                anthropic_messages_provider_config=None,
+                anthropic_messages_optional_request_params=optional_params,
+                logging_obj=logging_obj,
+                stream=stream,
+                kwargs=hook_kwargs,
+            )
+
+        plan = await callback.async_build_agentic_loop_plan(
+            tools=tool_calls,
+            model=model,
+            messages=messages,
+            response=response,
+            anthropic_messages_provider_config=None,
+            anthropic_messages_optional_request_params=optional_params,
+            logging_obj=logging_obj,
+            stream=stream,
+            kwargs=hook_kwargs,
+        )
+
+        if plan.response_override is not None:
+            return True, plan.response_override
+        if plan.terminate:
+            return True, response
+        if not plan.run_agentic_loop:
+            return False, None
+
+        return True, await _execute_chat_completion_agentic_plan(
+            plan=plan,
+            callback=callback,
+            model=model,
+            optional_params=optional_params,
+            kwargs=kwargs,
+            logging_obj=logging_obj,
+            custom_llm_provider=custom_llm_provider,
+            depth=depth,
+            max_loops=max_loops,
+            fingerprints=fingerprints,
+            fingerprint=fingerprint,
+            routing_context=routing_context or get_agentic_loop_routing_context(),
+            previous_response=response,
+            parent_already_billed=stream,
+        )
+    except Exception as e:
+        verbose_logger.exception(
+            "LiteLLM.AgenticHookError: Exception in chat completion agentic hooks: %s",
+            str(e),
+        )
+        sanitized = sanitize_response_hiding_proxy_owned_tools(response)
+        return (True, sanitized) if sanitized is not None else (False, None)
+
+
 async def maybe_run_chat_completion_agentic_loop(
     *,
     response: ModelResponse,
     model: str,
-    messages: list,
-    optional_params: dict,
-    kwargs: dict,
+    messages: Sequence[object],
+    optional_params: Mapping[str, object],
+    kwargs: Mapping[str, object],
     logging_obj: object,
     custom_llm_provider: str,
     stream: bool,
@@ -355,105 +505,25 @@ async def maybe_run_chat_completion_agentic_loop(
         if not _gate_overridden(callback):
             continue
 
-        hook_kwargs = {
-            **kwargs,
-            "_agentic_loop_api_surface": CHAT_COMPLETION_AGENTIC_SURFACE,
-            "custom_llm_provider": custom_llm_provider,
-        }
-        try:
-            should_run, tool_calls = await callback.async_should_run_agentic_loop(
-                response=response,
-                model=model,
-                messages=messages,
-                tools=tools,
-                stream=stream,
-                custom_llm_provider=custom_llm_provider,
-                kwargs=hook_kwargs,
-            )
-        except Exception as e:
-            verbose_logger.exception(
-                "LiteLLM.AgenticHookError: Exception in chat completion agentic gate: %s",
-                str(e),
-            )
-            continue
-
-        if not should_run:
-            continue
-
-        fingerprint = _check_agentic_loop_safety(
-            tool_calls=tool_calls,
-            fingerprints=fingerprints,
+        handled, result = await _run_chat_completion_agentic_callback(
+            callback=callback,
+            response=response,
+            model=model,
+            messages=messages,
+            optional_params=optional_params,
+            kwargs=kwargs,
+            logging_obj=logging_obj,
+            custom_llm_provider=custom_llm_provider,
+            stream=stream,
             depth=depth,
             max_loops=max_loops,
-            model=model,
+            fingerprints=fingerprints,
+            tools=tools,
+            routing_context=routing_context,
         )
+        if handled:
+            return result
 
-        try:
-            if not _build_plan_overridden(callback):
-                return await callback.async_run_agentic_loop(
-                    tools=tool_calls,
-                    model=model,
-                    messages=messages,
-                    response=response,
-                    anthropic_messages_provider_config=None,
-                    anthropic_messages_optional_request_params=optional_params,
-                    logging_obj=logging_obj,
-                    stream=stream,
-                    kwargs=hook_kwargs,
-                )
-
-            plan = await callback.async_build_agentic_loop_plan(
-                tools=tool_calls,
-                model=model,
-                messages=messages,
-                response=response,
-                anthropic_messages_provider_config=None,
-                anthropic_messages_optional_request_params=optional_params,
-                logging_obj=logging_obj,
-                stream=stream,
-                kwargs=hook_kwargs,
-            )
-
-            if plan.response_override is not None:
-                return plan.response_override
-            if plan.terminate:
-                return response
-            if not plan.run_agentic_loop:
-                continue
-
-            return await _execute_chat_completion_agentic_plan(
-                plan=plan,
-                callback=callback,
-                model=model,
-                optional_params=optional_params,
-                kwargs=kwargs,
-                logging_obj=logging_obj,
-                custom_llm_provider=custom_llm_provider,
-                depth=depth,
-                max_loops=max_loops,
-                fingerprints=fingerprints,
-                fingerprint=fingerprint,
-                routing_context=routing_context or get_agentic_loop_routing_context(),
-                previous_response=response,
-                parent_already_billed=stream,
-            )
-        except Exception as e:
-            verbose_logger.exception(
-                "LiteLLM.AgenticHookError: Exception in chat completion agentic hooks: %s",
-                str(e),
-            )
-            if isinstance(response, ModelResponse):
-                sanitized = sanitize_response_hiding_proxy_owned_tools(response)
-                if sanitized is not None:
-                    return sanitized
-
-    if kwargs.get("_code_interpreter_interception_converted_stream") and not depth and hasattr(response, "choices"):
-        return cast(
-            "ModelResponse | CustomStreamWrapper",
-            _wrap_response_as_fake_stream(response),
-        )
-    if isinstance(response, ModelResponse):
-        sanitized = sanitize_response_hiding_proxy_owned_tools(response)
-        if sanitized is not None:
-            return sanitized
-    return None
+    if kwargs.get("_code_interpreter_interception_converted_stream") and not depth:
+        return _wrap_response_as_fake_stream(response)
+    return sanitize_response_hiding_proxy_owned_tools(response)

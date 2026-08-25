@@ -20,7 +20,7 @@ from litellm.types.videos.main import (
     VideoObject,
 )
 from litellm.types.videos.utils import decode_video_id_with_provider
-from litellm.utils import ProviderConfigManager, client
+from litellm.utils import ProviderConfigManager, client, filter_out_litellm_params
 from litellm.videos.utils import VideoGenerationRequestUtils
 
 #################### Initialize provider clients ####################
@@ -32,7 +32,7 @@ llm_http_handler: BaseLLMHTTPHandler = BaseLLMHTTPHandler()
 async def avideo_generation(
     prompt: str,
     model: Optional[str] = None,
-    input_reference: Optional[FileTypes] = None,
+    input_reference: Optional[Union[FileTypes, str]] = None,
     seconds: Optional[str] = None,
     size: Optional[str] = None,
     user: Optional[str] = None,
@@ -120,7 +120,7 @@ async def avideo_generation(
 def video_generation(
     prompt: str,
     model: Optional[str] = None,
-    input_reference: Optional[FileTypes] = None,
+    input_reference: Optional[Union[FileTypes, str]] = None,
     seconds: Optional[str] = None,
     size: Optional[str] = None,
     user: Optional[str] = None,
@@ -140,7 +140,7 @@ def video_generation(
 def video_generation(
     prompt: str,
     model: Optional[str] = None,
-    input_reference: Optional[FileTypes] = None,
+    input_reference: Optional[Union[FileTypes, str]] = None,
     seconds: Optional[str] = None,
     size: Optional[str] = None,
     user: Optional[str] = None,
@@ -162,7 +162,7 @@ def video_generation(
 def video_generation(
     prompt: str,
     model: Optional[str] = None,
-    input_reference: Optional[FileTypes] = None,
+    input_reference: Optional[Union[FileTypes, str]] = None,
     seconds: Optional[str] = None,
     size: Optional[str] = None,
     user: Optional[str] = None,
@@ -1443,7 +1443,16 @@ def video_edit(
             raise ValueError(f"video edit is not supported for {custom_llm_provider}")
 
         local_vars.update(kwargs)
-        request_params: Dict = {"video_id": video_id, "prompt": prompt}
+        provider_extra_body = filter_out_litellm_params(kwargs)
+        merged_extra_body = {
+            **provider_extra_body,
+            **(extra_body or {}),
+        }
+        request_params: Dict = {
+            "video_id": video_id,
+            "prompt": prompt,
+            **({"extra_body": merged_extra_body} if merged_extra_body else {}),
+        }
 
         litellm_logging_obj.update_environment_variables(
             model="",
@@ -1463,7 +1472,7 @@ def video_edit(
             litellm_params=litellm_params,
             logging_obj=litellm_logging_obj,
             extra_headers=extra_headers,
-            extra_body=extra_body,
+            extra_body=merged_extra_body or None,
             timeout=timeout or DEFAULT_REQUEST_TIMEOUT,
             _is_async=_is_async,
             client=kwargs.get("client"),

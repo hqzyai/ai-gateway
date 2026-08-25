@@ -633,6 +633,7 @@ class VertexAIVideoConfig(BaseVideoConfig, VertexBase):
         api_base: str,
         litellm_params: GenericLiteLLMParams,
         headers: dict,
+        extra_body: Optional[Dict[str, Any]] = None,
     ) -> Tuple[str, Dict]:
         """Return the fetchPredictOperation URL and body needed to retrieve the source video."""
         return self.transform_video_status_retrieve_request(

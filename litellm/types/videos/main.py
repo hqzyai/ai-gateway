@@ -1,8 +1,11 @@
-from typing import Any, Dict, List, Literal, Optional
+from collections.abc import Mapping, Sequence
+from typing import Any, Dict, Literal, Optional, Union
 
 from openai.types.audio.transcription_create_params import FileTypes  # type: ignore
-from pydantic import BaseModel
+from pydantic import BaseModel, TypeAdapter
 from typing_extensions import TypedDict
+
+HIDDEN_PARAMS_ADAPTER = TypeAdapter(Dict[str, Any])
 
 
 class VideoObject(BaseModel):
@@ -14,14 +17,17 @@ class VideoObject(BaseModel):
     created_at: Optional[int] = None
     completed_at: Optional[int] = None
     expires_at: Optional[int] = None
-    error: Optional[Dict[str, Any]] = None
+    error: Optional[Mapping[str, Any]] = None
     progress: Optional[int] = None
     remixed_from_video_id: Optional[str] = None
     seconds: Optional[str] = None
     size: Optional[str] = None
     model: Optional[str] = None
-    usage: Optional[Dict[str, Any]] = None
+    usage: Optional[Mapping[str, Any]] = None
     _hidden_params: Dict[str, Any] = {}
+
+    def set_hidden_params(self, hidden_params: Mapping[str, Any]) -> None:
+        self._hidden_params = HIDDEN_PARAMS_ADAPTER.validate_python(hidden_params)
 
     def __contains__(self, key):
         # Define custom behavior for the 'in' operator
@@ -46,7 +52,7 @@ class VideoObject(BaseModel):
 class VideoResponse(BaseModel):
     """Response object for video generation requests."""
 
-    data: List[VideoObject]
+    data: Sequence[VideoObject]
     hidden_params: Dict[str, Any] = {}
 
     def __contains__(self, key):
@@ -72,16 +78,16 @@ class VideoCreateOptionalRequestParams(TypedDict, total=False):
     Params here: https://platform.openai.com/docs/api-reference/videos/create
     """
 
-    input_reference: Optional[FileTypes]  # File reference for input image
+    input_reference: Optional[Union[FileTypes, str]]  # File reference for input image
     image: Optional[Any]  # Image for image-to-video; dict with gcsUri/bytesBase64Encoded, or file-like object
-    parameters: Optional[Dict[str, Any]]  # Provider-specific parameters block passed directly to the API
+    parameters: Optional[Mapping[str, object]]  # Provider-specific parameters block passed directly to the API
     model: Optional[str]
     seconds: Optional[str]
     size: Optional[str]
-    characters: Optional[List[Dict[str, str]]]
+    characters: Optional[Sequence[Mapping[str, str]]]
     user: Optional[str]
-    extra_headers: Optional[Dict[str, str]]
-    extra_body: Optional[Dict[str, str]]
+    extra_headers: Optional[Mapping[str, str]]
+    extra_body: Optional[Mapping[str, object]]
 
 
 class VideoCreateRequestParams(VideoCreateOptionalRequestParams, total=False):
@@ -132,7 +138,7 @@ class VideoEditRequestParams(TypedDict, total=False):
     """TypedDict for video edit request parameters."""
 
     prompt: str
-    video: Dict[str, str]  # {"id": "video_123"}
+    video: Mapping[str, str]  # {"id": "video_123"}
 
 
 class VideoExtensionRequestParams(TypedDict, total=False):
@@ -140,4 +146,4 @@ class VideoExtensionRequestParams(TypedDict, total=False):
 
     prompt: str
     seconds: str
-    video: Dict[str, str]  # {"id": "video_123"}
+    video: Mapping[str, str]  # {"id": "video_123"}

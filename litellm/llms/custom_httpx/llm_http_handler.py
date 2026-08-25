@@ -5100,7 +5100,8 @@ class BaseLLMHTTPHandler:
         full_model_name = model
         if logging_obj is not None:
             agentic_params = logging_obj.model_call_details.get("agentic_loop_params", {})
-            full_model_name = cast(str, agentic_params.get("model", model))
+            agentic_model = agentic_params.get("model", model)
+            full_model_name = agentic_model if isinstance(agentic_model, str) else model
 
         optional_params = dict(anthropic_messages_optional_request_params)
         optional_params.update(patch.optional_params)
@@ -5109,11 +5110,13 @@ class BaseLLMHTTPHandler:
 
         max_tokens = patch.max_tokens
         if max_tokens is None:
-            max_tokens = cast(Optional[int], optional_params.pop("max_tokens", None))
+            optional_max_tokens = optional_params.pop("max_tokens", None)
+            max_tokens = optional_max_tokens if isinstance(optional_max_tokens, int) else None
         else:
             optional_params.pop("max_tokens", None)
         if max_tokens is None:
-            max_tokens = cast(int, kwargs.get("max_tokens", 1024))
+            request_max_tokens = kwargs.get("max_tokens", 1024)
+            max_tokens = request_max_tokens if isinstance(request_max_tokens, int) else 1024
 
         internal_keys = {"litellm_logging_obj"}
         kwargs_for_followup = {
@@ -7709,15 +7712,31 @@ class BaseLLMHTTPHandler:
             api_base=api_base,
             litellm_params=litellm_params,
             headers=headers,
+            extra_body=extra_body,
         )
         if prefetch_params is not None:
             prefetch_url, prefetch_body = prefetch_params
+            prefetch_method = video_provider_config.get_video_edit_prefetch_method(
+                video_id=video_id,
+                api_base=api_base,
+                litellm_params=litellm_params,
+                headers=headers,
+            )
             try:
-                prefetch_resp = sync_httpx_client.post(
-                    url=prefetch_url,
-                    headers=headers,
-                    json=prefetch_body,
-                    timeout=timeout,
+                prefetch_resp = (
+                    sync_httpx_client.get(
+                        url=prefetch_url,
+                        headers=headers,
+                        params=prefetch_body,
+                        timeout=timeout,
+                    )
+                    if prefetch_method == "GET"
+                    else sync_httpx_client.post(
+                        url=prefetch_url,
+                        headers=headers,
+                        json=prefetch_body,
+                        timeout=timeout,
+                    )
                 )
                 prefetch_resp.raise_for_status()
             except Exception as e:
@@ -7805,15 +7824,31 @@ class BaseLLMHTTPHandler:
             api_base=api_base,
             litellm_params=litellm_params,
             headers=headers,
+            extra_body=extra_body,
         )
         if prefetch_params is not None:
             prefetch_url, prefetch_body = prefetch_params
+            prefetch_method = video_provider_config.get_video_edit_prefetch_method(
+                video_id=video_id,
+                api_base=api_base,
+                litellm_params=litellm_params,
+                headers=headers,
+            )
             try:
-                prefetch_resp = await async_httpx_client.post(
-                    url=prefetch_url,
-                    headers=headers,
-                    json=prefetch_body,
-                    timeout=timeout,
+                prefetch_resp = (
+                    await async_httpx_client.get(
+                        url=prefetch_url,
+                        headers=headers,
+                        params=prefetch_body,
+                        timeout=timeout,
+                    )
+                    if prefetch_method == "GET"
+                    else await async_httpx_client.post(
+                        url=prefetch_url,
+                        headers=headers,
+                        json=prefetch_body,
+                        timeout=timeout,
+                    )
                 )
                 prefetch_resp.raise_for_status()
             except Exception as e:
