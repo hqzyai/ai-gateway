@@ -34,6 +34,9 @@ describe("PricingRulesManager", () => {
                 output_cost_per_token: 0.000016,
               },
             ],
+            output_cost_per_second: 0.05,
+            output_cost_per_second_720p: 0.05,
+            output_cost_per_second_1080p: 0.075,
           },
         },
       ],
@@ -60,6 +63,9 @@ describe("PricingRulesManager", () => {
                 output_cost_per_token: 0.000016,
               },
             ],
+            output_cost_per_second: 0.05,
+            output_cost_per_second_720p: 0.05,
+            output_cost_per_second_1080p: 0.075,
           },
         }}
         loading={false}
@@ -71,7 +77,10 @@ describe("PricingRulesManager", () => {
     expect(screen.getByText("自定义规则")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /配置/ }));
     expect(await screen.findByText("编辑自定义计费规则")).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "视频场景（2）" })).toBeInTheDocument();
+    expect(screen.getAllByText("输出视频（默认分辨率）").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("输出视频 720P").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("输出视频 1080P").length).toBeGreaterThan(0);
+    expect(screen.getByRole("tab", { name: "视频 Token（2）" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Token 阶梯（1）" })).toBeInTheDocument();
   });
 });

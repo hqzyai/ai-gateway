@@ -277,6 +277,8 @@ class ModelInfoBase(ProviderSpecificModelInfo, total=False):
     output_cost_per_video_per_second: Optional[float]  # only for vertex ai models
     output_cost_per_audio_per_second: Optional[float]  # only for vertex ai models
     output_cost_per_second: Optional[float]  # for OpenAI Speech models
+    output_cost_per_second_480p: Optional[float]
+    output_cost_per_second_720p: Optional[float]
     output_cost_per_second_1080p: Optional[
         float
     ]  # video_generation tier: key output_cost_per_second_<resolution> (e.g. 1080p, 720p)
@@ -3096,6 +3098,8 @@ class CustomPricingLiteLLMParams(BaseModel):
     output_cost_per_token: Optional[float] = None
     input_cost_per_second: Optional[float] = None
     output_cost_per_second: Optional[float] = None
+    output_cost_per_second_480p: Optional[float] = None
+    output_cost_per_second_720p: Optional[float] = None
     output_cost_per_second_1080p: Optional[float] = None
     video_token_pricing: Optional[VideoTokenPricing] = None
     input_cost_per_pixel: Optional[float] = None

@@ -5495,6 +5495,8 @@ def _get_model_info_helper(
                     "output_cost_per_token_above_512k_tokens", None
                 ),
                 output_cost_per_second=_model_info.get("output_cost_per_second", None),
+                output_cost_per_second_480p=_model_info.get("output_cost_per_second_480p", None),
+                output_cost_per_second_720p=_model_info.get("output_cost_per_second_720p", None),
                 output_cost_per_second_1080p=_model_info.get("output_cost_per_second_1080p", None),
                 output_cost_per_video=_model_info.get("output_cost_per_video", None),
                 output_cost_per_video_per_second=_model_info.get("output_cost_per_video_per_second", None),

@@ -413,6 +413,8 @@ class LiteLLMParamsTypedDict(TypedDict, total=False):
     output_cost_per_token: Optional[float]
     input_cost_per_second: Optional[float]
     output_cost_per_second: Optional[float]
+    output_cost_per_second_480p: Optional[float]
+    output_cost_per_second_720p: Optional[float]
     output_cost_per_second_1080p: Optional[float]
     output_cost_per_video: Optional[float]
     video_token_pricing: Optional[VideoTokenPricing]

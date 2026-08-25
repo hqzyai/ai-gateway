@@ -104,6 +104,30 @@ def test_dashscope_video_generation_status_and_edit() -> None:
     assert created.model == "wan2.7-i2v"
     assert status.status == "completed"
     assert status.seconds == "10"
+    assert status.usage is not None
+    assert status.usage["duration_seconds"] == 10.0
+    assert status.usage["video_resolution"] == "1080p"
+    cost_logging = MagicMock()
+    cost_logging.litellm_params = {
+        "metadata": {
+            "model_info": {
+                "output_cost_per_second": 0.1,
+                "output_cost_per_second_720p": 0.1,
+                "output_cost_per_second_1080p": 0.15,
+            }
+        }
+    }
+    assert (
+        litellm.completion_cost(
+            completion_response=status,
+            model="wan2.7-i2v",
+            call_type="video_retrieve",
+            custom_llm_provider="dashscope",
+            custom_pricing=True,
+            litellm_logging_obj=cost_logging,
+        )
+        == 1.5
+    )
     assert extract_original_video_id(edited.id) == "task-edit"
     assert edited.model == "wan2.7-videoedit"
     assert legacy_edit_result.model == "wan2.1-vace-plus"
@@ -285,6 +309,31 @@ def test_dashscope_video_content_download() -> None:
     assert config.transform_video_content_response(raw_response, MagicMock()) == b"video-bytes"
 
 
+def test_dashscope_failed_video_usage_is_not_billable() -> None:
+    config = DashScopeVideoConfig()
+    video = config.transform_video_create_response(
+        model="wan2.7-i2v",
+        raw_response=httpx.Response(
+            200,
+            json={
+                "output": {
+                    "task_id": "task-failed",
+                    "task_status": "FAILED",
+                    "code": "InvalidVideo",
+                    "message": "Video generation failed",
+                },
+                "usage": {"duration": 10, "video_count": 0, "SR": 1080},
+            },
+        ),
+        logging_obj=MagicMock(),
+    )
+
+    assert video.status == "failed"
+    assert video.usage is not None
+    assert video.usage["generated_videos"] == 0
+    assert "duration_seconds" not in video.usage
+
+
 def test_dashscope_video_registration_and_environment() -> None:
     config = ProviderConfigManager.get_provider_video_config(
         model="wan2.7-t2v-2026-06-12",
@@ -297,6 +346,31 @@ def test_dashscope_video_registration_and_environment() -> None:
     model_info = pricing["dashscope/wan2.7-t2v-2026-06-12"]
     assert model_info["mode"] == "video_generation"
     assert model_info["supported_output_modalities"] == ["video"]
+    expected_prices = {
+        "dashscope/wan2.1-vace-plus": (0.1, None, 0.1, None),
+        "dashscope/wan2.2-i2v-plus": (0.02, 0.02, None, 0.1),
+        "dashscope/wan2.2-kf2v-flash": (0.015, 0.015, 0.036, 0.07),
+        "dashscope/wan2.2-t2v-plus": (0.02, 0.02, None, 0.1),
+        "dashscope/wan2.5-i2v-preview": (0.05, 0.05, 0.1, 0.15),
+        "dashscope/wan2.6-i2v": (0.1, None, 0.1, 0.15),
+        "dashscope/wan2.6-i2v-flash": (0.05, None, 0.05, 0.075),
+        "dashscope/wan2.6-r2v": (0.1, None, 0.1, 0.15),
+        "dashscope/wan2.6-r2v-flash": (0.05, None, 0.05, 0.075),
+        "dashscope/wan2.6-t2v": (0.1, None, 0.1, 0.15),
+        "dashscope/wan2.7-i2v": (0.1, None, 0.1, 0.15),
+        "dashscope/wan2.7-r2v-2026-06-12": (0.1, None, 0.1, 0.15),
+        "dashscope/wan2.7-t2v-2026-06-12": (0.1, None, 0.1, 0.15),
+        "dashscope/wan2.7-videoedit": (0.1, None, 0.1, 0.15),
+    }
+    assert {
+        model: (
+            pricing[model].get("output_cost_per_second"),
+            pricing[model].get("output_cost_per_second_480p"),
+            pricing[model].get("output_cost_per_second_720p"),
+            pricing[model].get("output_cost_per_second_1080p"),
+        )
+        for model in expected_prices
+    } == expected_prices
     assert (
         config.get_complete_url(
             model="wan2.7-t2v-2026-06-12",

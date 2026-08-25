@@ -12542,7 +12542,9 @@
     "dashscope/wan2.1-vace-plus": {
         "litellm_provider": "dashscope",
         "mode": "video_generation",
-        "source": "https://platform.qianwenai.com/docs/developer-guides/video-generation/video-editing",
+        "output_cost_per_second": 0.1,
+        "output_cost_per_second_720p": 0.1,
+        "source": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
         "supported_endpoints": [
             "/v1/videos",
             "/v1/videos/edits"
@@ -12559,7 +12561,10 @@
     "dashscope/wan2.2-i2v-plus": {
         "litellm_provider": "dashscope",
         "mode": "video_generation",
-        "source": "https://platform.qianwenai.com/docs/developer-guides/video-generation/image-to-video",
+        "output_cost_per_second": 0.02,
+        "output_cost_per_second_480p": 0.02,
+        "output_cost_per_second_1080p": 0.1,
+        "source": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
         "supported_endpoints": [
             "/v1/videos"
         ],
@@ -12574,7 +12579,11 @@
     "dashscope/wan2.2-kf2v-flash": {
         "litellm_provider": "dashscope",
         "mode": "video_generation",
-        "source": "https://platform.qianwenai.com/docs/developer-guides/video-generation/image-to-video-first-last",
+        "output_cost_per_second": 0.015,
+        "output_cost_per_second_480p": 0.015,
+        "output_cost_per_second_720p": 0.036,
+        "output_cost_per_second_1080p": 0.07,
+        "source": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
         "supported_endpoints": [
             "/v1/videos"
         ],
@@ -12589,7 +12598,10 @@
     "dashscope/wan2.2-t2v-plus": {
         "litellm_provider": "dashscope",
         "mode": "video_generation",
-        "source": "https://platform.qianwenai.com/docs/developer-guides/video-generation/text-to-video",
+        "output_cost_per_second": 0.02,
+        "output_cost_per_second_480p": 0.02,
+        "output_cost_per_second_1080p": 0.1,
+        "source": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
         "supported_endpoints": [
             "/v1/videos"
         ],
@@ -12603,7 +12615,11 @@
     "dashscope/wan2.5-i2v-preview": {
         "litellm_provider": "dashscope",
         "mode": "video_generation",
-        "source": "https://platform.qianwenai.com/docs/developer-guides/video-generation/image-to-video",
+        "output_cost_per_second": 0.05,
+        "output_cost_per_second_480p": 0.05,
+        "output_cost_per_second_720p": 0.1,
+        "output_cost_per_second_1080p": 0.15,
+        "source": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
         "supported_endpoints": [
             "/v1/videos"
         ],
@@ -12619,7 +12635,10 @@
     "dashscope/wan2.6-i2v": {
         "litellm_provider": "dashscope",
         "mode": "video_generation",
-        "source": "https://platform.qianwenai.com/docs/developer-guides/video-generation/image-to-video",
+        "output_cost_per_second": 0.1,
+        "output_cost_per_second_720p": 0.1,
+        "output_cost_per_second_1080p": 0.15,
+        "source": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
         "supported_endpoints": [
             "/v1/videos"
         ],
@@ -12635,7 +12654,10 @@
     "dashscope/wan2.6-i2v-flash": {
         "litellm_provider": "dashscope",
         "mode": "video_generation",
-        "source": "https://platform.qianwenai.com/docs/developer-guides/video-generation/image-to-video",
+        "output_cost_per_second": 0.05,
+        "output_cost_per_second_720p": 0.05,
+        "output_cost_per_second_1080p": 0.075,
+        "source": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
         "supported_endpoints": [
             "/v1/videos"
         ],
@@ -12651,7 +12673,10 @@
     "dashscope/wan2.6-r2v": {
         "litellm_provider": "dashscope",
         "mode": "video_generation",
-        "source": "https://platform.qianwenai.com/docs/developer-guides/video-generation/reference-video",
+        "output_cost_per_second": 0.1,
+        "output_cost_per_second_720p": 0.1,
+        "output_cost_per_second_1080p": 0.15,
+        "source": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
         "supported_endpoints": [
             "/v1/videos"
         ],
@@ -12667,7 +12692,10 @@
     "dashscope/wan2.6-r2v-flash": {
         "litellm_provider": "dashscope",
         "mode": "video_generation",
-        "source": "https://platform.qianwenai.com/docs/developer-guides/video-generation/reference-video",
+        "output_cost_per_second": 0.05,
+        "output_cost_per_second_720p": 0.05,
+        "output_cost_per_second_1080p": 0.075,
+        "source": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
         "supported_endpoints": [
             "/v1/videos"
         ],
@@ -12683,7 +12711,10 @@
     "dashscope/wan2.6-t2v": {
         "litellm_provider": "dashscope",
         "mode": "video_generation",
-        "source": "https://platform.qianwenai.com/docs/developer-guides/video-generation/text-to-video",
+        "output_cost_per_second": 0.1,
+        "output_cost_per_second_720p": 0.1,
+        "output_cost_per_second_1080p": 0.15,
+        "source": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
         "supported_endpoints": [
             "/v1/videos"
         ],
@@ -12698,7 +12729,10 @@
     "dashscope/wan2.7-i2v": {
         "litellm_provider": "dashscope",
         "mode": "video_generation",
-        "source": "https://platform.qianwenai.com/docs/developer-guides/video-generation/image-to-video",
+        "output_cost_per_second": 0.1,
+        "output_cost_per_second_720p": 0.1,
+        "output_cost_per_second_1080p": 0.15,
+        "source": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
         "supported_endpoints": [
             "/v1/videos"
         ],
@@ -12714,7 +12748,10 @@
     "dashscope/wan2.7-r2v-2026-06-12": {
         "litellm_provider": "dashscope",
         "mode": "video_generation",
-        "source": "https://platform.qianwenai.com/docs/developer-guides/video-generation/reference-video",
+        "output_cost_per_second": 0.1,
+        "output_cost_per_second_720p": 0.1,
+        "output_cost_per_second_1080p": 0.15,
+        "source": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
         "supported_endpoints": [
             "/v1/videos"
         ],
@@ -12731,7 +12768,10 @@
     "dashscope/wan2.7-t2v-2026-06-12": {
         "litellm_provider": "dashscope",
         "mode": "video_generation",
-        "source": "https://platform.qianwenai.com/docs/developer-guides/video-generation/text-to-video",
+        "output_cost_per_second": 0.1,
+        "output_cost_per_second_720p": 0.1,
+        "output_cost_per_second_1080p": 0.15,
+        "source": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
         "supported_endpoints": [
             "/v1/videos"
         ],
@@ -12746,7 +12786,10 @@
     "dashscope/wan2.7-videoedit": {
         "litellm_provider": "dashscope",
         "mode": "video_generation",
-        "source": "https://platform.qianwenai.com/docs/developer-guides/video-generation/video-editing",
+        "output_cost_per_second": 0.1,
+        "output_cost_per_second_720p": 0.1,
+        "output_cost_per_second_1080p": 0.15,
+        "source": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
         "supported_endpoints": [
             "/v1/videos",
             "/v1/videos/edits"

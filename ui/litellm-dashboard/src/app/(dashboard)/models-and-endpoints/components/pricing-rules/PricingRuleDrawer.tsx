@@ -95,7 +95,11 @@ const PricingRuleDrawer = ({
       <Alert
         type="info"
         showIcon
-        message="Token 价格按每百万 Token 填写，LiteLLM 保存时会自动换算为单个 Token 的价格。"
+        message={
+          draft.mode === "video_generation"
+            ? "视频按成功输出的成片时长计费。请添加“视频按秒”维度，并按分辨率填写美元 / 秒。"
+            : "Token 价格按每百万 Token 填写，LiteLLM 保存时会自动换算为单个 Token 的价格。"
+        }
       />
       <Select
         className="w-full"
@@ -367,7 +371,7 @@ const PricingRuleDrawer = ({
       <Tabs
         items={[
           { key: "flat", label: `固定价格（${draft.dimensions.length}）`, children: pricingTab },
-          { key: "video", label: `视频场景（${draft.videoPricing.length}）`, children: videoTab },
+          { key: "video", label: `视频 Token（${draft.videoPricing.length}）`, children: videoTab },
           { key: "tiers", label: `Token 阶梯（${draft.tiers.length}）`, children: tierTab },
         ]}
       />

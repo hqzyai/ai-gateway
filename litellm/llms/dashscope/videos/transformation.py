@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from math import gcd
+from math import gcd, isfinite
 from typing import TYPE_CHECKING, Literal, TypeAlias, TypeVar
 
 import httpx
@@ -527,6 +527,8 @@ class DashScopeVideoConfig(BaseVideoConfig):
         status = self._map_status(response.output.task_status)
         duration = response.usage.get("duration") or response.usage.get("output_video_duration")
         requested_size = self._request_size(request_data)
+        duration_seconds = self._duration_seconds(duration)
+        video_resolution = self._video_resolution(response.usage, requested_size)
         error = (
             {
                 "code": response.output.code or "video_generation_failed",
@@ -545,6 +547,12 @@ class DashScopeVideoConfig(BaseVideoConfig):
             error=error,
             usage={
                 **response.usage,
+                **(
+                    JSONObject(duration_seconds=duration_seconds)
+                    if duration_seconds is not None and status == "completed"
+                    else JSONObject()
+                ),
+                **(JSONObject(video_resolution=video_resolution) if video_resolution is not None else JSONObject()),
                 "generated_videos": 1 if status == "completed" else 0,
             },
         )
@@ -687,6 +695,39 @@ class DashScopeVideoConfig(BaseVideoConfig):
         if isinstance(resolution, str) and isinstance(ratio, str):
             return f"{resolution} {ratio}"
         return resolution if isinstance(resolution, str) else None
+
+    @staticmethod
+    def _duration_seconds(value: object) -> float | None:
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, (int, float)):
+            duration = float(value)
+            return duration if isfinite(duration) and duration >= 0 else None
+        if not isinstance(value, str):
+            return None
+        try:
+            duration = float(value)
+        except ValueError:
+            return None
+        return duration if isfinite(duration) and duration >= 0 else None
+
+    @staticmethod
+    def _video_resolution(usage: JSONObject, requested_size: str | None) -> str | None:
+        raw_resolution = usage.get("video_resolution") or usage.get("resolution") or usage.get("SR") or requested_size
+        if isinstance(raw_resolution, bool):
+            return None
+        if isinstance(raw_resolution, (int, float)):
+            resolution = float(raw_resolution)
+            return f"{int(resolution)}p" if isfinite(resolution) and resolution > 0 else None
+        if not isinstance(raw_resolution, str):
+            return None
+        normalized = raw_resolution.strip().lower()
+        for resolution in ("480p", "720p", "1080p", "4k"):
+            if resolution in normalized:
+                return resolution
+        if normalized in {"480", "720", "1080"}:
+            return f"{normalized}p"
+        return normalized or None
 
     @staticmethod
     def _map_status(status: str) -> str:

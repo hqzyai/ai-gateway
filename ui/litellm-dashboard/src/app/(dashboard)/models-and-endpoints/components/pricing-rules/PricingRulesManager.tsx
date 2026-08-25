@@ -34,7 +34,7 @@ const { Text, Title } = Typography;
 const emptyOverrides: readonly ModelCostOverride[] = Object.freeze([]);
 
 const displayDimension = (value: string) => {
-  if (value === "video_token_pricing") return "视频场景";
+  if (value === "video_token_pricing") return "视频 Token";
   if (value === "tiered_pricing") return "Token 阶梯";
   return getPricingDefinition(value).label;
 };
