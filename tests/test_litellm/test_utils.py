@@ -899,6 +899,7 @@ def test_aaamodel_prices_and_context_window_json_is_valid():
                             "/v1/batch",
                             "/v1/audio/transcriptions",
                             "/v1/audio/speech",
+                            "/v1/rerank",
                             "/v1/ocr",
                             "/v1/videos",
                             "/v1/videos/edits",
@@ -982,8 +983,12 @@ def test_aaamodel_prices_and_context_window_json_is_valid():
                     "patternProperties": {
                         r"^(no_)?video_input_[a-z0-9_]{1,24}$": {"type": "number"}
                     },
-                    "required": ["no_video_input", "video_input"],
+                    "minProperties": 1,
                     "additionalProperties": False,
+                },
+                "video_token_pricing_unit": {
+                    "type": "string",
+                    "enum": ["per_token", "per_generation"],
                 },
             },
             # Any "<base>_above_<N>[k]_tokens" threshold rate is honored by
@@ -1014,6 +1019,8 @@ def test_aaamodel_prices_and_context_window_json_is_valid():
     # Define exceptions for models that are allowed to have costs > 1
     # Add model IDs here if they legitimately have costs > 1
     exceptions = [
+        "dashscope/Tripo/Tripo-H3.1",
+        "dashscope/Tripo/Tripo-P1.0",
         # Add any model IDs that should be exempt from the cost validation
         # Example: "expensive-model-id",
     ]

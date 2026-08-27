@@ -5507,6 +5507,7 @@ def _get_model_info_helper(
                 output_cost_per_image_token=_model_info.get("output_cost_per_image_token", None),
                 output_cost_per_video_token=_model_info.get("output_cost_per_video_token", None),
                 video_token_pricing=_model_info.get("video_token_pricing", None),
+                video_token_pricing_unit=_model_info.get("video_token_pricing_unit", None),
                 output_vector_size=_model_info.get("output_vector_size", None),
                 citation_cost_per_token=_model_info.get("citation_cost_per_token", None),
                 tiered_pricing=_model_info.get("tiered_pricing", None),
@@ -8196,6 +8197,12 @@ class ProviderConfigManager:
             )
 
             return VertexAIAudioTranscriptionConfig()
+        elif litellm.LlmProviders.DASHSCOPE == provider:
+            from litellm.llms.dashscope.audio_transcription.transformation import (
+                DashScopeAudioTranscriptionConfig,
+            )
+
+            return DashScopeAudioTranscriptionConfig()
         return None
 
     @staticmethod
@@ -9056,6 +9063,12 @@ class ProviderConfigManager:
             )
 
             return VolcEngineTextToSpeechConfig()
+        elif litellm.LlmProviders.DASHSCOPE == provider:
+            from litellm.llms.dashscope.text_to_speech.transformation import (
+                DashScopeTextToSpeechConfig,
+            )
+
+            return DashScopeTextToSpeechConfig()
         return None
 
     @staticmethod

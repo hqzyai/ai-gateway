@@ -272,6 +272,7 @@ class ModelInfoBase(ProviderSpecificModelInfo, total=False):
     output_cost_per_video: Optional[float]
     output_cost_per_video_token: Optional[float]  # for gemini omni models with video output
     video_token_pricing: Optional[VideoTokenPricing]
+    video_token_pricing_unit: Optional[Literal["per_token", "per_generation"]]
     output_vector_size: Optional[int]
     output_cost_per_reasoning_token: Optional[float]
     output_cost_per_video_per_second: Optional[float]  # only for vertex ai models

@@ -11,6 +11,7 @@ import litellm
 from litellm.llms.custom_httpx.http_handler import HTTPHandler
 from litellm.llms.dashscope.videos.transformation import (
     LEGACY_KEYFRAME_SYNTHESIS_PATH,
+    THREE_D_GENERATION_PATH,
     VIDEO_SYNTHESIS_PATH,
     DashScopeVideoConfig,
 )
@@ -383,3 +384,133 @@ def test_dashscope_video_registration_and_environment() -> None:
         "Authorization": "Bearer test-key",
         "Content-Type": "application/json",
     }
+
+
+@pytest.mark.parametrize(
+    ("input_reference", "extra_body", "expected_input"),
+    [
+        (None, {}, {"prompt": "一只可爱的猫"}),
+        ("https://example.com/cat.png", {}, {"image": "https://example.com/cat.png"}),
+        (
+            None,
+            {
+                "images": [
+                    {"type": "jpeg", "file_token": "https://example.com/front.jpg"},
+                    {},
+                    {"type": "png", "file_token": "https://example.com/back.png"},
+                    {},
+                ]
+            },
+            {
+                "images": [
+                    {"type": "jpeg", "file_token": "https://example.com/front.jpg"},
+                    {},
+                    {"type": "png", "file_token": "https://example.com/back.png"},
+                    {},
+                ]
+            },
+        ),
+    ],
+)
+def test_dashscope_tripo_input_modes(
+    input_reference: str | None,
+    extra_body: dict[str, object],
+    expected_input: dict[str, object],
+) -> None:
+    config = DashScopeVideoConfig()
+    params = config.map_openai_params(
+        cast(VideoCreateOptionalRequestParams, {"input_reference": input_reference, **extra_body}),
+        model="Tripo/Tripo-H3.1",
+        drop_params=False,
+    )
+    request, _, url = config.transform_video_create_request(
+        model="Tripo/Tripo-H3.1",
+        prompt="一只可爱的猫",
+        api_base="https://dashscope.example.com/api/v1",
+        video_create_optional_request_params=params,
+        litellm_params=GenericLiteLLMParams(),
+        headers={},
+    )
+
+    assert request["input"] == expected_input
+    assert url.endswith(THREE_D_GENERATION_PATH)
+
+
+def test_dashscope_tripo_rejects_invalid_multi_image_input() -> None:
+    config = DashScopeVideoConfig()
+    params = config.map_openai_params(
+        cast(VideoCreateOptionalRequestParams, {"images": [{"type": "jpeg", "file_token": "one.jpg"}]}),
+        model="Tripo/Tripo-H3.1",
+        drop_params=False,
+    )
+
+    with pytest.raises(ValueError, match="exactly four"):
+        config.transform_video_create_request(
+            model="Tripo/Tripo-H3.1",
+            prompt="",
+            api_base="https://dashscope.example.com/api/v1",
+            video_create_optional_request_params=params,
+            litellm_params=GenericLiteLLMParams(),
+            headers={},
+        )
+
+
+def test_dashscope_tripo_base_model_response_and_pricing_context() -> None:
+    config = DashScopeVideoConfig()
+    response = httpx.Response(
+        200,
+        json={
+            "request_id": "tripo-request",
+            "output": {
+                "task_id": "tripo-task",
+                "task_status": "SUCCEEDED",
+                "results": [
+                    {
+                        "base_model_url": "https://example.com/model.glb",
+                        "rendered_image_url": "https://example.com/preview.webp",
+                    }
+                ],
+            },
+            "usage": {"count": 2, "geometry_quality": "ultra", "texture_quality": "detailed"},
+        },
+    )
+    video = config.transform_video_create_response(
+        model="Tripo/Tripo-H3.1",
+        raw_response=response,
+        logging_obj=MagicMock(),
+        request_data={
+            "model": "Tripo/Tripo-H3.1",
+            "input": {"image": "https://example.com/cat.png"},
+            "parameters": {"pbr": False, "texture": False},
+        },
+    )
+
+    assert video.status == "completed"
+    assert video.usage == {
+        "count": 2,
+        "geometry_quality": "ultra",
+        "texture_quality": "detailed",
+        "video_resolution": "ultra_no_texture",
+        "has_video_input": True,
+        "completion_tokens": 2,
+        "generated_videos": 2,
+    }
+    assert video._hidden_params["video_url"] == "https://example.com/model.glb"
+    assert video._hidden_params["rendered_image_url"] == "https://example.com/preview.webp"
+
+
+def test_dashscope_tripo_pbr_forces_texture_pricing() -> None:
+    assert (
+        DashScopeVideoConfig._three_d_pricing_tier(
+            usage={},
+            request_data={"parameters": {"geometry_quality": "standard", "texture": False, "pbr": True}},
+        )
+        == "standard_sd_texture"
+    )
+    assert (
+        DashScopeVideoConfig._three_d_pricing_tier(
+            usage={"texture_quality": "detailed"},
+            request_data={"parameters": {"geometry_quality": "ultra"}},
+        )
+        == "ultra_hd_texture"
+    )

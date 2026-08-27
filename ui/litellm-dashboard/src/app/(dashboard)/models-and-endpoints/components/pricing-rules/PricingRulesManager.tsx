@@ -25,16 +25,17 @@ import {
   createPricingRuleDraft,
   getModeLabel,
   getPricingDefinition,
+  getVideoPricingUnit,
   pricingKeysForEntry,
   serializePricingRule,
 } from "./pricingDimensions";
-import { ModelCostEntry, ModelCostOverride, PricingRuleDraft } from "./types";
+import { ModelCostEntry, ModelCostOverride, PricingRuleDraft, VideoPricingUnit } from "./types";
 
 const { Text, Title } = Typography;
 const emptyOverrides: readonly ModelCostOverride[] = Object.freeze([]);
 
-const displayDimension = (value: string) => {
-  if (value === "video_token_pricing") return "视频 Token";
+const displayDimension = (value: string, videoPricingUnit: VideoPricingUnit) => {
+  if (value === "video_token_pricing") return videoPricingUnit === "per_generation" ? "生成资产" : "视频 Token";
   if (value === "tiered_pricing") return "Token 阶梯";
   return getPricingDefinition(value).label;
 };
@@ -53,6 +54,7 @@ interface PricingTableRow {
   provider: string;
   mode: string;
   dimensions: string[];
+  videoPricingUnit: VideoPricingUnit;
   isOverride: boolean;
 }
 
@@ -88,15 +90,21 @@ const PricingRulesManager = ({
 
   const rows = useMemo<PricingTableRow[]>(
     () =>
-      Object.entries(modelCostMap).map(([modelName, entry]) => ({
-        key: modelName,
-        modelName,
-        provider:
-          typeof entry.litellm_provider === "string" ? entry.litellm_provider : modelName.split("/")[0] || "custom",
-        mode: typeof entry.mode === "string" ? entry.mode : "unknown",
-        dimensions: pricingKeysForEntry(entry),
-        isOverride: overridesByModel.has(modelName),
-      })),
+      Object.entries(modelCostMap).map(([modelName, entry]) => {
+        const effectiveEntry = { ...entry, ...overridesByModel.get(modelName) };
+        return {
+          key: modelName,
+          modelName,
+          provider:
+            typeof effectiveEntry.litellm_provider === "string"
+              ? effectiveEntry.litellm_provider
+              : modelName.split("/")[0] || "custom",
+          mode: typeof effectiveEntry.mode === "string" ? effectiveEntry.mode : "unknown",
+          dimensions: pricingKeysForEntry(effectiveEntry),
+          videoPricingUnit: getVideoPricingUnit(effectiveEntry),
+          isOverride: overridesByModel.has(modelName),
+        };
+      }),
     [modelCostMap, overridesByModel],
   );
 
@@ -129,7 +137,7 @@ const PricingRulesManager = ({
     const override = overridesByModel.get(modelName);
     const base = modelCostMap[modelName] ?? {};
     setSelectedModel(modelName);
-    setDraft(createPricingRuleDraft(modelName, override ?? base));
+    setDraft(createPricingRuleDraft(modelName, { ...base, ...override }));
   };
 
   const createRule = () => {
@@ -202,11 +210,11 @@ const PricingRulesManager = ({
     {
       title: "计费维度",
       dataIndex: "dimensions",
-      render: (values: string[]) => (
+      render: (values: string[], row) => (
         <Space size={[4, 4]} wrap>
           {values.slice(0, 3).map((value) => (
             <Tag key={value} color="blue">
-              {displayDimension(value)}
+              {displayDimension(value, row.videoPricingUnit)}
             </Tag>
           ))}
           {values.length > 3 && <Tag>+{values.length - 3}</Tag>}

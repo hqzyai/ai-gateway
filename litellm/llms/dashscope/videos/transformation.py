@@ -31,12 +31,20 @@ else:
 DEFAULT_DASHSCOPE_VIDEO_API_BASE = "https://dashscope.aliyuncs.com/api/v1"
 VIDEO_SYNTHESIS_PATH = "/services/aigc/video-generation/video-synthesis"
 LEGACY_KEYFRAME_SYNTHESIS_PATH = "/services/aigc/image2video/video-synthesis"
+THREE_D_GENERATION_PATH = "/services/aigc/video-generation/3d-generation"
 ResponseModel = TypeVar("ResponseModel", bound=BaseModel)
 OBJECT_DICT_ADAPTER = TypeAdapter(dict[str, object])
 JSONObject: TypeAlias = dict[str, object]
 Headers: TypeAlias = dict[str, str]
 StringList: TypeAlias = list[str]
 ObjectList: TypeAlias = list[object]
+OBJECT_LIST_ADAPTER = TypeAdapter(ObjectList)
+
+
+class _DashScopeThreeDResult(BaseModel):
+    pbr_model_url: str | None = None
+    base_model_url: str | None = None
+    rendered_image_url: str | None = None
 
 
 class _DashScopeVideoOutput(BaseModel):
@@ -46,6 +54,7 @@ class _DashScopeVideoOutput(BaseModel):
     message: str | None = None
     code: str | None = None
     orig_prompt: str | None = None
+    results: list[_DashScopeThreeDResult] = Field(default_factory=list)
 
 
 class _DashScopeVideoResponse(BaseModel):
@@ -62,6 +71,8 @@ class DashScopeVideoConfig(BaseVideoConfig):
             "first_frame_url",
             "function",
             "img_url",
+            "image",
+            "images",
             "last_clip_url",
             "last_frame_url",
             "mask_image_url",
@@ -82,10 +93,12 @@ class DashScopeVideoConfig(BaseVideoConfig):
             "control_condition",
             "duration",
             "expand_ratio",
+            "geometry_quality",
             "left_scale",
             "mask_frame_id",
             "mask_type",
             "obj_or_bg",
+            "pbr",
             "prompt_extend",
             "ratio",
             "resolution",
@@ -94,6 +107,8 @@ class DashScopeVideoConfig(BaseVideoConfig):
             "shot_type",
             "size",
             "strength",
+            "texture",
+            "texture_quality",
             "top_scale",
             "watermark",
         )
@@ -203,9 +218,13 @@ class DashScopeVideoConfig(BaseVideoConfig):
         headers["X-DashScope-Async"] = "enable"
         request_data = self._build_generation_request(model, prompt, video_create_optional_request_params)
         synthesis_path = (
-            LEGACY_KEYFRAME_SYNTHESIS_PATH
-            if "kf2v" in model.lower() and not self._uses_media_input(model)
-            else VIDEO_SYNTHESIS_PATH
+            THREE_D_GENERATION_PATH
+            if self._is_three_d_model(model)
+            else (
+                LEGACY_KEYFRAME_SYNTHESIS_PATH
+                if "kf2v" in model.lower() and not self._uses_media_input(model)
+                else VIDEO_SYNTHESIS_PATH
+            )
         )
         return request_data, [], f"{api_base}{synthesis_path}"
 
@@ -249,6 +268,7 @@ class DashScopeVideoConfig(BaseVideoConfig):
             response=response,
             provider=custom_llm_provider or LlmProviders.DASHSCOPE.value,
             model=model,
+            has_video_input=(decoded_video_id.get("has_video_input") is True),
         )
 
     def transform_video_content_request(
@@ -473,9 +493,18 @@ class DashScopeVideoConfig(BaseVideoConfig):
                 if key in self._PARAMETER_PARAMS and value is not None
             },
         }
+        generation_input = {**raw_input, **normalized_input}
+        if self._is_three_d_model(model):
+            input_modes = tuple(key for key in ("prompt", "image", "images") if generation_input.get(key) is not None)
+            if len(input_modes) > 1:
+                raise ValueError("DashScope Tripo requests must provide exactly one of prompt, image, or images.")
+            if not input_modes:
+                generation_input["prompt"] = prompt
+        else:
+            generation_input["prompt"] = prompt
         return {
             "model": model,
-            "input": {**raw_input, **normalized_input, "prompt": prompt},
+            "input": generation_input,
             "parameters": parameters,
         }
 
@@ -487,6 +516,8 @@ class DashScopeVideoConfig(BaseVideoConfig):
     ) -> JSONObject:
         if input_reference is not None and not isinstance(input_reference, str):
             raise ValueError("DashScope input_reference must be a publicly accessible image URL.")
+        if self._is_three_d_model(model):
+            return self._normalize_three_d_input(direct_input, input_reference)
         if self._uses_media_input(model):
             explicit_media = direct_input.get("media")
             first_frame = direct_input.get("first_frame_url") or input_reference
@@ -517,18 +548,57 @@ class DashScopeVideoConfig(BaseVideoConfig):
             **({"img_url": input_reference} if input_reference is not None else {}),
         }
 
+    @staticmethod
+    def _normalize_three_d_input(direct_input: JSONObject, input_reference: str | None) -> JSONObject:
+        images = direct_input.get("images")
+        image = direct_input.get("image") or input_reference
+        if images is not None:
+            try:
+                raw_images = OBJECT_LIST_ADAPTER.validate_python(images)
+            except ValidationError as exc:
+                raise ValueError("DashScope Tripo images must be an array of exactly four objects.") from exc
+            if len(raw_images) != 4:
+                raise ValueError("DashScope Tripo images must be an array of exactly four objects.")
+            try:
+                normalized_images = tuple(OBJECT_DICT_ADAPTER.validate_python(item) for item in raw_images)
+            except ValidationError as exc:
+                raise ValueError("DashScope Tripo images must be an array of exactly four objects.") from exc
+            valid_images = tuple(item for item in normalized_images if item)
+            if not 2 <= len(valid_images) <= 4:
+                raise ValueError("DashScope Tripo multi-image input requires two to four non-empty images.")
+            if any(
+                item.get("type") not in ("jpeg", "png") or not isinstance(item.get("file_token"), str)
+                for item in valid_images
+            ):
+                raise ValueError("Each DashScope Tripo image must contain type jpeg/png and a file_token URL.")
+            images = list(normalized_images)
+        return {
+            **{key: value for key, value in direct_input.items() if key not in {"image", "images"}},
+            **({"images": images} if images is not None else {}),
+            **({"image": image} if images is None and image is not None else {}),
+        }
+
     def _response_to_video(
         self,
         response: _DashScopeVideoResponse,
         provider: str,
         model: str | None,
         request_data: JSONObject | None = None,
+        has_video_input: bool | None = None,
     ) -> VideoObject:
         status = self._map_status(response.output.task_status)
         duration = response.usage.get("duration") or response.usage.get("output_video_duration")
         requested_size = self._request_size(request_data)
         duration_seconds = self._duration_seconds(duration)
-        video_resolution = self._video_resolution(response.usage, requested_size)
+        is_three_d = self._is_three_d_model(model or "")
+        video_resolution = (
+            self._three_d_pricing_tier(response.usage, request_data)
+            if is_three_d
+            else self._video_resolution(response.usage, requested_size)
+        )
+        resolved_has_video_input = (
+            has_video_input if has_video_input is not None else self._request_has_three_d_image(request_data)
+        )
         error = (
             {
                 "code": response.output.code or "video_generation_failed",
@@ -538,7 +608,12 @@ class DashScopeVideoConfig(BaseVideoConfig):
             else None
         )
         video = VideoObject(
-            id=encode_video_id_with_provider(response.output.task_id, provider, model),
+            id=encode_video_id_with_provider(
+                response.output.task_id,
+                provider,
+                model,
+                has_video_input=resolved_has_video_input if is_three_d else None,
+            ),
             object="video",
             status=status,
             model=model,
@@ -553,12 +628,32 @@ class DashScopeVideoConfig(BaseVideoConfig):
                     else JSONObject()
                 ),
                 **(JSONObject(video_resolution=video_resolution) if video_resolution is not None else JSONObject()),
-                "generated_videos": 1 if status == "completed" else 0,
+                **(JSONObject(has_video_input=resolved_has_video_input) if is_three_d else JSONObject()),
+                **(
+                    JSONObject(completion_tokens=self._three_d_count(response.usage))
+                    if status == "completed" and is_three_d
+                    else JSONObject()
+                ),
+                "generated_videos": self._three_d_count(response.usage)
+                if status == "completed" and is_three_d
+                else 1
+                if status == "completed"
+                else 0,
             },
         )
+        result = response.output.results[0] if response.output.results else None
         hidden_params = {
             **({"request_id": response.request_id} if response.request_id is not None else {}),
             **({"video_url": response.output.video_url} if response.output.video_url is not None else {}),
+            **({"video_url": result.pbr_model_url} if result is not None and result.pbr_model_url is not None else {}),
+            **(
+                {"video_url": result.base_model_url} if result is not None and result.base_model_url is not None else {}
+            ),
+            **(
+                {"rendered_image_url": result.rendered_image_url}
+                if result is not None and result.rendered_image_url is not None
+                else {}
+            ),
         }
         video.set_hidden_params(hidden_params)
         return video
@@ -567,9 +662,13 @@ class DashScopeVideoConfig(BaseVideoConfig):
         response = self._parse_response(raw_response, _DashScopeVideoResponse)
         if self._map_status(response.output.task_status) != "completed":
             raise ValueError(f"DashScope video is not ready. Current status: {response.output.task_status}.")
-        if response.output.video_url is None:
+        result = response.output.results[0] if response.output.results else None
+        resolved_url = response.output.video_url or (
+            result.pbr_model_url or result.base_model_url if result is not None else None
+        )
+        if resolved_url is None:
             raise ValueError("DashScope video task completed without a video URL.")
-        return response.output.video_url
+        return resolved_url
 
     def _parse_response(self, raw_response: httpx.Response, response_type: type[ResponseModel]) -> ResponseModel:
         if raw_response.status_code >= 400:
@@ -655,6 +754,45 @@ class DashScopeVideoConfig(BaseVideoConfig):
     @staticmethod
     def _uses_media_input(model: str) -> bool:
         return model.lower().startswith("wan2.7-")
+
+    @staticmethod
+    def _is_three_d_model(model: str) -> bool:
+        return model.lower().startswith("tripo/")
+
+    @staticmethod
+    def _request_has_three_d_image(request_data: JSONObject | None) -> bool:
+        if request_data is None:
+            return False
+        try:
+            input_data = OBJECT_DICT_ADAPTER.validate_python(request_data.get("input"))
+        except ValidationError:
+            return False
+        return input_data.get("image") is not None or input_data.get("images") is not None
+
+    @staticmethod
+    def _three_d_pricing_tier(usage: JSONObject, request_data: JSONObject | None) -> str:
+        try:
+            parameters = OBJECT_DICT_ADAPTER.validate_python(request_data.get("parameters") if request_data else None)
+        except ValidationError:
+            parameters = {}
+        geometry = usage.get("geometry_quality") or parameters.get("geometry_quality") or "standard"
+        pbr_enabled = usage.get("pbr", parameters.get("pbr", True))
+        texture_enabled = usage.get("texture", parameters.get("texture", True))
+        texture = usage.get("texture_quality") or parameters.get("texture_quality") or "standard"
+        normalized_texture = str(texture).lower()
+        texture_tier = (
+            "no_texture"
+            if pbr_enabled is False and texture_enabled is False
+            else "hd_texture"
+            if normalized_texture in {"detailed", "hd"}
+            else "sd_texture"
+        )
+        return f"{str(geometry).lower()}_{texture_tier}"
+
+    @staticmethod
+    def _three_d_count(usage: JSONObject) -> int:
+        count = usage.get("count")
+        return count if isinstance(count, int) and count > 0 else 1
 
     @staticmethod
     def _normalize_api_base(api_base: str) -> str:

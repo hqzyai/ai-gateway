@@ -1,8 +1,8 @@
 import { DeleteOutlined, PlusOutlined } from "@ant-design/icons";
 import { Alert, Button, Divider, Drawer, Empty, Input, InputNumber, Select, Space, Tabs, Tag, Typography } from "antd";
 import { useMemo, useState } from "react";
-import { getModeLabel, getPricingDefinition, pricingDimensions } from "./pricingDimensions";
-import { PricingRuleDraft, TieredPricingRow, VideoPricingRow } from "./types";
+import { getModeLabel, getPricingDefinition, getVideoPricingScale, pricingDimensions } from "./pricingDimensions";
+import { PricingRuleDraft, TieredPricingRow, VideoPricingRow, VideoPricingUnit } from "./types";
 
 const { Text, Title } = Typography;
 
@@ -81,6 +81,14 @@ const PricingRuleDrawer = ({
 
   const updateVideoPricing = (id: string, values: Partial<VideoPricingRow>) =>
     updateDraft({ videoPricing: draft.videoPricing.map((row) => (row.id === id ? { ...row, ...values } : row)) });
+
+  const updateVideoPricingUnit = (videoPricingUnit: VideoPricingUnit) => {
+    const scale = getVideoPricingScale(videoPricingUnit) / getVideoPricingScale(draft.videoPricingUnit);
+    updateDraft({
+      videoPricingUnit,
+      videoPricing: draft.videoPricing.map((row) => ({ ...row, value: row.value * scale })),
+    });
+  };
 
   const addTier = () =>
     updateDraft({
@@ -172,8 +180,25 @@ const PricingRuleDrawer = ({
       <Alert
         type="info"
         showIcon
-        message="按输入场景和分辨率配置视频 Token 价格，支持 720p、1080p、4k 等自定义分辨率。"
+        message={
+          draft.videoPricingUnit === "per_generation"
+            ? "按输入场景和生成规格配置单个生成结果的价格，最终费用为单价乘以生成数量。"
+            : "按输入场景和分辨率配置视频 Token 价格，支持 720p、1080p、4k 等自定义分辨率。"
+        }
       />
+      <div>
+        <Text type="secondary">计费单位</Text>
+        <Select
+          className="mt-1 w-full"
+          value={draft.videoPricingUnit}
+          disabled={readOnly}
+          options={[
+            { label: "每百万视频 Token", value: "per_token" },
+            { label: "每个生成结果（3D / 资产）", value: "per_generation" },
+          ]}
+          onChange={updateVideoPricingUnit}
+        />
+      </div>
       {draft.videoPricing.map((row) => (
         <div
           key={row.id}
@@ -183,14 +208,24 @@ const PricingRuleDrawer = ({
             value={row.inputType}
             disabled={readOnly}
             options={[
-              { label: "不含视频输入", value: "no_video_input" },
-              { label: "包含视频输入", value: "video_input" },
+              {
+                label: draft.videoPricingUnit === "per_generation" ? "无参考媒体输入" : "不含视频输入",
+                value: "no_video_input",
+              },
+              {
+                label: draft.videoPricingUnit === "per_generation" ? "含参考媒体输入" : "包含视频输入",
+                value: "video_input",
+              },
             ]}
             onChange={(inputType) => updateVideoPricing(row.id, { inputType })}
           />
           <Input
             value={row.resolution}
-            placeholder="default / 1080p / 4k"
+            placeholder={
+              draft.videoPricingUnit === "per_generation"
+                ? "standard_no_texture / ultra_hd_texture"
+                : "default / 1080p / 4k"
+            }
             disabled={readOnly}
             onChange={(event) => updateVideoPricing(row.id, { resolution: event.target.value })}
           />
@@ -199,7 +234,7 @@ const PricingRuleDrawer = ({
             min={0}
             precision={9}
             value={row.value}
-            addonAfter="美元 / 百万视频 Token"
+            addonAfter={draft.videoPricingUnit === "per_generation" ? "美元 / 个" : "美元 / 百万视频 Token"}
             disabled={readOnly}
             onChange={(value) => updateVideoPricing(row.id, { value: value ?? 0 })}
           />
@@ -371,7 +406,11 @@ const PricingRuleDrawer = ({
       <Tabs
         items={[
           { key: "flat", label: `固定价格（${draft.dimensions.length}）`, children: pricingTab },
-          { key: "video", label: `视频 Token（${draft.videoPricing.length}）`, children: videoTab },
+          {
+            key: "video",
+            label: `${draft.videoPricingUnit === "per_generation" ? "生成资产" : "视频 Token"}（${draft.videoPricing.length}）`,
+            children: videoTab,
+          },
           { key: "tiers", label: `Token 阶梯（${draft.tiers.length}）`, children: tierTab },
         ]}
       />

@@ -6,10 +6,16 @@ import {
   PricingValue,
   TieredPricingRow,
   VideoPricingRow,
+  VideoPricingUnit,
 } from "./types";
 
 const perMillion = 1_000_000;
 const storedPrice = (value: number, scale: number): number => Number((value / scale).toPrecision(15));
+
+export const getVideoPricingUnit = (entry: ModelCostEntry): VideoPricingUnit =>
+  entry.video_token_pricing_unit === "per_generation" ? "per_generation" : "per_token";
+
+export const getVideoPricingScale = (unit: VideoPricingUnit): number => (unit === "per_generation" ? 1 : perMillion);
 
 const modeLabels: Readonly<Record<string, string>> = Object.freeze({
   chat: "对话",
@@ -254,13 +260,13 @@ const isPricingNumber = (key: string, value: PricingValue): value is number => {
 
 const createId = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
 
-const parseVideoPricing = (value: PricingValue): VideoPricingRow[] => {
+const parseVideoPricing = (value: PricingValue, unit: VideoPricingUnit): VideoPricingRow[] => {
   if (value === null || Array.isArray(value) || typeof value !== "object") return [];
   return Object.entries(value).flatMap(([key, price]) => {
     if (typeof price !== "number") return [];
     const inputType = key.startsWith("no_video_input") ? "no_video_input" : "video_input";
     const resolution = key.replace(inputType, "").replace(/^_/, "") || "default";
-    return [{ id: createId(), inputType, resolution, value: price * perMillion }];
+    return [{ id: createId(), inputType, resolution, value: price * getVideoPricingScale(unit) }];
   });
 };
 
@@ -286,18 +292,22 @@ const parseTiers = (value: PricingValue): TieredPricingRow[] => {
   });
 };
 
-export const createPricingRuleDraft = (modelName: string, entry: ModelCostEntry): PricingRuleDraft => ({
-  modelName,
-  provider: typeof entry.litellm_provider === "string" ? entry.litellm_provider : modelName.split("/")[0] || "custom",
-  mode: typeof entry.mode === "string" ? entry.mode : "chat",
-  source: typeof entry.source === "string" ? entry.source : "",
-  dimensions: Object.entries(entry).flatMap(([key, value]): PricingDimensionRow[] => {
-    if (key === "video_token_pricing" || key === "tiered_pricing" || !isPricingNumber(key, value)) return [];
-    return [{ id: createId(), key, value: value * getPricingDefinition(key).scale }];
-  }),
-  videoPricing: parseVideoPricing(entry.video_token_pricing),
-  tiers: parseTiers(entry.tiered_pricing),
-});
+export const createPricingRuleDraft = (modelName: string, entry: ModelCostEntry): PricingRuleDraft => {
+  const videoPricingUnit = getVideoPricingUnit(entry);
+  return {
+    modelName,
+    provider: typeof entry.litellm_provider === "string" ? entry.litellm_provider : modelName.split("/")[0] || "custom",
+    mode: typeof entry.mode === "string" ? entry.mode : "chat",
+    source: typeof entry.source === "string" ? entry.source : "",
+    dimensions: Object.entries(entry).flatMap(([key, value]): PricingDimensionRow[] => {
+      if (key === "video_token_pricing" || key === "tiered_pricing" || !isPricingNumber(key, value)) return [];
+      return [{ id: createId(), key, value: value * getPricingDefinition(key).scale }];
+    }),
+    videoPricing: parseVideoPricing(entry.video_token_pricing, videoPricingUnit),
+    videoPricingUnit,
+    tiers: parseTiers(entry.tiered_pricing),
+  };
+};
 
 const nestedPricingKey = (row: VideoPricingRow) =>
   `${row.inputType}${row.resolution === "default" ? "" : `_${row.resolution.trim().toLowerCase()}`}`;
@@ -334,8 +344,12 @@ export const serializePricingRule = (draft: PricingRuleDraft): ModelCostEntry =>
   ...(draft.videoPricing.length > 0
     ? {
         video_token_pricing: Object.fromEntries(
-          draft.videoPricing.map((row) => [nestedPricingKey(row), storedPrice(row.value, perMillion)]),
+          draft.videoPricing.map((row) => [
+            nestedPricingKey(row),
+            storedPrice(row.value, getVideoPricingScale(draft.videoPricingUnit)),
+          ]),
         ),
+        ...(draft.videoPricingUnit === "per_generation" ? { video_token_pricing_unit: draft.videoPricingUnit } : {}),
       }
     : {}),
   ...(draft.tiers.length > 0

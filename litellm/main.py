@@ -7743,6 +7743,84 @@ def transcription(
             provider_config=provider_config,
             shared_session=shared_session,
         )
+    elif custom_llm_provider == "dashscope":
+        from litellm.llms.dashscope.audio_transcription.handler import (
+            DashScopeAudioTranscriptionHandler,
+        )
+        from litellm.llms.dashscope.audio_transcription.transformation import (
+            FILE_TRANSCRIPTION_MODEL,
+            STREAMING_ASR_MODEL,
+            DashScopeAudioTranscriptionConfig,
+        )
+
+        if not isinstance(provider_config, DashScopeAudioTranscriptionConfig):
+            raise ValueError("DashScope Audio Transcription configuration not found")
+        dashscope_extra_body = kwargs.get("extra_body")
+        direct_dashscope_params = {
+            key: kwargs[key]
+            for key in (
+                "channel_id",
+                "chunk_interval",
+                "chunk_size",
+                "file_url",
+                "file_urls",
+                "format",
+                "language_hints",
+                "max_polling_attempts",
+                "polling_interval",
+                "sample_rate",
+            )
+            if kwargs.get(key) is not None
+        }
+        if isinstance(dashscope_extra_body, dict) or direct_dashscope_params:
+            optional_params["extra_body"] = {
+                **(dashscope_extra_body if isinstance(dashscope_extra_body, dict) else {}),
+                **direct_dashscope_params,
+            }
+        if model in (FILE_TRANSCRIPTION_MODEL, STREAMING_ASR_MODEL):
+            response = DashScopeAudioTranscriptionHandler().audio_transcriptions(
+                model=model,
+                audio_file=file,
+                optional_params=optional_params,
+                litellm_params=litellm_params_dict,
+                model_response=model_response,
+                atranscription=atranscription,
+                client=(
+                    client
+                    if client is not None and (isinstance(client, HTTPHandler) or isinstance(client, AsyncHTTPHandler))
+                    else None
+                ),
+                timeout=timeout,
+                max_retries=max_retries,
+                logging_obj=litellm_logging_obj,
+                api_base=api_base,
+                api_key=explicit_api_key or api_key,
+                headers=extra_headers,
+                provider_config=provider_config,
+            )
+        else:
+            response = base_llm_http_handler.audio_transcriptions(
+                model=model,
+                audio_file=file,
+                optional_params=optional_params,
+                litellm_params=litellm_params_dict,
+                model_response=model_response,
+                atranscription=atranscription,
+                client=(
+                    client
+                    if client is not None and (isinstance(client, HTTPHandler) or isinstance(client, AsyncHTTPHandler))
+                    else None
+                ),
+                timeout=timeout,
+                max_retries=max_retries,
+                logging_obj=litellm_logging_obj,
+                api_base=api_base,
+                api_key=explicit_api_key or api_key,
+                custom_llm_provider=custom_llm_provider,
+                headers=extra_headers,
+                provider_config=provider_config,
+                shared_session=shared_session,
+            )
     elif custom_llm_provider in ("openai", *litellm.openai_compatible_providers):
         api_base = (
             api_base
@@ -7999,7 +8077,31 @@ def speech(
         Coroutine[Any, Any, HttpxBinaryResponseContent],
         None,
     ] = None
-    if custom_llm_provider == "openai" or (
+    if custom_llm_provider == "dashscope":
+        from litellm.llms.dashscope.text_to_speech.handler import (
+            DashScopeTextToSpeechHandler,
+        )
+        from litellm.llms.dashscope.text_to_speech.transformation import (
+            DashScopeTextToSpeechConfig,
+        )
+
+        if not isinstance(text_to_speech_provider_config, DashScopeTextToSpeechConfig):
+            raise ValueError("DashScope Text-to-Speech configuration not found")
+        response = DashScopeTextToSpeechHandler().text_to_speech(
+            model=model,
+            input=input,
+            voice=voice if isinstance(voice, str) else None,
+            optional_params=optional_params,
+            litellm_params=litellm_params_dict,
+            logging_obj=logging_obj,
+            timeout=timeout,
+            api_key=explicit_api_key or dynamic_api_key or api_key,
+            api_base=api_base,
+            extra_headers={**(extra_headers or {}), **(headers or {})},
+            aspeech=aspeech or False,
+            config=text_to_speech_provider_config,
+        )
+    elif custom_llm_provider == "openai" or (
         custom_llm_provider in litellm.openai_compatible_providers and custom_llm_provider != "volcengine"
     ):
         if voice is None or not (isinstance(voice, str)):

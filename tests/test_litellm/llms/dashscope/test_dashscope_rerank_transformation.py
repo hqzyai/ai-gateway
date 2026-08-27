@@ -14,7 +14,9 @@ sys.path.insert(0, os.path.abspath("../../../../.."))
 
 from litellm.llms.dashscope.common_utils import DashScopeError
 from litellm.llms.dashscope.rerank.transformation import (
+    DEFAULT_NATIVE_RERANK_BASE,
     DEFAULT_RERANK_URL,
+    NATIVE_RERANK_PATH,
     DashScopeRerankConfig,
 )
 from litellm.types.rerank import RerankResponse
@@ -48,14 +50,10 @@ class TestDashScopeRerankURL:
 
     def test_trailing_slash_stripped(self):
         full = "https://dashscope.aliyuncs.com/compatible-api/v1/reranks/"
-        assert self.config.get_complete_url(
-            api_base=full, model="qwen3-rerank"
-        ) == full.rstrip("/")
+        assert self.config.get_complete_url(api_base=full, model="qwen3-rerank") == full.rstrip("/")
 
     def test_custom_v1_base_appends_reranks(self):
-        url = self.config.get_complete_url(
-            api_base="https://my-proxy.example.com/v1", model="qwen3-rerank"
-        )
+        url = self.config.get_complete_url(api_base="https://my-proxy.example.com/v1", model="qwen3-rerank")
         assert url == "https://my-proxy.example.com/v1/reranks"
 
 
@@ -64,24 +62,18 @@ class TestDashScopeRerankRequest:
         self.config = DashScopeRerankConfig()
 
     def test_validate_environment_with_explicit_key(self):
-        headers = self.config.validate_environment(
-            headers={}, model="qwen3-rerank", api_key="sk-test"
-        )
+        headers = self.config.validate_environment(headers={}, model="qwen3-rerank", api_key="sk-test")
         assert headers["Authorization"] == "Bearer sk-test"
         assert headers["content-type"] == "application/json"
 
     def test_validate_environment_missing_key(self, monkeypatch):
         monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
         with pytest.raises(ValueError, match="DASHSCOPE_API_KEY"):
-            self.config.validate_environment(
-                headers={}, model="qwen3-rerank", api_key=None
-            )
+            self.config.validate_environment(headers={}, model="qwen3-rerank", api_key=None)
 
     def test_validate_environment_falls_back_to_env(self, monkeypatch):
         monkeypatch.setenv("DASHSCOPE_API_KEY", "env-key")
-        headers = self.config.validate_environment(
-            headers={}, model="qwen3-rerank", api_key=None
-        )
+        headers = self.config.validate_environment(headers={}, model="qwen3-rerank", api_key=None)
         assert headers["Authorization"] == "Bearer env-key"
 
     def test_supported_params(self):
@@ -90,6 +82,7 @@ class TestDashScopeRerankRequest:
             "documents",
             "top_n",
             "return_documents",
+            "instruction",
         ]
 
     def test_map_params_drops_unsupported(self):
@@ -158,6 +151,44 @@ class TestDashScopeRerankRequest:
                 headers={},
             )
 
+    def test_native_multimodal_url_and_request(self):
+        assert self.config.get_complete_url(None, "qwen3-vl-rerank") == (
+            f"{DEFAULT_NATIVE_RERANK_BASE}{NATIVE_RERANK_PATH}"
+        )
+        params = self.config.map_cohere_rerank_params(
+            non_default_params={"extra_body": {"fps": 1.5}},
+            model="qwen3-vl-rerank",
+            drop_params=False,
+            query="一只猫",
+            documents=[
+                "文本候选",
+                {"type": "image_url", "image_url": {"url": "https://example.com/cat.png"}},
+                {"type": "video_url", "video_url": "https://example.com/cat.mp4"},
+            ],
+            top_n=2,
+            return_documents=True,
+            instruction="按相关性排序",
+        )
+        request = self.config.transform_rerank_request("qwen3-vl-rerank", params, {})
+
+        assert request == {
+            "model": "qwen3-vl-rerank",
+            "input": {
+                "query": {"text": "一只猫"},
+                "documents": [
+                    {"text": "文本候选"},
+                    {"image": "https://example.com/cat.png"},
+                    {"video": "https://example.com/cat.mp4"},
+                ],
+            },
+            "parameters": {
+                "top_n": 2,
+                "return_documents": True,
+                "instruct": "按相关性排序",
+                "fps": 1.5,
+            },
+        }
+
 
 class TestDashScopeRerankResponse:
     def setup_method(self):
@@ -206,16 +237,12 @@ class TestDashScopeRerankResponse:
             "object": "list",
             "results": [
                 {
-                    "document": {
-                        "text": "苹果派的制作步骤包括准备面团、切苹果、调制馅料、组装和烘烤。"
-                    },
+                    "document": {"text": "苹果派的制作步骤包括准备面团、切苹果、调制馅料、组装和烘烤。"},
                     "index": 1,
                     "relevance_score": 0.8304247466067356,
                 },
                 {
-                    "document": {
-                        "text": "制作苹果派时，预先煮软苹果可以缩短烘烤时间。"
-                    },
+                    "document": {"text": "制作苹果派时，预先煮软苹果可以缩短烘烤时间。"},
                     "index": 3,
                     "relevance_score": 0.7142660211908354,
                 },
@@ -236,9 +263,7 @@ class TestDashScopeRerankResponse:
             {
                 "index": 1,
                 "relevance_score": 0.8304247466067356,
-                "document": {
-                    "text": "苹果派的制作步骤包括准备面团、切苹果、调制馅料、组装和烘烤。"
-                },
+                "document": {"text": "苹果派的制作步骤包括准备面团、切苹果、调制馅料、组装和烘烤。"},
             },
             {
                 "index": 3,
@@ -307,11 +332,34 @@ class TestDashScopeRerankResponse:
             )
 
     def test_get_error_class(self):
-        err = self.config.get_error_class(
-            error_message="boom", status_code=500, headers={}
-        )
+        err = self.config.get_error_class(error_message="boom", status_code=500, headers={})
         assert isinstance(err, DashScopeError)
         assert err.status_code == 500
+
+    def test_native_multimodal_response_and_cost(self):
+        body = {
+            "request_id": "native-request",
+            "output": {"results": [{"index": 1, "relevance_score": 0.98, "document": {"image": "cat.png"}}]},
+            "usage": {"total_tokens": 100, "input_tokens": 100, "image_tokens": 20},
+        }
+        out = self.config.transform_rerank_response(
+            model="qwen3-vl-rerank",
+            raw_response=self._resp(body),
+            model_response=RerankResponse(),
+            logging_obj=self.logging,
+        )
+
+        assert out.id == "native-request"
+        assert out.results == [{"index": 1, "relevance_score": 0.98, "document": {"image": "cat.png"}}]
+        assert out.meta == {
+            "billed_units": {"total_tokens": 100, "input_tokens": 100, "image_tokens": 20},
+            "tokens": {"input_tokens": 100, "image_tokens": 20},
+        }
+        assert self.config.calculate_rerank_cost(
+            model="qwen3-vl-rerank",
+            billed_units=out.meta["billed_units"],
+            model_info={"input_cost_per_token": 0.7e-6, "input_cost_per_image_token": 1.8e-6},
+        ) == (80 * 0.7e-6 + 20 * 1.8e-6, 0.0)
 
 
 class TestProviderConfigManagerDispatch:

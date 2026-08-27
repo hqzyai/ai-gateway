@@ -42,6 +42,28 @@ describe("pricing dimension serialization", () => {
     expect(serialized).toEqual(entry);
   });
 
+  it("round trips per-generation 3D pricing without token scaling", () => {
+    const entry: ModelCostEntry = {
+      litellm_provider: "custom-3d-provider",
+      mode: "video_generation",
+      source: "https://example.com/pricing",
+      video_token_pricing_unit: "per_generation",
+      video_token_pricing: {
+        no_video_input_standard_no_texture: 0.7,
+        video_input_standard_hd_texture: 2.8,
+      },
+    };
+
+    const draft = createPricingRuleDraft("custom-3d-provider/model", entry);
+
+    expect(draft.videoPricingUnit).toBe("per_generation");
+    expect(draft.videoPricing.map(({ inputType, resolution, value }) => ({ inputType, resolution, value }))).toEqual([
+      { inputType: "no_video_input", resolution: "standard_no_texture", value: 0.7 },
+      { inputType: "video_input", resolution: "standard_hd_texture", value: 2.8 },
+    ]);
+    expect(serializePricingRule(draft)).toEqual(entry);
+  });
+
   it("serializes an open-ended final tier with a numeric upper bound", () => {
     const initialDraft = createPricingRuleDraft("custom/model", {
       tiered_pricing: [{ range: [0, 1000], input_cost_per_token: 0.000001 }],
