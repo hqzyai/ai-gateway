@@ -225,3 +225,31 @@ def test_multimodal_embedding_response_usage():
     assert result.data == [{"embedding": [0.2, 0.4], "index": 0, "object": "embedding"}]
     assert result.usage.prompt_tokens == 120
     assert result.usage.prompt_tokens_details.image_tokens == 40
+
+
+def test_multimodal_embedding_response_usage_with_top_level_image_tokens():
+    config = DashScopeEmbeddingConfig()
+    raw = httpx.Response(
+        200,
+        json={
+            "request_id": "embedding-request",
+            "output": {"embeddings": [{"embedding": [0.2, 0.4], "index": 0}]},
+            "usage": {"input_tokens": 22, "image_tokens": 1247, "total_tokens": 1269},
+        },
+    )
+
+    result = config.transform_embedding_response(
+        model="qwen3-vl-embedding",
+        raw_response=raw,
+        model_response=EmbeddingResponse(),
+        logging_obj=MagicMock(),
+        api_key="sk-test",
+        request_data={},
+        optional_params={},
+        litellm_params={},
+    )
+
+    assert result.usage.prompt_tokens == 1269
+    assert result.usage.total_tokens == 1269
+    assert result.usage.prompt_tokens_details.text_tokens == 22
+    assert result.usage.prompt_tokens_details.image_tokens == 1247

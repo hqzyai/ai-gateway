@@ -8,7 +8,6 @@ Tests the cost calculation for Dashscope models including:
 - Correctly calculates costs for token counts exceeding the highest defined tier.
 """
 
-import json
 import math
 import os
 import sys
@@ -52,6 +51,19 @@ class TestDashscopeCostCalculator:
 
         assert math.isclose(prompt_cost, expected_prompt_cost, rel_tol=1e-10)
         assert math.isclose(completion_cost, expected_completion_cost, rel_tol=1e-10)
+
+    def test_dashscope_multimodal_embedding_token_prices(self):
+        usage = Usage(
+            prompt_tokens=1269,
+            completion_tokens=0,
+            total_tokens=1269,
+            prompt_tokens_details=PromptTokensDetailsWrapper(text_tokens=22, image_tokens=1247),
+        )
+
+        prompt_cost, completion_cost = dashscope_cost_per_token(model="qwen3-vl-embedding", usage=usage)
+
+        assert prompt_cost == pytest.approx(22 * 0.7e-6 + 1247 * 1.8e-6)
+        assert completion_cost == 0
 
     def test_dashscope_tiered_pricing_within_first_tier(self):
         """

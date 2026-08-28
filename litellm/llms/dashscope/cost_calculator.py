@@ -7,6 +7,7 @@ Handles tiered pricing and prompt caching scenarios.
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
+from litellm.litellm_core_utils.llm_cost_calc.utils import generic_cost_per_token
 from litellm.litellm_core_utils.llm_cost_calc.tiered_pricing import calculate_tiered_cost
 from litellm.types.utils import ModelInfo, Usage
 from litellm.utils import get_model_info
@@ -120,6 +121,10 @@ def cost_per_token(model: str, usage: Usage) -> Tuple[float, float]:
     Returns:
         Tuple[float, float] - (prompt_cost_in_usd, completion_cost_in_usd)
     """
+    prompt_details = usage.prompt_tokens_details
+    if prompt_details and (getattr(prompt_details, "image_tokens", 0) or getattr(prompt_details, "video_tokens", 0)):
+        return generic_cost_per_token(model=model, usage=usage, custom_llm_provider="dashscope")
+
     model_info = get_model_info(model=model, custom_llm_provider="dashscope")
     breakdown = _extract_token_breakdown(usage)
     tiered_pricing = model_info.get("tiered_pricing") if isinstance(model_info.get("tiered_pricing"), list) else None

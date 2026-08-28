@@ -260,16 +260,30 @@ class DashScopeEmbeddingConfig(BaseEmbeddingConfig):
         model_response.model = response_json.get("model", model)
 
         usage = response_json.get("usage") or {}
-        prompt_tokens = usage.get("prompt_tokens", usage.get("input_tokens", 0))
-        total_tokens = usage.get("total_tokens", prompt_tokens)
+        input_tokens = usage.get("prompt_tokens", usage.get("input_tokens", 0))
+        total_tokens = usage.get("total_tokens", input_tokens)
         input_token_details = usage.get("input_tokens_details") or {}
+        top_level_image_tokens = usage.get("image_tokens", 0)
+        top_level_video_tokens = usage.get("video_tokens", 0)
+        image_tokens = input_token_details.get("image_tokens", top_level_image_tokens)
+        video_tokens = input_token_details.get("video_tokens", top_level_video_tokens)
+        text_tokens = input_token_details.get(
+            "text_tokens",
+            max(input_tokens - image_tokens - video_tokens, 0) if input_token_details else input_tokens,
+        )
+        has_multimodal_token_details = bool(input_token_details or image_tokens or video_tokens)
+        prompt_tokens = (
+            max(total_tokens, text_tokens + image_tokens + video_tokens)
+            if has_multimodal_token_details
+            else input_tokens
+        )
         prompt_token_details = (
             PromptTokensDetailsWrapper(
-                text_tokens=input_token_details.get("text_tokens", 0),
-                image_tokens=input_token_details.get("image_tokens", 0),
-                video_tokens=input_token_details.get("video_tokens", 0),
+                text_tokens=text_tokens,
+                image_tokens=image_tokens,
+                video_tokens=video_tokens,
             )
-            if input_token_details
+            if has_multimodal_token_details
             else None
         )
         setattr(
@@ -278,7 +292,7 @@ class DashScopeEmbeddingConfig(BaseEmbeddingConfig):
             Usage(
                 prompt_tokens=prompt_tokens,
                 completion_tokens=0,
-                total_tokens=total_tokens,
+                total_tokens=max(total_tokens, prompt_tokens),
                 prompt_tokens_details=prompt_token_details,
             ),
         )
