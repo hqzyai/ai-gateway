@@ -118,4 +118,41 @@ describe("PricingRulesManager", () => {
     expect(prices).toContain(2.8);
     expect(prices).not.toContain(700000);
   });
+
+  it("shows editable image resolution prices", async () => {
+    vi.mocked(getModelCostMapOverrides).mockResolvedValue({ overrides: [] });
+    renderWithProviders(
+      <PricingRulesManager
+        accessToken="test-token"
+        userRole="Admin"
+        modelCostMap={{
+          "dashscope/qwen-image-3.0-pro": {
+            litellm_provider: "dashscope",
+            mode: "image_generation",
+            image_resolution_pricing: {
+              input_1k: 0.02,
+              output_1k: 0.25,
+              output_2k: 0.5,
+            },
+          },
+        }}
+        loading={false}
+        onModelCostMapReload={vi.fn()}
+      />,
+    );
+
+    const row = (await screen.findByText("dashscope/qwen-image-3.0-pro")).closest("tr");
+    expect(row).not.toBeNull();
+    const modelRow = within(row as HTMLElement);
+    expect(modelRow.getByText("图片分辨率")).toBeInTheDocument();
+    fireEvent.click(modelRow.getByRole("button", { name: /配置/ }));
+    fireEvent.click(await screen.findByRole("tab", { name: "图片分辨率（3）" }));
+    expect(
+      screen.getByText("按输入 / 输出方向和分辨率档配置每张图片的价格。分辨率档可填写 1k、2k、4k 等供应商返回的标识。"),
+    ).toBeInTheDocument();
+    const prices = screen.getAllByRole("spinbutton").map((input) => Number((input as HTMLInputElement).value));
+    expect(prices).toContain(0.02);
+    expect(prices).toContain(0.25);
+    expect(prices).toContain(0.5);
+  });
 });

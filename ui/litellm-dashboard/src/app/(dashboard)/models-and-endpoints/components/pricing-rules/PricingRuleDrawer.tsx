@@ -2,7 +2,7 @@ import { DeleteOutlined, PlusOutlined } from "@ant-design/icons";
 import { Alert, Button, Divider, Drawer, Empty, Input, InputNumber, Select, Space, Tabs, Tag, Typography } from "antd";
 import { useMemo, useState } from "react";
 import { getModeLabel, getPricingDefinition, getVideoPricingScale, pricingDimensions } from "./pricingDimensions";
-import { PricingRuleDraft, TieredPricingRow, VideoPricingRow, VideoPricingUnit } from "./types";
+import { ImagePricingRow, PricingRuleDraft, TieredPricingRow, VideoPricingRow, VideoPricingUnit } from "./types";
 
 const { Text, Title } = Typography;
 
@@ -78,6 +78,14 @@ const PricingRuleDrawer = ({
         { id: createId(), inputType: "no_video_input", resolution: "default", value: 0 },
       ],
     });
+
+  const addImagePricing = () =>
+    updateDraft({
+      imagePricing: [...draft.imagePricing, { id: createId(), direction: "output", resolution: "1k", value: 0 }],
+    });
+
+  const updateImagePricing = (id: string, values: Partial<ImagePricingRow>) =>
+    updateDraft({ imagePricing: draft.imagePricing.map((row) => (row.id === id ? { ...row, ...values } : row)) });
 
   const updateVideoPricing = (id: string, values: Partial<VideoPricingRow>) =>
     updateDraft({ videoPricing: draft.videoPricing.map((row) => (row.id === id ? { ...row, ...values } : row)) });
@@ -254,6 +262,58 @@ const PricingRuleDrawer = ({
     </div>
   );
 
+  const imageTab = (
+    <div className="space-y-4">
+      <Alert
+        type="info"
+        showIcon
+        message="按输入 / 输出方向和分辨率档配置每张图片的价格。分辨率档可填写 1k、2k、4k 等供应商返回的标识。"
+      />
+      {draft.imagePricing.map((row) => (
+        <div
+          key={row.id}
+          className="grid grid-cols-[140px_120px_minmax(180px,1fr)_36px] items-center gap-2 rounded-lg border border-gray-200 p-3"
+        >
+          <Select
+            value={row.direction}
+            disabled={readOnly}
+            options={[
+              { label: "输入图片", value: "input" },
+              { label: "输出图片", value: "output" },
+            ]}
+            onChange={(direction) => updateImagePricing(row.id, { direction })}
+          />
+          <Input
+            value={row.resolution}
+            placeholder="1k / 2k / 4k"
+            disabled={readOnly}
+            onChange={(event) => updateImagePricing(row.id, { resolution: event.target.value })}
+          />
+          <InputNumber
+            className="w-full"
+            min={0}
+            precision={9}
+            value={row.value}
+            addonAfter="美元 / 张"
+            disabled={readOnly}
+            onChange={(value) => updateImagePricing(row.id, { value: value ?? 0 })}
+          />
+          <Button
+            type="text"
+            danger
+            aria-label="删除图片分辨率价格"
+            icon={<DeleteOutlined />}
+            disabled={readOnly}
+            onClick={() => updateDraft({ imagePricing: draft.imagePricing.filter((item) => item.id !== row.id) })}
+          />
+        </div>
+      ))}
+      <Button icon={<PlusOutlined />} disabled={readOnly} onClick={addImagePricing}>
+        添加图片分辨率价格
+      </Button>
+    </div>
+  );
+
   const tierTab = (
     <div className="space-y-4">
       <Alert
@@ -406,6 +466,7 @@ const PricingRuleDrawer = ({
       <Tabs
         items={[
           { key: "flat", label: `固定价格（${draft.dimensions.length}）`, children: pricingTab },
+          { key: "image", label: `图片分辨率（${draft.imagePricing.length}）`, children: imageTab },
           {
             key: "video",
             label: `${draft.videoPricingUnit === "per_generation" ? "生成资产" : "视频 Token"}（${draft.videoPricing.length}）`,

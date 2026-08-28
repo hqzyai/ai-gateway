@@ -173,6 +173,9 @@ class SearchContextCostPerQuery(TypedDict, total=False):
     search_context_size_high: float
 
 
+ImageResolutionPricing = Dict[str, float]
+
+
 class VideoTokenPricing(TypedDict, total=False):
     """
     Per-token video-generation rates, split by whether the request carried video input.
@@ -269,6 +272,7 @@ class ModelInfoBase(ProviderSpecificModelInfo, total=False):
     output_cost_per_image: Optional[float]
     output_cost_per_image_above_16384_tokens: Optional[float]
     output_cost_per_image_token: Optional[float]
+    image_resolution_pricing: Optional[ImageResolutionPricing]
     output_cost_per_video: Optional[float]
     output_cost_per_video_token: Optional[float]  # for gemini omni models with video output
     video_token_pricing: Optional[VideoTokenPricing]
@@ -3152,6 +3156,7 @@ class CustomPricingLiteLLMParams(BaseModel):
     output_cost_per_image: Optional[float] = None
     output_cost_per_image_above_16384_tokens: Optional[float] = None
     output_cost_per_image_token: Optional[float] = None
+    image_resolution_pricing: Optional[ImageResolutionPricing] = None
     output_cost_per_video: Optional[float] = None
     output_cost_per_video_token: Optional[float] = None
     output_cost_per_reasoning_token: Optional[float] = None

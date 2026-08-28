@@ -64,6 +64,29 @@ describe("pricing dimension serialization", () => {
     expect(serializePricingRule(draft)).toEqual(entry);
   });
 
+  it("round trips per-image resolution pricing without scaling", () => {
+    const entry: ModelCostEntry = {
+      litellm_provider: "dashscope",
+      mode: "image_generation",
+      image_resolution_pricing: {
+        input_1k: 0.02,
+        input_2k: 0.02,
+        output_1k: 0.25,
+        output_2k: 0.5,
+      },
+    };
+
+    const draft = createPricingRuleDraft("dashscope/qwen-image-3.0-pro", entry);
+
+    expect(draft.imagePricing.map(({ direction, resolution, value }) => ({ direction, resolution, value }))).toEqual([
+      { direction: "input", resolution: "1k", value: 0.02 },
+      { direction: "input", resolution: "2k", value: 0.02 },
+      { direction: "output", resolution: "1k", value: 0.25 },
+      { direction: "output", resolution: "2k", value: 0.5 },
+    ]);
+    expect(serializePricingRule(draft)).toEqual(entry);
+  });
+
   it("serializes an open-ended final tier with a numeric upper bound", () => {
     const initialDraft = createPricingRuleDraft("custom/model", {
       tiered_pricing: [{ range: [0, 1000], input_cost_per_token: 0.000001 }],

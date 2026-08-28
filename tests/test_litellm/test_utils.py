@@ -986,6 +986,14 @@ def test_aaamodel_prices_and_context_window_json_is_valid():
                     "minProperties": 1,
                     "additionalProperties": False,
                 },
+                "image_resolution_pricing": {
+                    "type": "object",
+                    "patternProperties": {
+                        r"^(input|output)_[a-z0-9_]{1,24}$": {"type": "number"}
+                    },
+                    "minProperties": 1,
+                    "additionalProperties": False,
+                },
                 "video_token_pricing_unit": {
                     "type": "string",
                     "enum": ["per_token", "per_generation"],

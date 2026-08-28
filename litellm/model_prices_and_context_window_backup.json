@@ -13667,6 +13667,26 @@
             "/v1/images/generations"
         ]
     },
+    "dashscope/qwen-image-3.0-pro": {
+        "image_resolution_pricing": {
+            "input_1k": 0.02,
+            "input_2k": 0.02,
+            "output_1k": 0.25,
+            "output_2k": 0.5
+        },
+        "input_cost_per_image": 0.02,
+        "litellm_provider": "dashscope",
+        "metadata": {
+            "notes": "CN list prices are CNY 0.02 per 1K/2K input image, CNY 0.25 per 1K output image, and CNY 0.50 per 2K output image; recorded 1:1 as USD"
+        },
+        "mode": "image_generation",
+        "output_cost_per_image": 0.25,
+        "source": "https://help.aliyun.com/zh/model-studio/qwen-image-3-0-pro",
+        "supported_endpoints": [
+            "/v1/images/generations"
+        ],
+        "supports_vision": true
+    },
     "databricks/databricks-bge-large-en": {
         "input_cost_per_token": 1.0003e-07,
         "input_dbu_cost_per_token": 1.429e-06,

@@ -28,7 +28,7 @@ from .completion import CompletionRequest
 from .embedding import EmbeddingRequest
 from .llms.openai import OpenAIFileObject
 from .search import SearchProvider
-from .utils import CustomPricingLiteLLMParams, ModelResponse, VideoTokenPricing
+from .utils import CustomPricingLiteLLMParams, ImageResolutionPricing, ModelResponse, VideoTokenPricing
 
 
 class ConfigurableClientsideParamsCustomAuth(TypedDict):
@@ -418,6 +418,7 @@ class LiteLLMParamsTypedDict(TypedDict, total=False):
     output_cost_per_second_1080p: Optional[float]
     output_cost_per_video: Optional[float]
     video_token_pricing: Optional[VideoTokenPricing]
+    image_resolution_pricing: Optional[ImageResolutionPricing]
     num_retries: Optional[int]
     ## MOCK RESPONSES ##
     mock_response: Optional[Union[str, ModelResponse, Exception]]
@@ -447,6 +448,7 @@ SPECIAL_MODEL_INFO_PARAMS = [
     "cache_read_input_token_cost",
     "cache_creation_input_token_cost",
     "output_cost_per_video",
+    "image_resolution_pricing",
 ]
 
 

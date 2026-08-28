@@ -38,6 +38,13 @@ export interface VideoPricingRow {
   value: number;
 }
 
+export interface ImagePricingRow {
+  id: string;
+  direction: "input" | "output";
+  resolution: string;
+  value: number;
+}
+
 export type VideoPricingUnit = "per_token" | "per_generation";
 
 export interface TieredPricingRow {
@@ -55,6 +62,7 @@ export interface PricingRuleDraft {
   mode: string;
   source: string;
   dimensions: PricingDimensionRow[];
+  imagePricing: ImagePricingRow[];
   videoPricing: VideoPricingRow[];
   videoPricingUnit: VideoPricingUnit;
   tiers: TieredPricingRow[];

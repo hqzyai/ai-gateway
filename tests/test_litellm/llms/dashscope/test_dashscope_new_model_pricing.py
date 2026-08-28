@@ -76,9 +76,10 @@ def test_dashscope_tripo_price_matrix() -> None:
 
     assert h31_entry["video_token_pricing_unit"] == "per_generation"
     assert p10_entry["video_token_pricing_unit"] == "per_generation"
-    assert litellm.get_model_info("Tripo/Tripo-H3.1", custom_llm_provider="dashscope")[
-        "video_token_pricing_unit"
-    ] == "per_generation"
+    assert (
+        litellm.get_model_info("Tripo/Tripo-H3.1", custom_llm_provider="dashscope")["video_token_pricing_unit"]
+        == "per_generation"
+    )
 
     assert h31 == {
         "no_video_input_standard_no_texture": 0.7,
@@ -101,4 +102,15 @@ def test_dashscope_tripo_price_matrix() -> None:
         "video_input_standard_sd_texture": 3.5,
         "no_video_input_standard_hd_texture": 3.5,
         "video_input_standard_hd_texture": 4.2,
+    }
+
+
+def test_dashscope_qwen_image_3_pro_resolution_prices() -> None:
+    entry = litellm.model_cost["dashscope/qwen-image-3.0-pro"]
+
+    assert entry["image_resolution_pricing"] == {
+        "input_1k": 0.02,
+        "input_2k": 0.02,
+        "output_1k": 0.25,
+        "output_2k": 0.5,
     }

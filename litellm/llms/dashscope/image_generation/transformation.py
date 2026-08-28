@@ -36,6 +36,7 @@ from litellm.types.llms.openai import (
     OpenAIImageGenerationOptionalParams,
 )
 from litellm.types.utils import ImageObject, ImageResponse
+from litellm.types.utils import ImageUsage, ImageUsageInputTokensDetails
 
 if TYPE_CHECKING:
     from litellm.litellm_core_utils.litellm_logging import Logging as _LiteLLMLoggingObj
@@ -196,5 +197,38 @@ class DashScopeImageGenerationConfig(BaseImageGenerationConfig):
                 image_url = content_item.get("image")
                 if image_url:
                     model_response.data.append(ImageObject(url=image_url))
+
+        usage_data = response_data.get("usage")
+        if isinstance(usage_data, dict):
+            input_tokens = usage_data.get("input_tokens", 0)
+            output_tokens = usage_data.get("output_tokens", 0)
+            normalized_input_tokens = input_tokens if isinstance(input_tokens, int) else 0
+            normalized_output_tokens = output_tokens if isinstance(output_tokens, int) else 0
+            model_response.usage = ImageUsage(
+                input_tokens=normalized_input_tokens,
+                input_tokens_details=ImageUsageInputTokensDetails(
+                    image_tokens=0,
+                    text_tokens=normalized_input_tokens,
+                ),
+                output_tokens=normalized_output_tokens,
+                total_tokens=normalized_input_tokens + normalized_output_tokens,
+                input_image_count=usage_data.get("input_image_count"),
+                input_image_type=usage_data.get("input_image_type"),
+                output_image_count=usage_data.get("output_image_count"),
+                output_image_type=usage_data.get("output_image_type"),
+                output_width=usage_data.get("output_width"),
+                output_height=usage_data.get("output_height"),
+            )
+            model_response._hidden_params["model"] = response_data.get("model", model)
+            model_response._hidden_params["input_image_count"] = usage_data.get("input_image_count")
+            model_response._hidden_params["input_image_type"] = usage_data.get("input_image_type")
+            model_response._hidden_params["output_image_count"] = usage_data.get("output_image_count")
+            model_response._hidden_params["output_image_type"] = usage_data.get("output_image_type")
+            model_response._hidden_params["output_width"] = usage_data.get("output_width")
+            model_response._hidden_params["output_height"] = usage_data.get("output_height")
+            output_width = usage_data.get("output_width")
+            output_height = usage_data.get("output_height")
+            if isinstance(output_width, int) and isinstance(output_height, int):
+                model_response.size = f"{output_width}x{output_height}"
 
         return model_response

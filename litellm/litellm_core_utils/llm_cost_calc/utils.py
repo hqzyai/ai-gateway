@@ -1136,6 +1136,18 @@ class CostCalculatorUtils:
         if n is None:
             n = len(completion_response.data) if completion_response.data else 0
 
+        from litellm.llms.base_llm.image_generation.resolution_cost_calculator import (
+            cost_calculator as resolution_image_cost_calculator,
+        )
+
+        resolution_cost = resolution_image_cost_calculator(
+            model=model,
+            image_response=completion_response,
+            custom_llm_provider=custom_llm_provider,
+        )
+        if resolution_cost is not None:
+            return resolution_cost
+
         if custom_llm_provider == litellm.LlmProviders.VERTEX_AI.value:
             if isinstance(completion_response, ImageResponse):
                 return vertex_ai_image_cost_calculator(

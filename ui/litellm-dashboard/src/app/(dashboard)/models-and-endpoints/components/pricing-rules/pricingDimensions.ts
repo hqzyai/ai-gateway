@@ -1,5 +1,6 @@
 import {
   ModelCostEntry,
+  ImagePricingRow,
   PricingDimensionDefinition,
   PricingDimensionRow,
   PricingRuleDraft,
@@ -259,6 +260,13 @@ const isPricingNumber = (key: string, value: PricingValue): value is number => {
 };
 
 const createId = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
+const structuredPricingKeys = new Set(["image_resolution_pricing", "video_token_pricing", "tiered_pricing"]);
+
+const imagePricingDirection = (key: string): ImagePricingRow["direction"] | null => {
+  if (key.startsWith("input_")) return "input";
+  if (key.startsWith("output_")) return "output";
+  return null;
+};
 
 const parseVideoPricing = (value: PricingValue, unit: VideoPricingUnit): VideoPricingRow[] => {
   if (value === null || Array.isArray(value) || typeof value !== "object") return [];
@@ -267,6 +275,16 @@ const parseVideoPricing = (value: PricingValue, unit: VideoPricingUnit): VideoPr
     const inputType = key.startsWith("no_video_input") ? "no_video_input" : "video_input";
     const resolution = key.replace(inputType, "").replace(/^_/, "") || "default";
     return [{ id: createId(), inputType, resolution, value: price * getVideoPricingScale(unit) }];
+  });
+};
+
+const parseImagePricing = (value: PricingValue): ImagePricingRow[] => {
+  if (value === null || Array.isArray(value) || typeof value !== "object") return [];
+  return Object.entries(value).flatMap(([key, price]) => {
+    if (typeof price !== "number") return [];
+    const direction = imagePricingDirection(key);
+    if (direction === null) return [];
+    return [{ id: createId(), direction, resolution: key.replace(`${direction}_`, ""), value: price }];
   });
 };
 
@@ -300,9 +318,10 @@ export const createPricingRuleDraft = (modelName: string, entry: ModelCostEntry)
     mode: typeof entry.mode === "string" ? entry.mode : "chat",
     source: typeof entry.source === "string" ? entry.source : "",
     dimensions: Object.entries(entry).flatMap(([key, value]): PricingDimensionRow[] => {
-      if (key === "video_token_pricing" || key === "tiered_pricing" || !isPricingNumber(key, value)) return [];
+      if (structuredPricingKeys.has(key) || !isPricingNumber(key, value)) return [];
       return [{ id: createId(), key, value: value * getPricingDefinition(key).scale }];
     }),
+    imagePricing: parseImagePricing(entry.image_resolution_pricing),
     videoPricing: parseVideoPricing(entry.video_token_pricing, videoPricingUnit),
     videoPricingUnit,
     tiers: parseTiers(entry.tiered_pricing),
@@ -341,6 +360,13 @@ export const serializePricingRule = (draft: PricingRuleDraft): ModelCostEntry =>
     draft.dimensions.map((row) => [row.key, storedPrice(row.value, getPricingDefinition(row.key).scale)]),
   ),
   ...flatTierPricing(draft.tiers),
+  ...(draft.imagePricing.length > 0
+    ? {
+        image_resolution_pricing: Object.fromEntries(
+          draft.imagePricing.map((row) => [`${row.direction}_${row.resolution.trim().toLowerCase()}`, row.value]),
+        ),
+      }
+    : {}),
   ...(draft.videoPricing.length > 0
     ? {
         video_token_pricing: Object.fromEntries(
@@ -366,5 +392,5 @@ export const serializePricingRule = (draft: PricingRuleDraft): ModelCostEntry =>
 
 export const pricingKeysForEntry = (entry: ModelCostEntry): string[] =>
   Object.entries(entry)
-    .filter(([key, value]) => key === "video_token_pricing" || key === "tiered_pricing" || isPricingNumber(key, value))
+    .filter(([key, value]) => structuredPricingKeys.has(key) || isPricingNumber(key, value))
     .map(([key]) => key);

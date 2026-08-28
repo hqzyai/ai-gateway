@@ -5505,6 +5505,7 @@ def _get_model_info_helper(
                     "output_cost_per_image_above_16384_tokens", None
                 ),
                 output_cost_per_image_token=_model_info.get("output_cost_per_image_token", None),
+                image_resolution_pricing=_model_info.get("image_resolution_pricing", None),
                 output_cost_per_video_token=_model_info.get("output_cost_per_video_token", None),
                 video_token_pricing=_model_info.get("video_token_pricing", None),
                 video_token_pricing_unit=_model_info.get("video_token_pricing_unit", None),

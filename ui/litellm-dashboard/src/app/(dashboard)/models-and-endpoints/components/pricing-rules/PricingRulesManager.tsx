@@ -35,6 +35,7 @@ const { Text, Title } = Typography;
 const emptyOverrides: readonly ModelCostOverride[] = Object.freeze([]);
 
 const displayDimension = (value: string, videoPricingUnit: VideoPricingUnit) => {
+  if (value === "image_resolution_pricing") return "图片分辨率";
   if (value === "video_token_pricing") return videoPricingUnit === "per_generation" ? "生成资产" : "视频 Token";
   if (value === "tiered_pricing") return "Token 阶梯";
   return getPricingDefinition(value).label;
@@ -150,7 +151,13 @@ const PricingRulesManager = ({
       NotificationsManager.fromBackend("请输入模型标识");
       return;
     }
-    if (nextDraft.dimensions.length + nextDraft.videoPricing.length + nextDraft.tiers.length === 0) {
+    if (
+      nextDraft.dimensions.length +
+        nextDraft.imagePricing.length +
+        nextDraft.videoPricing.length +
+        nextDraft.tiers.length ===
+      0
+    ) {
       NotificationsManager.fromBackend("请至少添加一个计费维度");
       return;
     }
