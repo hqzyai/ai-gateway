@@ -40,6 +40,7 @@ def encode_video_id_with_provider(
     provider: str,
     model_id: Optional[str] = None,
     has_video_input: Optional[bool] = None,
+    video_resolution: Optional[str] = None,
 ) -> str:
     """Encode provider and model_id into video_id using base64."""
     if not provider or not video_id:
@@ -55,8 +56,15 @@ def encode_video_id_with_provider(
 
     # ID is not encoded (even if it starts with video_), so encode it
     assembled_id = str(SpecialEnums.LITELLM_MANAGED_VIDEO_COMPLETE_STR.value).format(provider, model_id or "", video_id)
-    billing_context = (
-        ";has_video_input:1" if has_video_input is True else ";has_video_input:0" if has_video_input is False else ""
+    billing_context = "".join(
+        (
+            ";has_video_input:1"
+            if has_video_input is True
+            else ";has_video_input:0"
+            if has_video_input is False
+            else "",
+            f";video_resolution:{video_resolution}" if video_resolution else "",
+        )
     )
 
     base64_encoded_id: str = base64.b64encode(f"{assembled_id}{billing_context}".encode("utf-8")).decode("utf-8")
@@ -107,12 +115,22 @@ def decode_video_id_with_provider(encoded_video_id: str) -> DecodedVideoId:
             model_id = model_id_part.replace("model_id:", "")
             decoded_video_id = video_id_part.replace("video_id:", "")
 
-        billing_context = next((part for part in parts[3:] if part.startswith("has_video_input:")), None)
+        video_input_context = next((part for part in parts[3:] if part.startswith("has_video_input:")), None)
+        resolution_context = next((part for part in parts[3:] if part.startswith("video_resolution:")), None)
         return DecodedVideoId(
             custom_llm_provider=custom_llm_provider,
             model_id=model_id,
             video_id=decoded_video_id,
-            **({"has_video_input": billing_context == "has_video_input:1"} if billing_context is not None else {}),
+            **(
+                {"has_video_input": video_input_context == "has_video_input:1"}
+                if video_input_context is not None
+                else {}
+            ),
+            **(
+                {"video_resolution": resolution_context.removeprefix("video_resolution:")}
+                if resolution_context is not None
+                else {}
+            ),
         )
     except Exception as e:
         verbose_logger.debug(f"Error decoding video_id '{encoded_video_id}': {e}")

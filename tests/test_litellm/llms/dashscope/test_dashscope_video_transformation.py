@@ -18,7 +18,7 @@ from litellm.llms.dashscope.videos.transformation import (
 from litellm.types.router import GenericLiteLLMParams
 from litellm.types.utils import LlmProviders
 from litellm.types.videos.main import VideoCreateOptionalRequestParams, VideoObject
-from litellm.types.videos.utils import extract_original_video_id
+from litellm.types.videos.utils import decode_video_id_with_provider, extract_original_video_id
 from litellm.utils import ProviderConfigManager
 
 
@@ -514,3 +514,46 @@ def test_dashscope_tripo_pbr_forces_texture_pricing() -> None:
         )
         == "ultra_hd_texture"
     )
+
+
+def test_dashscope_tripo_status_preserves_create_pricing_tier() -> None:
+    config = DashScopeVideoConfig()
+    created = config.transform_video_create_response(
+        model="Tripo/Tripo-H3.1",
+        raw_response=httpx.Response(
+            200,
+            json={"output": {"task_id": "tripo-task", "task_status": "PENDING"}, "usage": {}},
+        ),
+        logging_obj=MagicMock(),
+        request_data={
+            "model": "Tripo/Tripo-H3.1",
+            "input": {"prompt": "一只白色陶瓷茶杯"},
+            "parameters": {"geometry_quality": "standard", "pbr": False, "texture": False},
+        },
+    )
+    decoded_created_id = decode_video_id_with_provider(created.id)
+    assert decoded_created_id["video_resolution"] == "standard_no_texture"
+
+    status_logging = MagicMock()
+    status_logging.litellm_params = {"video_id": created.id}
+    completed = config.transform_video_status_retrieve_response(
+        raw_response=httpx.Response(
+            200,
+            json={
+                "output": {"task_id": "tripo-task", "task_status": "SUCCEEDED"},
+                "usage": {"count": 1, "geometry_quality": "standard", "3d_task_type": "text-to-3d"},
+            },
+        ),
+        logging_obj=status_logging,
+        custom_llm_provider="dashscope",
+    )
+
+    assert completed.usage is not None
+    assert completed.usage["video_resolution"] == "standard_no_texture"
+    assert completed.usage["completion_tokens"] == 1
+    assert decode_video_id_with_provider(completed.id)["video_resolution"] == "standard_no_texture"
+    assert litellm.completion_cost(
+        completion_response=completed,
+        model="dashscope/Tripo/Tripo-H3.1",
+        call_type="video_retrieve",
+    ) == pytest.approx(0.7)

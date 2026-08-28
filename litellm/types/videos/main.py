@@ -107,6 +107,7 @@ class DecodedVideoId(TypedDict, total=False):
     model_id: Optional[str]
     video_id: str
     has_video_input: bool
+    video_resolution: str
 
 
 class CharacterObject(BaseModel):

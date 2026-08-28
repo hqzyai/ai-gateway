@@ -269,6 +269,7 @@ class DashScopeVideoConfig(BaseVideoConfig):
             provider=custom_llm_provider or LlmProviders.DASHSCOPE.value,
             model=model,
             has_video_input=(decoded_video_id.get("has_video_input") is True),
+            video_resolution=decoded_video_id.get("video_resolution"),
         )
 
     def transform_video_content_request(
@@ -585,13 +586,14 @@ class DashScopeVideoConfig(BaseVideoConfig):
         model: str | None,
         request_data: JSONObject | None = None,
         has_video_input: bool | None = None,
+        video_resolution: str | None = None,
     ) -> VideoObject:
         status = self._map_status(response.output.task_status)
         duration = response.usage.get("duration") or response.usage.get("output_video_duration")
         requested_size = self._request_size(request_data)
         duration_seconds = self._duration_seconds(duration)
         is_three_d = self._is_three_d_model(model or "")
-        video_resolution = (
+        resolved_video_resolution = video_resolution or (
             self._three_d_pricing_tier(response.usage, request_data)
             if is_three_d
             else self._video_resolution(response.usage, requested_size)
@@ -613,6 +615,7 @@ class DashScopeVideoConfig(BaseVideoConfig):
                 provider,
                 model,
                 has_video_input=resolved_has_video_input if is_three_d else None,
+                video_resolution=resolved_video_resolution if is_three_d else None,
             ),
             object="video",
             status=status,
@@ -627,7 +630,11 @@ class DashScopeVideoConfig(BaseVideoConfig):
                     if duration_seconds is not None and status == "completed"
                     else JSONObject()
                 ),
-                **(JSONObject(video_resolution=video_resolution) if video_resolution is not None else JSONObject()),
+                **(
+                    JSONObject(video_resolution=resolved_video_resolution)
+                    if resolved_video_resolution is not None
+                    else JSONObject()
+                ),
                 **(JSONObject(has_video_input=resolved_has_video_input) if is_three_d else JSONObject()),
                 **(
                     JSONObject(completion_tokens=self._three_d_count(response.usage))
