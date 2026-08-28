@@ -22,6 +22,113 @@ def local_model_cost_map(monkeypatch: pytest.MonkeyPatch):
         litellm.get_model_info.cache_clear()
 
 
+@pytest.mark.parametrize(
+    ("api_base", "expected"),
+    [
+        (
+            "https://dashscope.aliyuncs.com/api/v1",
+            "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+        ),
+        (
+            "https://dashscope.aliyuncs.com/api/v1/",
+            "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+        ),
+        (
+            "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+            "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+        ),
+    ],
+)
+def test_dashscope_image_generation_completes_api_base(api_base: str, expected: str) -> None:
+    result = DashScopeImageGenerationConfig().get_complete_url(
+        api_base=api_base,
+        api_key=None,
+        model="qwen-image-3.0-pro",
+        optional_params={},
+        litellm_params={},
+    )
+
+    assert result == expected
+
+
+def test_dashscope_image_editing_maps_reference_images_and_parameters() -> None:
+    config = DashScopeImageGenerationConfig()
+    optional_params = config.map_openai_params(
+        non_default_params={
+            "image_url": ["https://example.com/input-1.png", "https://example.com/input-2.png"],
+            "n": 2,
+            "size": "1024x1536",
+            "watermark": False,
+            "negative_prompt": "blurred",
+            "prompt_upsampling": True,
+        },
+        optional_params={},
+        model="qwen-image-3.0-pro",
+        drop_params=False,
+    )
+
+    request = config.transform_image_generation_request(
+        model="qwen-image-3.0-pro",
+        prompt="Edit the reference images",
+        optional_params=optional_params,
+        litellm_params={},
+        headers={},
+    )
+
+    assert request == {
+        "model": "qwen-image-3.0-pro",
+        "input": {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"image": "https://example.com/input-1.png"},
+                        {"image": "https://example.com/input-2.png"},
+                        {"text": "Edit the reference images"},
+                    ],
+                }
+            ]
+        },
+        "parameters": {
+            "n": 2,
+            "size": "1024*1536",
+            "watermark": False,
+            "negative_prompt": "blurred",
+            "prompt_extend": True,
+        },
+    }
+
+
+def test_dashscope_image_editing_rejects_more_than_three_reference_images() -> None:
+    with pytest.raises(ValueError, match="at most 3 input images"):
+        DashScopeImageGenerationConfig().transform_image_generation_request(
+            model="qwen-image-3.0-pro",
+            prompt="Edit the reference images",
+            optional_params={
+                "image": [
+                    "https://example.com/input-1.png",
+                    "https://example.com/input-2.png",
+                    "https://example.com/input-3.png",
+                    "https://example.com/input-4.png",
+                ]
+            },
+            litellm_params={},
+            headers={},
+        )
+
+
+def test_dashscope_text_to_image_does_not_add_an_input_image() -> None:
+    request = DashScopeImageGenerationConfig().transform_image_generation_request(
+        model="qwen-image-3.0-pro",
+        prompt="Create a paper-cut landscape",
+        optional_params={"size": "1024*1024"},
+        litellm_params={},
+        headers={},
+    )
+
+    assert request["input"]["messages"][0]["content"] == [{"text": "Create a paper-cut landscape"}]
+
+
 def test_transform_preserves_dashscope_image_resolution_usage(local_model_cost_map: None) -> None:
     raw_response = httpx.Response(
         200,

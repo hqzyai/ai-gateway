@@ -46,6 +46,7 @@ else:
     LiteLLMLoggingObj = Any
 
 DEFAULT_API_BASE = "https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
+DASHSCOPE_IMAGE_GENERATION_PATH = "/services/aigc/multimodal-generation/generation"
 
 # Maps OpenAI size strings (WxH) to DashScope size strings (W*H)
 OPENAI_TO_DASHSCOPE_SIZE: dict = {
@@ -64,7 +65,15 @@ class DashScopeImageGenerationConfig(BaseImageGenerationConfig):
     """
 
     def get_supported_openai_params(self, model: str) -> List[OpenAIImageGenerationOptionalParams]:
-        return ["n", "size"]
+        return [
+            "n",
+            "size",
+            "image_url",
+            "image",
+            "watermark",
+            "negative_prompt",
+            "prompt_upsampling",
+        ]
 
     def map_openai_params(
         self,
@@ -84,7 +93,11 @@ class DashScopeImageGenerationConfig(BaseImageGenerationConfig):
                 # Convert "WxH" → "W*H"
                 mapped["size"] = OPENAI_TO_DASHSCOPE_SIZE.get(v, v.replace("x", "*"))
             elif k == "n":
-                mapped["image_count"] = v
+                mapped["n"] = v
+            elif k == "prompt_upsampling":
+                mapped["prompt_extend"] = v
+            else:
+                mapped[k] = v
         return mapped
 
     def get_complete_url(
@@ -96,7 +109,23 @@ class DashScopeImageGenerationConfig(BaseImageGenerationConfig):
         litellm_params: dict,
         stream: Optional[bool] = None,
     ) -> str:
-        return api_base or get_secret_str("DASHSCOPE_API_BASE_IMAGE") or DEFAULT_API_BASE
+        configured_api_base = api_base or get_secret_str("DASHSCOPE_API_BASE_IMAGE") or DEFAULT_API_BASE
+        normalized_api_base = configured_api_base.rstrip("/")
+        if normalized_api_base.endswith(DASHSCOPE_IMAGE_GENERATION_PATH):
+            return normalized_api_base
+        if normalized_api_base.endswith("/api/v1"):
+            return f"{normalized_api_base}{DASHSCOPE_IMAGE_GENERATION_PATH}"
+        return normalized_api_base
+
+    @staticmethod
+    def _normalize_image_urls(value: Any) -> List[str]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [value]
+        if isinstance(value, list) and all(isinstance(item, str) for item in value):
+            return value
+        raise ValueError("DashScope image input must be a URL string or a list of URL strings.")
 
     def validate_environment(
         self,
@@ -126,9 +155,15 @@ class DashScopeImageGenerationConfig(BaseImageGenerationConfig):
         """
         Transform OpenAI-style image generation request to DashScope multimodal-generation format.
         """
-        parameters: dict = {}
-        for k, v in optional_params.items():
-            parameters[k] = v
+        image_urls = [
+            *self._normalize_image_urls(optional_params.get("image_url")),
+            *self._normalize_image_urls(optional_params.get("image")),
+        ]
+        if len(image_urls) > 3:
+            raise ValueError("DashScope Qwen image editing supports at most 3 input images.")
+
+        parameters = {k: v for k, v in optional_params.items() if k not in ("image_url", "image")}
+        content = [{"image": image_url} for image_url in image_urls] + [{"text": prompt}]
 
         return {
             "model": model,
@@ -136,7 +171,7 @@ class DashScopeImageGenerationConfig(BaseImageGenerationConfig):
                 "messages": [
                     {
                         "role": "user",
-                        "content": [{"text": prompt}],
+                        "content": content,
                     }
                 ]
             },
