@@ -2499,6 +2499,12 @@ if MCP_AVAILABLE:
         except Exception as e:
             verbose_proxy_logger.warning(f"Failed to load MCP registry from {_MCP_REGISTRY_PATH}: {e}")
             data = {"servers": []}
+        from litellm.proxy._experimental.mcp_server.qcc import get_qcc_catalog
+
+        data = {
+            **data,
+            "servers": [*data.get("servers", []), *(preset.model_dump() for preset in get_qcc_catalog().servers)],
+        }
         _mcp_registry_cache = data
         return data
 

@@ -56,7 +56,7 @@ vi.mock("@/hooks/useMcpOAuthFlow", () => ({
 }));
 
 vi.mock("./mcp_server_cost_config", () => ({
-  default: () => <div data-testid="mcp-cost-config" />,
+  default: ({ value }: { value: unknown }) => <div data-testid="mcp-cost-config">{JSON.stringify(value)}</div>,
 }));
 
 vi.mock("./MCPPermissionManagement", () => ({
@@ -1807,6 +1807,31 @@ describe("CreateMCPServer", () => {
   });
 
   describe("when prefillData is provided", () => {
+    it("prefills QCC billing rates and bearer authentication", async () => {
+      const costInfo = { require_tool_pricing: true, tool_name_to_cost_per_query: { get_company_profile: 1 } };
+      render(
+        <CreateMCPServer
+          {...defaultProps}
+          prefillData={{
+            name: "qcc-company",
+            title: "企查查",
+            description: "Company data",
+            category: "Business Data",
+            transport: "http",
+            url: "https://agent.qcc.com/mcp/company/stream",
+            auth_type: "bearer_token",
+            mcp_server_cost_info: costInfo,
+            timeout: 300,
+          }}
+        />,
+      );
+      await waitFor(() => {
+        expect(getServerNameInput()).toHaveValue("qcc_company");
+        expect(screen.getByTestId("mcp-cost-config")).toHaveTextContent(JSON.stringify(costInfo));
+      });
+      expect(screen.getByText("Bearer Token")).toBeInTheDocument();
+    });
+
     it("should populate form fields from discovery data", async () => {
       const prefillData = {
         name: "github-mcp",

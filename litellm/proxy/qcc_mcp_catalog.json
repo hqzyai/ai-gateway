@@ -1,0 +1,433 @@
+{
+  "source": "https://agent.qcc.com/guide",
+  "pricing_sources": [
+    "https://agent.qcc.com/api/tool-config/short-descriptions",
+    "https://agent.qcc.com/legal",
+    "https://agent.qcc.com/tender",
+    "https://agent.qcc.com/doc"
+  ],
+  "verified_at": "2026-09-09",
+  "usd_per_credit": 1,
+  "servers": [
+    {
+      "name": "qcc-company",
+      "title": "企查查 · 企业基座",
+      "description": "企业基座。按 1 积分 = 1 USD 计费；工具价格核对于 2026-09-09。",
+      "category": "Business Data",
+      "transport": "http",
+      "url": "https://agent.qcc.com/mcp/company/stream",
+      "auth_type": "bearer_token",
+      "env_vars": [
+        {
+          "name": "QCC_API_KEY",
+          "description": "企查查 API Key",
+          "secret": true
+        }
+      ],
+      "mcp_server_cost_info": {
+        "tool_name_to_cost_per_query": {
+          "get_company_by_query": 1,
+          "get_company_registration_info": 3,
+          "get_shareholder_info": 20,
+          "get_company_profile": 1,
+          "get_contact_info": 3,
+          "get_key_personnel": 5,
+          "get_external_investments": 5,
+          "get_actual_controller": 5,
+          "get_change_records": 5,
+          "get_annual_reports": 3,
+          "get_branches": 5,
+          "get_beneficial_owners": 5,
+          "get_listing_info": 1,
+          "get_financial_data": 3,
+          "get_tax_invoice_info": 3,
+          "verify_company_accuracy": 1
+        },
+        "require_tool_pricing": true
+      }
+    },
+    {
+      "name": "qcc-risk",
+      "title": "企查查 · 风控大脑",
+      "description": "风控大脑。按 1 积分 = 1 USD 计费；工具价格核对于 2026-09-09。",
+      "category": "Business Data",
+      "transport": "http",
+      "url": "https://agent.qcc.com/mcp/risk/stream",
+      "auth_type": "bearer_token",
+      "env_vars": [
+        {
+          "name": "QCC_API_KEY",
+          "description": "企查查 API Key",
+          "secret": true
+        }
+      ],
+      "mcp_server_cost_info": {
+        "tool_name_to_cost_per_query": {
+          "get_company_risk_scan": 5,
+          "get_company_related_risk_scan": 5,
+          "get_dishonest_info": 3,
+          "get_business_exception": 3,
+          "get_administrative_penalty": 3,
+          "get_judgment_debtor_info": 3,
+          "get_case_filing_info": 3,
+          "get_judicial_documents": 3,
+          "get_judicial_document_detail": 3,
+          "get_high_consumption_restriction": 3,
+          "get_equity_freeze": 3,
+          "get_serious_violation": 3,
+          "get_equity_pledge_info": 3,
+          "get_court_notice": 3,
+          "get_tax_arrears_notice": 3,
+          "get_bankruptcy_reorganization": 3,
+          "get_terminated_cases": 3,
+          "get_tax_abnormal": 3,
+          "get_hearing_notice": 3,
+          "get_tax_violation": 3,
+          "get_guarantee_info": 3,
+          "get_environmental_penalty": 3,
+          "get_default_info": 3,
+          "get_chattel_mortgage_info": 3,
+          "get_judicial_auction": 3,
+          "get_liquidation_info": 3,
+          "get_service_announcement": 3,
+          "get_exit_restriction": 3,
+          "get_cancellation_record_info": 1,
+          "get_land_mortgage_info": 3,
+          "get_disciplinary_list": 3,
+          "get_stock_pledge_info": 3,
+          "get_pre_litigation_mediation": 3,
+          "get_service_notice": 3,
+          "get_simple_cancellation_info": 1,
+          "get_valuation_inquiry": 3,
+          "get_public_exhortation": 3,
+          "get_property_asset_announcement": 3
+        },
+        "require_tool_pricing": true
+      }
+    },
+    {
+      "name": "qcc-ipr",
+      "title": "企查查 · 知产引擎",
+      "description": "知产引擎。按 1 积分 = 1 USD 计费；工具价格核对于 2026-09-09。",
+      "category": "Business Data",
+      "transport": "http",
+      "url": "https://agent.qcc.com/mcp/ipr/stream",
+      "auth_type": "bearer_token",
+      "env_vars": [
+        {
+          "name": "QCC_API_KEY",
+          "description": "企查查 API Key",
+          "secret": true
+        }
+      ],
+      "mcp_server_cost_info": {
+        "tool_name_to_cost_per_query": {
+          "get_patent_info": 1,
+          "get_trademark_info": 1,
+          "get_software_copyright_info": 1,
+          "get_internet_service_info": 1,
+          "get_standard_info": 3,
+          "get_copyright_work_info": 1,
+          "get_ipr_pledge": 1,
+          "get_international_patent": 1,
+          "get_app_info": 1,
+          "get_wechat_official_account": 1,
+          "get_mini_program": 1,
+          "get_online_store": 1,
+          "get_douyin_account": 1,
+          "get_weibo_account": 1,
+          "get_integrated_circuit_layout": 1,
+          "get_trademark_document": 1,
+          "get_kuaishou_account": 1,
+          "get_commercial_franchise": 1
+        },
+        "require_tool_pricing": true
+      }
+    },
+    {
+      "name": "qcc-operation",
+      "title": "企查查 · 经营罗盘",
+      "description": "经营罗盘。按 1 积分 = 1 USD 计费；工具价格核对于 2026-09-09。",
+      "category": "Business Data",
+      "transport": "http",
+      "url": "https://agent.qcc.com/mcp/operation/stream",
+      "auth_type": "bearer_token",
+      "env_vars": [
+        {
+          "name": "QCC_API_KEY",
+          "description": "企查查 API Key",
+          "secret": true
+        }
+      ],
+      "mcp_server_cost_info": {
+        "tool_name_to_cost_per_query": {
+          "get_bidding_info": 3,
+          "get_financing_records": 3,
+          "get_qualifications": 1,
+          "get_news_sentiment": 1,
+          "get_honor_info": 1,
+          "get_administrative_license": 3,
+          "get_credit_evaluation": 3,
+          "get_recruitment_info": 1,
+          "get_import_export_credit": 3,
+          "get_company_announcement": 3,
+          "get_ranking_list_info": 1,
+          "get_spot_check_info": 3,
+          "get_telecom_license": 3,
+          "get_investment_institution": 3,
+          "get_random_check": 3,
+          "get_financing_lease_info": 5,
+          "get_taxpayer_qualification": 1,
+          "get_product_spot_check": 3,
+          "get_government_announcement": 1,
+          "get_private_fund_manager": 3,
+          "get_land_grant_info": 3,
+          "get_tech_achievement": 1,
+          "get_asset_auction": 3,
+          "get_credit_commitments": 3,
+          "get_related_announcement": 1,
+          "get_food_safety": 3,
+          "get_land_transfer_info": 3,
+          "get_government_interview": 3,
+          "get_product_recall": 3,
+          "get_property_rights_transaction": 3,
+          "get_software_violation": 3,
+          "get_advertising_review": 3,
+          "get_counterfeit_cosmetics": 3,
+          "get_entry_denied": 3,
+          "get_game_approval": 1
+        },
+        "require_tool_pricing": true
+      }
+    },
+    {
+      "name": "qcc-history",
+      "title": "企查查 · 历史存档",
+      "description": "历史存档。按 1 积分 = 1 USD 计费；需企查查企业实名认证。工具价格核对于 2026-09-09。",
+      "category": "Business Data",
+      "transport": "http",
+      "url": "https://agent.qcc.com/mcp/history/stream",
+      "auth_type": "bearer_token",
+      "env_vars": [
+        {
+          "name": "QCC_API_KEY",
+          "description": "企查查 API Key",
+          "secret": true
+        }
+      ],
+      "mcp_server_cost_info": {
+        "tool_name_to_cost_per_query": {
+          "get_historical_business_exception": 5,
+          "get_historical_judgment_debtor": 5,
+          "get_historical_registration": 5,
+          "get_historical_serious_violation": 5,
+          "get_historical_terminated_cases": 5,
+          "get_historical_admin_license": 5,
+          "get_historical_admin_penalty": 5,
+          "get_historical_bankruptcy": 5,
+          "get_historical_case_filing": 5,
+          "get_historical_chattel_mortgage": 5,
+          "get_historical_court_notice": 5,
+          "get_historical_dishonest": 5,
+          "get_historical_environmental_penalty": 5,
+          "get_historical_equity_freeze": 5,
+          "get_historical_equity_pledge": 5,
+          "get_historical_executives": 5,
+          "get_historical_hearing_notice": 5,
+          "get_historical_high_consumption_ban": 5,
+          "get_historical_honor": 5,
+          "get_historical_internet_service": 5,
+          "get_historical_investments": 5,
+          "get_historical_ipr_pledge": 5,
+          "get_historical_judicial_docs": 5,
+          "get_historical_land_mortgage": 5,
+          "get_historical_legal_rep": 5,
+          "get_historical_listing": 5,
+          "get_historical_patent": 5,
+          "get_historical_pre_litigation_mediation": 5,
+          "get_historical_random_check": 5,
+          "get_historical_service_notice": 5,
+          "get_historical_shareholders": 20,
+          "get_historical_spot_check": 5,
+          "get_historical_tax_arrears": 5,
+          "get_historical_trademark": 5
+        },
+        "require_tool_pricing": true
+      }
+    },
+    {
+      "name": "qcc-executive",
+      "title": "企查查 · 董监高画像",
+      "description": "董监高画像。按 1 积分 = 1 USD 计费；工具价格核对于 2026-09-09。",
+      "category": "Business Data",
+      "transport": "http",
+      "url": "https://agent.qcc.com/mcp/executive/stream",
+      "auth_type": "bearer_token",
+      "env_vars": [
+        {
+          "name": "QCC_API_KEY",
+          "description": "企查查 API Key",
+          "secret": true
+        }
+      ],
+      "mcp_server_cost_info": {
+        "tool_name_to_cost_per_query": {
+          "get_executive_risk_scan": 5,
+          "get_executive_related_risk_scan": 5,
+          "get_executive_related_companies": 5,
+          "get_executive_dishonest": 5,
+          "get_executive_high_consumption_ban": 5,
+          "get_executive_positions": 5,
+          "get_executive_controlled_companies": 5,
+          "get_executive_judgment_debtor": 5,
+          "get_executive_investments": 5,
+          "get_executive_legal_rep_roles": 5,
+          "get_executive_case_filing": 5,
+          "get_executive_judicial_docs": 5,
+          "get_executive_historical_positions": 5,
+          "get_executive_equity_freeze": 5,
+          "get_executive_admin_penalty": 5,
+          "get_executive_exit_restriction": 5,
+          "get_executive_historical_dishonest": 5,
+          "get_executive_beneficial_owner": 5,
+          "get_executive_equity_pledge": 5,
+          "get_executive_tax_violation": 5,
+          "get_executive_historical_case_filing": 5,
+          "get_executive_property_reward_notice": 5,
+          "get_executive_court_notice": 5,
+          "get_executive_historical_equity_freeze": 5,
+          "get_executive_terminated_cases": 5,
+          "get_executive_hearing_notice": 5,
+          "get_executive_historical_legal_rep_roles": 5,
+          "get_executive_historical_related_companies": 5,
+          "get_executive_historical_judgment_debtor": 5,
+          "get_executive_historical_investments": 5,
+          "get_executive_stock_pledge": 5,
+          "get_executive_historical_high_consumption_ban": 5,
+          "get_executive_pre_litigation_mediation": 5,
+          "get_executive_service_notice": 5,
+          "get_executive_historical_admin_penalty": 5,
+          "get_executive_historical_judicial_docs": 5,
+          "get_executive_historical_court_notice": 5,
+          "get_executive_historical_partners": 5,
+          "get_executive_historical_hearing_notice": 5,
+          "get_executive_historical_terminated_cases": 5,
+          "get_executive_historical_equity_pledge": 5,
+          "get_executive_historical_service_notice": 5,
+          "get_executive_valuation_inquiry": 5,
+          "get_executive_historical_pre_litigation_mediation": 5
+        },
+        "require_tool_pricing": true
+      }
+    },
+    {
+      "name": "qcc-legal-regulation",
+      "title": "企查查 · 法律法规",
+      "description": "法律法规。按 1 积分 = 1 USD 计费；工具价格核对于 2026-09-09。",
+      "category": "Business Data",
+      "transport": "http",
+      "url": "https://agent.qcc.com/mcp/regulation/stream",
+      "auth_type": "bearer_token",
+      "env_vars": [
+        {
+          "name": "QCC_API_KEY",
+          "description": "企查查 API Key",
+          "secret": true
+        }
+      ],
+      "mcp_server_cost_info": {
+        "tool_name_to_cost_per_query": {
+          "get_legal_regulation_search": 1,
+          "get_legal_article_semantic_search": 3,
+          "get_legal_regulation_detail": 1,
+          "get_legal_article_search": 1,
+          "get_legal_article_detail": 1,
+          "get_legal_citation_verify": 1
+        },
+        "require_tool_pricing": true
+      }
+    },
+    {
+      "name": "qcc-legal-case",
+      "title": "企查查 · 司法案例",
+      "description": "司法案例。按 1 积分 = 1 USD 计费；工具价格核对于 2026-09-09。",
+      "category": "Business Data",
+      "transport": "http",
+      "url": "https://agent.qcc.com/mcp/case/stream",
+      "auth_type": "bearer_token",
+      "env_vars": [
+        {
+          "name": "QCC_API_KEY",
+          "description": "企查查 API Key",
+          "secret": true
+        }
+      ],
+      "mcp_server_cost_info": {
+        "tool_name_to_cost_per_query": {
+          "get_judicial_case_search": 3,
+          "get_judicial_authoritative_case_search": 3,
+          "get_judicial_case_detail": 3,
+          "get_judicial_citation_verify": 3
+        },
+        "require_tool_pricing": true
+      }
+    },
+    {
+      "name": "qcc-tender",
+      "title": "企查查 · 标讯数据",
+      "description": "标讯数据。按 1 积分 = 1 USD 计费；工具价格核对于 2026-09-09。",
+      "category": "Business Data",
+      "transport": "http",
+      "url": "https://agent.qcc.com/mcp/tender/stream",
+      "auth_type": "bearer_token",
+      "env_vars": [
+        {
+          "name": "QCC_API_KEY",
+          "description": "企查查 API Key",
+          "secret": true
+        }
+      ],
+      "mcp_server_cost_info": {
+        "tool_name_to_cost_per_query": {
+          "search_tenders": 3,
+          "search_proposed_projects": 5,
+          "get_tender_detail": 3,
+          "get_proposed_project_detail": 5,
+          "search_companies": 3,
+          "search_company_tenders": 3
+        },
+        "require_tool_pricing": true
+      }
+    },
+    {
+      "name": "qcc-document",
+      "title": "企查查 · 智能文档解析",
+      "description": "解析 PDF、图片和 Office 文档。网关等待任务完成后按实际页数计费，1 积分 = 1 USD/页；查询解析结果免费。",
+      "category": "Business Data",
+      "transport": "http",
+      "url": "https://agent.qcc.com/mcp/document/stream",
+      "auth_type": "bearer_token",
+      "timeout": 300,
+      "env_vars": [
+        {
+          "name": "QCC_API_KEY",
+          "description": "企查查 API Key",
+          "secret": true
+        }
+      ],
+      "mcp_server_cost_info": {
+        "require_tool_pricing": true,
+        "tool_name_to_cost_per_query": {
+          "get_parse_result": 0
+        },
+        "tool_name_to_cost_per_unit": {
+          "parse_document": {
+            "unit": "page",
+            "cost_per_unit": 1,
+            "usage_path": "details.*.total_pages"
+          }
+        }
+      }
+    }
+  ]
+}

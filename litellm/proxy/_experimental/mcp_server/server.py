@@ -2672,6 +2672,7 @@ if MCP_AVAILABLE:
             standard_logging_mcp_tool_call["mcp_server_cost_info"] = (mcp_server.mcp_info or {}).get(
                 "mcp_server_cost_info"
             )
+            standard_logging_mcp_tool_call["mcp_server_resource"] = _redact_mcp_resource_url(mcp_server.url)
             if litellm_logging_obj:
                 litellm_logging_obj.model_call_details["mcp_tool_call_metadata"] = standard_logging_mcp_tool_call
 
@@ -2836,7 +2837,14 @@ if MCP_AVAILABLE:
             local_content = await _handle_local_mcp_tool(original_tool_name, arguments)
             response = CallToolResult(content=cast(Any, local_content), isError=False)
 
-        return response
+        from litellm.proxy._experimental.mcp_server.cost_calculator import validate_mcp_result_usage
+
+        return validate_mcp_result_usage(
+            response,
+            (mcp_server.mcp_info or {}).get("mcp_server_cost_info") if mcp_server else None,
+            original_tool_name,
+            standard_logging_mcp_tool_call.get("mcp_server_resource"),
+        )
 
     _MCP_CREDENTIAL_REQUEST_FIELDS = frozenset(
         {

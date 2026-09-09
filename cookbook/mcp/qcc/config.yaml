@@ -1,0 +1,61 @@
+mcp_servers:
+  qcc_company:
+    url: https://agent.qcc.com/mcp/company/stream
+    transport: http
+    auth_type: bearer_token
+    auth_value: os.environ/QCC_API_KEY
+    timeout: 300
+  qcc_risk:
+    url: https://agent.qcc.com/mcp/risk/stream
+    transport: http
+    auth_type: bearer_token
+    auth_value: os.environ/QCC_API_KEY
+    timeout: 300
+  qcc_ipr:
+    url: https://agent.qcc.com/mcp/ipr/stream
+    transport: http
+    auth_type: bearer_token
+    auth_value: os.environ/QCC_API_KEY
+    timeout: 300
+  qcc_operation:
+    url: https://agent.qcc.com/mcp/operation/stream
+    transport: http
+    auth_type: bearer_token
+    auth_value: os.environ/QCC_API_KEY
+    timeout: 300
+  qcc_history:
+    url: https://agent.qcc.com/mcp/history/stream
+    transport: http
+    auth_type: bearer_token
+    auth_value: os.environ/QCC_API_KEY
+    timeout: 300
+  qcc_executive:
+    url: https://agent.qcc.com/mcp/executive/stream
+    transport: http
+    auth_type: bearer_token
+    auth_value: os.environ/QCC_API_KEY
+    timeout: 300
+  qcc_legal_regulation:
+    url: https://agent.qcc.com/mcp/regulation/stream
+    transport: http
+    auth_type: bearer_token
+    auth_value: os.environ/QCC_API_KEY
+    timeout: 300
+  qcc_legal_case:
+    url: https://agent.qcc.com/mcp/case/stream
+    transport: http
+    auth_type: bearer_token
+    auth_value: os.environ/QCC_API_KEY
+    timeout: 300
+  qcc_tender:
+    url: https://agent.qcc.com/mcp/tender/stream
+    transport: http
+    auth_type: bearer_token
+    auth_value: os.environ/QCC_API_KEY
+    timeout: 300
+  qcc_document:
+    url: https://agent.qcc.com/mcp/document/stream
+    transport: http
+    auth_type: bearer_token
+    auth_value: os.environ/QCC_API_KEY
+    timeout: 300

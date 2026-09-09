@@ -6007,6 +6007,41 @@ async def test_execute_mcp_tool_rest_server_id_authoritative_for_unprefixed_tool
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("rest", [True, False])
+async def test_qcc_free_billing_uses_resolved_server_even_when_tool_names_collide(monkeypatch, rest):
+    from types import SimpleNamespace
+    from litellm.proxy._experimental.mcp_server import server as mcp_module
+    from litellm.proxy._experimental.mcp_server.cost_calculator import MCPCostCalculator
+
+    qcc = MCPServer(
+        server_id="qcc-test", name="qcc_company", server_name="qcc_company",
+        url="https://agent.qcc.com/mcp/company/stream", transport=MCPTransport.http,
+        mcp_info={"mcp_server_cost_info": {"default_cost_per_query": 5}},
+    )
+    other = MCPServer(
+        server_id="other-test", name="other", server_name="other",
+        url="https://other.example/mcp", transport=MCPTransport.http,
+    )
+    manager = SimpleNamespace(
+        _get_mcp_server_from_tool_name=lambda name: qcc if name.startswith("qcc_company-") else other,
+        get_registry=lambda: {qcc.server_id: qcc, other.server_id: other},
+    )
+    monkeypatch.setattr(mcp_module, "global_mcp_server_manager", manager)
+    monkeypatch.setattr(mcp_module, "global_mcp_tool_registry", SimpleNamespace(get_tool=lambda name: None))
+    upstream = mcp_module.CallToolResult(content=[], _extra={"settlement": "free_no_match"})
+    monkeypatch.setattr(mcp_module, "_handle_managed_mcp_tool", AsyncMock(return_value=upstream))
+    logging_obj = MagicMock(model_call_details={})
+    response = await mcp_module.execute_mcp_tool(
+        name="get_actual_controller" if rest else "qcc_company-get_actual_controller",
+        arguments={}, allowed_mcp_servers=[qcc, other], start_time=datetime.now(),
+        requested_server_id=qcc.server_id if rest else None, litellm_logging_obj=logging_obj,
+    )
+    assert not response.isError
+    assert logging_obj.model_call_details["mcp_tool_call_metadata"]["mcp_server_resource"] == "https://agent.qcc.com"
+    assert MCPCostCalculator.calculate_mcp_tool_call_cost(logging_obj, response) == 0
+
+
+@pytest.mark.asyncio
 async def test_execute_mcp_tool_rest_server_id_injects_requested_server_credentials():
     """REST server_id must inject the requested server's auth, not a URL-collision peer's."""
     from mcp.types import TextContent

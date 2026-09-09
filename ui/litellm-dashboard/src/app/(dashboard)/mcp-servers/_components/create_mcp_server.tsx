@@ -393,7 +393,11 @@ const CreateMCPServer: React.FC<CreateMCPServerProps> = ({
       alias: sanitizedName,
       description: prefillData.description || "",
       transport: transport,
+      auth_type: prefillData.auth_type,
+      timeout: prefillData.timeout,
     };
+
+    setCostConfig(prefillData.mcp_server_cost_info || {});
 
     if (transport === "stdio") {
       const stdioObj: Record<string, any> = {};
@@ -1366,12 +1370,7 @@ const CreateMCPServer: React.FC<CreateMCPServerProps> = ({
 
           {/* Cost Configuration Section */}
           <div className="mt-6">
-            <MCPServerCostConfig
-              value={costConfig}
-              onChange={setCostConfig}
-              tools={tools.filter((tool) => allowedTools.includes(tool.name))}
-              disabled={false}
-            />
+            <MCPServerCostConfig value={costConfig} onChange={setCostConfig} tools={tools} disabled={false} />
           </div>
 
           <div className="flex items-center justify-end space-x-3 pt-6 border-t border-gray-100">

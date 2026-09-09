@@ -10,6 +10,7 @@ from pydantic import (
     ConfigDict,
     Field,
     Json,
+    TypeAdapter,
     field_validator,
     model_validator,
 )
@@ -32,6 +33,7 @@ from litellm.types.mcp import (
     MCPAuth,
     MCPAuthType,
     MCPCredentials,
+    MCPServerCostInfo,
     MCPTransport,
     MCPTransportType,
 )
@@ -1244,6 +1246,16 @@ def _dcr_bridge_auth_type_error(auth_type: object) -> ValueError:
 
 
 class NewMCPServerRequest(LiteLLMPydanticObjectBase):
+    @field_validator("mcp_info")
+    @classmethod
+    def validate_cost_info(cls, value: Optional[MCPInfo]) -> Optional[MCPInfo]:
+        if value is None or value.get("mcp_server_cost_info") is None:
+            return value
+        return {
+            **value,
+            "mcp_server_cost_info": TypeAdapter(MCPServerCostInfo).validate_python(value["mcp_server_cost_info"]),
+        }
+
     server_id: Optional[str] = None
     server_name: Optional[str] = None
     alias: Optional[str] = None
@@ -1350,6 +1362,16 @@ class NewMCPServerRequest(LiteLLMPydanticObjectBase):
 
 
 class UpdateMCPServerRequest(LiteLLMPydanticObjectBase):
+    @field_validator("mcp_info")
+    @classmethod
+    def validate_cost_info(cls, value: Optional[MCPInfo]) -> Optional[MCPInfo]:
+        if value is None or value.get("mcp_server_cost_info") is None:
+            return value
+        return {
+            **value,
+            "mcp_server_cost_info": TypeAdapter(MCPServerCostInfo).validate_python(value["mcp_server_cost_info"]),
+        }
+
     server_id: str
     server_name: Optional[str] = None
     alias: Optional[str] = None

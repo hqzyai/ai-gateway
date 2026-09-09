@@ -13,7 +13,7 @@ const MCPServerCostDisplay: React.FC<MCPServerCostDisplayProps> = ({ costConfig 
     costConfig?.tool_name_to_cost_per_query && Object.keys(costConfig.tool_name_to_cost_per_query).length > 0;
   const hasCostConfig = hasDefaultCost || hasToolCosts;
 
-  if (!hasCostConfig) {
+  if (!hasCostConfig && !Object.keys(costConfig?.tool_name_to_cost_per_unit || {}).length) {
     return (
       <div className="mt-6 pt-6 border-t border-gray-200">
         <div className="space-y-4">
@@ -30,6 +30,15 @@ const MCPServerCostDisplay: React.FC<MCPServerCostDisplayProps> = ({ costConfig 
   return (
     <div className="mt-6 pt-6 border-t border-gray-200">
       <div className="space-y-4">
+        {Object.entries(costConfig?.tool_name_to_cost_per_unit || {}).map(([name, pricing]) => (
+          <div key={name} className="rounded-lg bg-gray-50 p-3">
+            <Text className="font-medium break-all">{name}</Text>
+            <Text>
+              ${pricing.cost_per_unit.toFixed(4)} per {pricing.unit}
+            </Text>
+            <Text className="text-gray-500 text-sm">Charged using actual usage in the tool response</Text>
+          </div>
+        ))}
         {hasDefaultCost &&
           costConfig?.default_cost_per_query !== undefined &&
           costConfig?.default_cost_per_query !== null && (

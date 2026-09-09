@@ -290,6 +290,7 @@ async def test_execute_tool_calls_strips_prefix_when_alias_differs_from_server_n
     call_tool_mock = _setup_mcp_call_environment(monkeypatch)
     fake_server = types.SimpleNamespace(
         alias="my_deepwiki",
+        url=None,
         server_name="deepwiki_test",
         server_id="test-server-id",
         short_prefix=None,
@@ -335,6 +336,7 @@ async def test_execute_tool_calls_reverse_maps_display_name(monkeypatch):
     fake_server = types.SimpleNamespace(
         alias=None,
         server_name="deepwiki_mcp",
+        url=None,
         server_id="test-server-id",
         short_prefix=None,
         mcp_info=None,
@@ -648,3 +650,65 @@ def test_extract_tool_call_details_still_prefers_openai_arguments():
     assert name == "get_weather"
     assert call_id == "call_123"
     assert arguments == '{"city": "Paris"}'
+
+
+@pytest.mark.asyncio
+async def test_mcp_error_result_is_logged_as_failure_with_model_identity(monkeypatch):
+    from mcp.types import CallToolResult, TextContent
+
+    importlib.import_module("litellm.proxy._experimental.mcp_server.server")
+
+    call = _setup_mcp_call_environment(monkeypatch)
+    call.return_value = CallToolResult(isError=True, content=[TextContent(type="text", text="upstream rejected")])
+    logging_obj = MagicMock()
+    logging_obj.model_call_details = {}
+    logging_obj.async_post_mcp_tool_call_hook = AsyncMock()
+    logging_obj.async_success_handler = AsyncMock()
+    logging_obj.async_failure_handler = AsyncMock()
+    module = importlib.import_module("litellm.responses.mcp.litellm_proxy_mcp_handler")
+    monkeypatch.setattr(module, "function_setup", lambda **kwargs: (logging_obj, {}))
+    result = await LiteLLM_Proxy_MCP_Handler._execute_tool_calls(
+        tool_server_map={"qcc_document-parse_document": "qcc_document"},
+        tool_calls=[{"id": "call-failure", "function": {"name": "qcc_document-parse_document", "arguments": "{}"}}],
+        user_api_key_auth=None,
+    )
+    logging_obj.async_success_handler.assert_not_awaited()
+    logging_obj.async_failure_handler.assert_awaited_once()
+    assert logging_obj.model_call_details["model"] == "MCP: qcc_document-parse_document"
+    assert result[0]["tool_call_id"] == "call-failure"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("settlement,expected", [("free_no_match", 0), ("charged", 5)])
+async def test_mcp_chat_responses_logging_preserves_qcc_origin_and_settlement(monkeypatch, settlement, expected):
+    from mcp.types import CallToolResult, TextContent
+    from litellm.proxy._experimental.mcp_server.cost_calculator import MCPCostCalculator
+    from litellm.proxy._experimental.mcp_server import mcp_server_manager as manager_module
+    from litellm.types.mcp_server.mcp_server_manager import MCPServer
+
+    importlib.import_module("litellm.proxy._experimental.mcp_server.server")
+    call = _setup_mcp_call_environment(monkeypatch)
+    response = CallToolResult(content=[TextContent(type="text", text="result")], _extra={"settlement": settlement})
+    call.return_value = response
+    server = MCPServer(
+        server_id="qcc-test", name="qcc_company", server_name="qcc_company",
+        url="https://agent.qcc.com/mcp/company/stream", transport="http",
+        mcp_info={"mcp_server_cost_info": {"default_cost_per_query": 5}},
+    )
+    manager_module.global_mcp_server_manager.get_mcp_server_by_name.return_value = server
+    logging_obj = MagicMock(model_call_details={})
+    logging_obj.async_post_mcp_tool_call_hook = AsyncMock()
+    logging_obj.async_success_handler = AsyncMock()
+    logging_obj.async_failure_handler = AsyncMock()
+    module = importlib.import_module("litellm.responses.mcp.litellm_proxy_mcp_handler")
+    monkeypatch.setattr(module, "function_setup", lambda **kwargs: (logging_obj, {}))
+    await LiteLLM_Proxy_MCP_Handler._execute_tool_calls(
+        tool_server_map={"qcc_company-get_actual_controller": "qcc_company"},
+        tool_calls=[{"id": "call-settlement", "function": {"name": "qcc_company-get_actual_controller", "arguments": "{}"}}],
+        user_api_key_auth=None,
+    )
+    logging_obj.async_success_handler.assert_awaited_once()
+    logging_obj.async_failure_handler.assert_not_awaited()
+    logged = logging_obj.async_success_handler.await_args.kwargs["result"]
+    assert MCPCostCalculator.calculate_mcp_tool_call_cost(logging_obj, logged) == expected
+    assert logging_obj.model_call_details["mcp_tool_call_metadata"]["mcp_server_resource"] == "https://agent.qcc.com"

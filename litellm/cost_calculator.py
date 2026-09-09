@@ -1529,7 +1529,9 @@ def completion_cost(
                         MCPCostCalculator,
                     )
 
-                    return MCPCostCalculator.calculate_mcp_tool_call_cost(litellm_logging_obj=litellm_logging_obj)
+                    return MCPCostCalculator.calculate_mcp_tool_call_cost(
+                        litellm_logging_obj=litellm_logging_obj, completion_response=completion_response
+                    )
                 # Calculate cost based on prompt_tokens, completion_tokens
                 if "togethercomputer" in model or "together_ai" in model or custom_llm_provider == "together_ai":
                     # together ai prices based on size of llm

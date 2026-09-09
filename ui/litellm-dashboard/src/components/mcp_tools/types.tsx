@@ -243,6 +243,8 @@ export interface InputSchema {
 
 // Define MCPServerCostInfo for cost tracking
 export interface MCPServerCostInfo {
+  require_tool_pricing?: boolean;
+  tool_name_to_cost_per_unit?: Record<string, { cost_per_unit: number; unit: string; usage_path: string }> | null;
   default_cost_per_query?: number | null;
   tool_name_to_cost_per_query?: Record<string, number | null>;
 }
@@ -457,6 +459,9 @@ export interface MCPToolset {
 
 // Discoverable MCP server from the curated registry
 export interface DiscoverableMCPServer {
+  auth_type?: string;
+  mcp_server_cost_info?: MCPServerCostInfo;
+  timeout?: number;
   name: string;
   title: string;
   description: string;

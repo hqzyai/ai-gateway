@@ -767,7 +767,10 @@ class LiteLLM_Proxy_MCP_Handler:
                     "namespaced_tool_name": tool_name,
                 }
                 if mcp_server:
+                    from litellm.proxy._experimental.mcp_server.server import _redact_mcp_resource_url
+
                     mcp_info = mcp_server.mcp_info or {}
+                    standard_logging_mcp_tool_call["mcp_server_resource"] = _redact_mcp_resource_url(mcp_server.url)
                     standard_logging_mcp_tool_call["mcp_server_name"] = (
                         mcp_info.get("server_name") or getattr(mcp_server, "server_name", None) or server_name
                     )
@@ -781,9 +784,10 @@ class LiteLLM_Proxy_MCP_Handler:
                 if litellm_logging_obj:
                     litellm_logging_obj.model_call_details["mcp_tool_call_metadata"] = standard_logging_mcp_tool_call
                     litellm_logging_obj.model = f"MCP: {tool_name}"
+                    litellm_logging_obj.model_call_details["model"] = f"MCP: {tool_name}"
                     litellm_logging_obj.call_type = CallTypes.call_mcp_tool.value
 
-                result = await global_mcp_server_manager.call_tool(
+                upstream_result = await global_mcp_server_manager.call_tool(
                     server_name=server_name,
                     name=sanitized_tool_name,
                     arguments=parsed_arguments,
@@ -795,20 +799,26 @@ class LiteLLM_Proxy_MCP_Handler:
                     proxy_logging_obj=proxy_logging_obj,
                 )
 
+                from litellm.proxy._experimental.mcp_server.cost_calculator import validate_mcp_result_usage
+
+                result = validate_mcp_result_usage(
+                    upstream_result,
+                    standard_logging_mcp_tool_call.get("mcp_server_cost_info"),
+                    sanitized_tool_name,
+                    standard_logging_mcp_tool_call.get("mcp_server_resource"),
+                )
+
                 if litellm_logging_obj:
                     try:
-                        litellm_logging_obj.post_call(original_response=result)
-                        end_time = datetime.now()
-                        await litellm_logging_obj.async_post_mcp_tool_call_hook(
-                            kwargs=litellm_logging_obj.model_call_details,
-                            response_obj=result,
-                            start_time=start_time,
-                            end_time=end_time,
-                        )
-                        await litellm_logging_obj.async_success_handler(
+                        from litellm.proxy._experimental.mcp_server.server import _fire_mcp_tool_call_logging
+
+                        await _fire_mcp_tool_call_logging(
+                            logging_obj=litellm_logging_obj,
                             result=result,
                             start_time=start_time,
-                            end_time=end_time,
+                            end_time=datetime.now(),
+                            user_api_key_auth=user_api_key_auth,
+                            request_data=logging_request_data,
                         )
                     except Exception:
                         verbose_logger.exception("Failed to log MCP tool call success for %s", tool_name)

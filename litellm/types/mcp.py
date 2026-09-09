@@ -1,7 +1,7 @@
 import enum
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Union
+from typing import TYPE_CHECKING, Annotated, Any, Dict, List, Literal, Optional, Union
 
-from pydantic import BaseModel
+from pydantic import BaseModel, BeforeValidator, Field
 from typing_extensions import TypedDict
 
 from litellm.types.llms.base import HiddenParams
@@ -213,13 +213,30 @@ class MCPCredentials(TypedDict, total=False):
     """
 
 
+def _reject_boolean_mcp_cost(value: object) -> object:
+    if isinstance(value, bool):
+        raise ValueError("MCP tool prices must be numbers, not booleans")
+    return value
+
+
+MCPToolPrice = Annotated[float, Field(ge=0, allow_inf_nan=False), BeforeValidator(_reject_boolean_mcp_cost)]
+
+
+class MCPToolUnitCost(TypedDict):
+    cost_per_unit: MCPToolPrice
+    usage_path: Annotated[str, Field(min_length=1)]
+    unit: Annotated[str, Field(min_length=1)]
+
+
 class MCPServerCostInfo(TypedDict, total=False):
-    default_cost_per_query: Optional[float]
+    require_tool_pricing: bool
+    tool_name_to_cost_per_unit: dict[str, MCPToolUnitCost] | None
+    default_cost_per_query: Optional[MCPToolPrice]
     """
     Default cost per query for the MCP server tool call
     """
 
-    tool_name_to_cost_per_query: Optional[Dict[str, float]]
+    tool_name_to_cost_per_query: Optional[Dict[str, Optional[MCPToolPrice]]]
     """
     Granular, set a custom cost for each tool in the MCP server
     """

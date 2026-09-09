@@ -828,50 +828,12 @@ def _deserialize_json_list(data: Any) -> Optional[list[dict[str, Any]]]:
     return [item.model_dump(mode="json") if hasattr(item, "model_dump") else item for item in data]
 
 
-def _normalize_mcp_server_cost_info(mcp_info: MCPInfo) -> None:
-    """Coerce ``mcp_server_cost_info`` numeric fields to ``float`` at ingest.
+def _normalize_mcp_server_cost_info(mcp_info: MCPInfo, url: Optional[str] = None) -> None:
+    from litellm.proxy._experimental.mcp_server.qcc import resolve_qcc_cost_info
 
-    YAML 1.1 parses scientific notation without a decimal point (e.g.
-    ``7e-05``) as a string, and ``MCPServerCostInfo`` is a TypedDict with no
-    runtime validation, so string-typed costs flow through to the UI and
-    crash its ``.toFixed`` formatting. Values that cannot be coerced are
-    dropped with a warning instead of failing the server load.
-    """
-    cost_info = mcp_info.get("mcp_server_cost_info")
-    if not isinstance(cost_info, dict):
-        return
-
-    server_name = mcp_info.get("server_name")
-    normalized = dict(cost_info)
-
-    default_cost = normalized.get("default_cost_per_query")
-    if default_cost is not None:
-        try:
-            normalized["default_cost_per_query"] = float(default_cost)
-        except (TypeError, ValueError):
-            verbose_logger.warning(
-                "MCP server '%s' has non-numeric default_cost_per_query %r; ignoring it",
-                server_name,
-                default_cost,
-            )
-            del normalized["default_cost_per_query"]
-
-    tool_costs = normalized.get("tool_name_to_cost_per_query")
-    if isinstance(tool_costs, dict):
-        normalized_tool_costs = {}
-        for tool_name, cost in tool_costs.items():
-            try:
-                normalized_tool_costs[tool_name] = float(cost)
-            except (TypeError, ValueError):
-                verbose_logger.warning(
-                    "MCP server '%s' has non-numeric cost %r for tool '%s'; ignoring it",
-                    server_name,
-                    cost,
-                    tool_name,
-                )
-        normalized["tool_name_to_cost_per_query"] = normalized_tool_costs
-
-    mcp_info["mcp_server_cost_info"] = normalized
+    cost_info = resolve_qcc_cost_info(url, mcp_info.get("mcp_server_cost_info"))
+    if cost_info is not None:
+        mcp_info["mcp_server_cost_info"] = cost_info
 
 
 def _create_sampling_callback(user_api_key_auth: Optional[Any] = None):
@@ -1223,7 +1185,7 @@ class MCPServerManager:
                 mcp_info["server_name"] = server_name
             if "description" not in mcp_info and server_config.get("description"):
                 mcp_info["description"] = server_config.get("description")
-            _normalize_mcp_server_cost_info(mcp_info)
+            _normalize_mcp_server_cost_info(mcp_info, server_config.get("url"))
 
             # Use alias for name if present, else server_name
             alias = server_config.get("alias", None)
@@ -1792,7 +1754,7 @@ class MCPServerManager:
             mcp_info["server_name"] = mcp_server.server_name or mcp_server.server_id
         if "description" not in mcp_info and mcp_server.description:
             mcp_info["description"] = mcp_server.description
-        _normalize_mcp_server_cost_info(mcp_info)
+        _normalize_mcp_server_cost_info(mcp_info, mcp_server.url)
 
         auth_type = cast(MCPAuthType, mcp_server.auth_type)
         server_url = mcp_server.url
@@ -4208,6 +4170,14 @@ class MCPServerManager:
             user_api_key_auth=user_api_key_auth,
         )
 
+        from litellm.proxy._experimental.mcp_server.cost_calculator import MCPCostCalculator
+
+        if not MCPCostCalculator.is_tool_priced((server.mcp_info or {}).get("mcp_server_cost_info"), name):
+            raise HTTPException(
+                status_code=422,
+                detail={"error": "mcp_tool_price_missing", "tool": name, "server": server.name},
+            )
+
         ## filter parameters based on allowed_params configuration
         self.validate_allowed_params(
             tool_name=name,
@@ -4566,6 +4536,16 @@ class MCPServerManager:
             async def _call_tool_via_client(client, params):
                 async with self._limit_outbound_concurrency(mcp_server):
                     if not relays_upstream_auth:
+                        from litellm.proxy._experimental.mcp_server.qcc import call_qcc_document_tool, get_qcc_preset
+
+                        qcc_preset = get_qcc_preset(mcp_server.url)
+                        if qcc_preset is not None and qcc_preset.name == "qcc-document":
+                            return await call_qcc_document_tool(
+                                lambda request: client.call_tool(
+                                    request, host_progress_callback=host_progress_callback
+                                ),
+                                params,
+                            )
                         return await client.call_tool(params, host_progress_callback=host_progress_callback)
                     # The client-forwarded modes carry the caller's own upstream token, so an upstream
                     # 401 (expired/invalid token) is the caller's to resolve: relay it as
