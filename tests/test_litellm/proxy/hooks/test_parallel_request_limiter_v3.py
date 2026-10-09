@@ -2030,7 +2030,7 @@ async def test_multiple_rate_limits_per_descriptor():
 
     # Verify the exception details are correct and use the descriptor_key approach
     assert exc_info.value.status_code == 429
-    assert "Rate limit exceeded for api_key:" in exc_info.value.detail
+    assert "Rate limit exceeded for api_key" in exc_info.value.detail
     assert "max_parallel_requests" in exc_info.value.detail
     assert "Current limit: 1" in exc_info.value.detail
     assert "Remaining: 0" in exc_info.value.detail  # max(0, -1) = 0
@@ -2091,9 +2091,40 @@ async def test_missing_descriptor_fallback():
 
     # Verify the exception uses fallback values
     assert exc_info.value.status_code == 429
-    assert "Rate limit exceeded for nonexistent_key: unknown" in exc_info.value.detail
+    assert "Rate limit exceeded for nonexistent_key" in exc_info.value.detail
     assert "requests" in exc_info.value.detail
     assert "Current limit: 2" in exc_info.value.detail
+
+
+@pytest.mark.parametrize("scope", ["api_key", "model_per_key", "tag_per_key", "mcp_per_key", "team"])
+@pytest.mark.parametrize("credential", ["sk-test-private-credential", hash_token("sk-test-private-credential")])
+def test_rate_limit_response_omits_private_identifiers(scope: str, credential: str) -> None:
+    handler = _PROXY_MaxParallelRequestsHandler(internal_usage_cache=InternalUsageCache(DualCache()))
+    with pytest.raises(HTTPException) as exc_info:
+        handler._handle_rate_limit_error(
+            response={
+                "overall_code": "OVER_LIMIT",
+                "statuses": [{
+                    "code": "OVER_LIMIT", "descriptor_key": scope,
+                    "current_limit": 100000, "limit_remaining": 48719, "rate_limit_type": "tokens",
+                }],
+            },
+            descriptors=[{
+                "key": scope, "value": f"{credential}:private-model",
+                "rate_limit": {"requests_per_unit": None, "tokens_per_unit": 100000, "window_size": 60},
+            }],
+        )
+    error = exc_info.value
+    assert error.status_code == 429
+    assert credential not in str(error)
+    assert credential not in str(error.detail)
+    assert credential not in str(error.headers)
+    assert "private-model" not in str(error.detail)
+    assert f"for {scope}" in error.detail
+    assert "Current limit: 100000, Remaining: 48719" in error.detail
+    assert error.headers["rate_limit_type"] == "tokens"
+    assert int(error.headers["retry-after"]) > 0
+    assert error.headers["reset_at"] in error.detail
 
 
 @pytest.mark.asyncio

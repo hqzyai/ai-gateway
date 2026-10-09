@@ -2285,11 +2285,6 @@ class _PROXY_MaxParallelRequestsHandler_v3(CustomLogger):
         for status in response["statuses"]:
             if status["code"] == "OVER_LIMIT":
                 descriptor_key = status["descriptor_key"]
-                matching_descriptor = next(
-                    (desc for desc in descriptors if desc["key"] == descriptor_key),
-                    None,
-                )
-                descriptor_value = matching_descriptor["value"] if matching_descriptor is not None else "unknown"
 
                 now = self._get_current_time().timestamp()
                 reset_time = now + self.window_size
@@ -2300,7 +2295,7 @@ class _PROXY_MaxParallelRequestsHandler_v3(CustomLogger):
                 current_limit = status["current_limit"]
 
                 detail = (
-                    f"Rate limit exceeded for {descriptor_key}: {descriptor_value}. "
+                    f"Rate limit exceeded for {descriptor_key}. "
                     f"Limit type: {rate_limit_type}. "
                     f"Current limit: {current_limit}, Remaining: {remaining_display}. "
                     f"Limit resets at: {reset_time_formatted}"
