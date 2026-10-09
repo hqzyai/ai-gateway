@@ -7,7 +7,7 @@ import os
 import sys
 import time
 from contextlib import contextmanager
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 import pytest
@@ -2125,6 +2125,41 @@ def test_rate_limit_response_omits_private_identifiers(scope: str, credential: s
     assert error.headers["rate_limit_type"] == "tokens"
     assert int(error.headers["retry-after"]) > 0
     assert error.headers["reset_at"] in error.detail
+
+
+@pytest.mark.parametrize("server_tz", ["UTC", "Asia/Shanghai", "America/Los_Angeles"])
+@pytest.mark.parametrize("now, expected", [
+    (datetime(2026, 8, 17, 7, 17, 6, tzinfo=timezone.utc), "2026-08-17 15:18:06 UTC+08:00"),
+    (datetime(2026, 12, 31, 23, 59, 30, tzinfo=timezone.utc), "2027-01-01 08:00:30 UTC+08:00"),
+])
+def test_rate_limit_reset_uses_beijing_time(monkeypatch, server_tz, now, expected):
+    if not hasattr(time, "tzset"):
+        pytest.skip("Host timezone switching is unavailable")
+    with monkeypatch.context() as context:
+        context.setenv("TZ", server_tz)
+        time.tzset()
+        try:
+            handler = _PROXY_MaxParallelRequestsHandler(
+                internal_usage_cache=InternalUsageCache(DualCache()), time_provider=lambda: now,
+            )
+            handler.window_size = 60
+            with pytest.raises(HTTPException) as exc_info:
+                handler._handle_rate_limit_error(
+                    response={"overall_code": "OVER_LIMIT", "statuses": [{
+                        "code": "OVER_LIMIT", "descriptor_key": "api_key",
+                        "current_limit": 10, "limit_remaining": 0, "rate_limit_type": "requests",
+                    }]},
+                    descriptors=[],
+                )
+            error = exc_info.value
+            assert error.status_code == 429
+            assert error.headers["retry-after"] == "60"
+            assert error.headers["reset_at"] == expected
+            assert error.headers["reset_at"].isascii()
+            assert f"Limit resets at: {expected} (北京时间)" in error.detail
+        finally:
+            context.undo()
+            time.tzset()
 
 
 @pytest.mark.asyncio

@@ -8,7 +8,7 @@ import asyncio
 import binascii
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -2288,7 +2288,9 @@ class _PROXY_MaxParallelRequestsHandler_v3(CustomLogger):
 
                 now = self._get_current_time().timestamp()
                 reset_time = now + self.window_size
-                reset_time_formatted = datetime.fromtimestamp(reset_time).strftime("%Y-%m-%d %H:%M:%S UTC")
+                reset_time_formatted = datetime.fromtimestamp(reset_time, tz=timezone(timedelta(hours=8))).strftime(
+                    "%Y-%m-%d %H:%M:%S UTC+08:00"
+                )
 
                 remaining_display = max(0, status["limit_remaining"])
                 rate_limit_type = status["rate_limit_type"]
@@ -2298,7 +2300,7 @@ class _PROXY_MaxParallelRequestsHandler_v3(CustomLogger):
                     f"Rate limit exceeded for {descriptor_key}. "
                     f"Limit type: {rate_limit_type}. "
                     f"Current limit: {current_limit}, Remaining: {remaining_display}. "
-                    f"Limit resets at: {reset_time_formatted}"
+                    f"Limit resets at: {reset_time_formatted} (北京时间)"
                 )
 
                 resolved_model, llm_provider = resolve_llm_provider_for_rate_limit(requested_model)
