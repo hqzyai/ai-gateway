@@ -1,4 +1,5 @@
 import { DeleteOutlined, PlusOutlined } from "@ant-design/icons";
+import { modelProviders } from "@/utils/providerScope";
 import { Alert, Button, Divider, Drawer, Empty, Input, InputNumber, Select, Space, Tabs, Tag, Typography } from "antd";
 import { useMemo, useState } from "react";
 import { getModeLabel, getPricingDefinition, getVideoPricingScale, pricingDimensions } from "./pricingDimensions";
@@ -409,7 +410,7 @@ const PricingRuleDrawer = ({
         <Space>
           {onDelete && (
             <Button danger disabled={readOnly || saving} onClick={onDelete}>
-              恢复上游价格
+              {initialDraft?.provider === "openai" ? "删除自定义规则" : "恢复上游价格"}
             </Button>
           )}
           <Button type="primary" loading={saving} disabled={readOnly} onClick={() => onSave(draft)}>
@@ -433,11 +434,12 @@ const PricingRuleDrawer = ({
         </div>
         <div>
           <Text type="secondary">供应商</Text>
-          <Input
-            className="mt-1"
+          <Select
+            className="mt-1 w-full"
             value={draft.provider}
+            options={modelProviders.map((provider) => ({ label: provider, value: provider }))}
             disabled={readOnly}
-            onChange={(event) => updateDraft({ provider: event.target.value })}
+            onChange={(provider) => updateDraft({ provider })}
           />
         </div>
         <div>

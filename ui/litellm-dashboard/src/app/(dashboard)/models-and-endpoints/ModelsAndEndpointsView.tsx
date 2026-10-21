@@ -58,7 +58,7 @@ const ModelsAndEndpointsView: React.FC<ModelDashboardProps> = ({ premiumUser, te
   const [addModelForm] = Form.useForm();
   const [lastRefreshed, setLastRefreshed] = useState("");
   const [providerModels, setProviderModels] = useState<Array<string>>([]);
-  const [selectedProvider, setSelectedProvider] = useState<Providers>(Providers.Anthropic);
+  const [selectedProvider, setSelectedProvider] = useState<Providers>(Providers.SiliconFlow);
   const [selectedModelGroup, setSelectedModelGroup] = useState<string | null>(null);
 
   const [retryScope, setRetryScope] = useState<string | null>("global");

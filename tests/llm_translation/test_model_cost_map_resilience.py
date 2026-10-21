@@ -25,6 +25,11 @@ from litellm.litellm_core_utils.get_model_cost_map import (
 )
 
 
+@pytest.fixture(autouse=True)
+def use_remote_cost_map(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LITELLM_LOCAL_MODEL_COST_MAP", "False")
+
+
 class TestCheckIsValidDict:
     """Unit tests for _check_is_valid_dict."""
 
@@ -258,8 +263,7 @@ class TestBadHostedModelCostMap:
         original = litellm.model_cost
         litellm.model_cost = fallback_map
         try:
-            # gpt-4o is in every backup — should work fine
-            info = litellm.get_model_info("gpt-4o")
+            info = litellm.get_model_info("volcengine/doubao-seed-2-0-pro-260215")
             assert info is not None
             assert info["input_cost_per_token"] > 0
         finally:
@@ -287,7 +291,7 @@ class TestBadHostedModelCostMap:
             # mock_response goes through the real completion path —
             # routing, cost calculator, logging — but skips the HTTP call
             response = litellm.completion(
-                model="gpt-4o-mini",
+                model="volcengine/doubao-seed-2-0-pro-260215",
                 messages=[{"role": "user", "content": "say hi"}],
                 mock_response="hello from mock",
             )

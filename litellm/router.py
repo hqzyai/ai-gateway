@@ -529,6 +529,7 @@ class Router:
         # ``id()``-reuse risk after GC). See
         # ``litellm.proxy.auth.auth_checks._is_model_cost_zero``.
         self._zero_cost_cache: Dict[str, bool] = {}
+        self._zero_cost_cache_generation: int = -1
 
         if model_list is not None:
             # set_model_list will build indices automatically

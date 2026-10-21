@@ -4,9 +4,13 @@ count actual model entries, not reserved meta keys) and the extraction of the
 ``fallback_generalizations`` block out of the raw map.
 """
 
+import json
 import os
 import sys
+from pathlib import Path
+from unittest.mock import Mock
 
+import httpx
 import pytest
 
 sys.path.insert(0, os.path.abspath("../../.."))
@@ -22,6 +26,8 @@ from litellm.litellm_core_utils.get_model_cost_map import (
     GetModelCostMap,
     _count_model_entries,
     _finalize_model_cost_map,
+    get_model_cost_map,
+    get_model_cost_map_source_info,
 )
 
 
@@ -118,6 +124,87 @@ def test_finalize_with_no_block_clears_rules():
         assert match_capability_generalizations("x-1") is None
     finally:
         set_fallback_generalizations(previous)
+
+
+def test_finalize_limits_seed_providers_and_preserves_aliases_and_pricing() -> None:
+    previous = list(get_fallback_generalization_rules())
+    try:
+        raw = {
+            "siliconflow/Qwen/Qwen3-8B": {"litellm_provider": "siliconflow", "input_cost_per_token": 0},
+            "doubao-seed-2-0-pro-260215": {
+                "litellm_provider": "volcengine",
+                "aliases": ["volcengine/doubao-seed-2-0-pro-260215"],
+                "tiered_pricing": [{"input_cost_per_token": 1e-6}],
+            },
+            "dashscope/qwen-image-3.0-pro": {"litellm_provider": "dashscope", "output_cost_per_image": 0.1},
+            "other/model": {"litellm_provider": "openai", "aliases": ["siliconflow/unrelated"]},
+            "dashscope/wrong-provider": {"litellm_provider": "openrouter"},
+            "sample_spec": {"litellm_provider": "dashscope"},
+            "unknown": {"mode": "chat"},
+        }
+
+        result = _finalize_model_cost_map(raw)
+
+        assert set(result) == {
+            "siliconflow/Qwen/Qwen3-8B",
+            "doubao-seed-2-0-pro-260215",
+            "volcengine/doubao-seed-2-0-pro-260215",
+            "dashscope/qwen-image-3.0-pro",
+        }
+        assert result["siliconflow/Qwen/Qwen3-8B"]["input_cost_per_token"] == 0
+        assert result["dashscope/qwen-image-3.0-pro"]["output_cost_per_image"] == 0.1
+        assert result["doubao-seed-2-0-pro-260215"]["tiered_pricing"] == [{"input_cost_per_token": 1e-6}]
+        assert result["volcengine/doubao-seed-2-0-pro-260215"] is result["doubao-seed-2-0-pro-260215"]
+        assert "aliases" not in result["doubao-seed-2-0-pro-260215"]
+    finally:
+        set_fallback_generalizations(previous)
+
+
+@pytest.mark.parametrize("source", ["default", "local", "remote", "network_failure", "invalid_remote"])
+def test_loading_and_reloading_only_initializes_three_providers(source: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    previous = list(get_fallback_generalization_rules())
+    backup = GetModelCostMap.load_local_model_cost_map()
+    expected_models = {
+        name
+        for name, info in backup.items()
+        if info.get("litellm_provider") in {"siliconflow", "volcengine", "dashscope"}
+    }
+    remote_get = Mock(
+        return_value=httpx.Response(
+            200,
+            json={} if source == "invalid_remote" else backup,
+            request=httpx.Request("GET", "https://pricing.example/models.json"),
+        ),
+        side_effect=httpx.ConnectError("unavailable") if source == "network_failure" else None,
+    )
+    monkeypatch.setattr(httpx, "get", remote_get)
+    if source == "default":
+        monkeypatch.delenv("LITELLM_LOCAL_MODEL_COST_MAP", raising=False)
+    else:
+        monkeypatch.setenv("LITELLM_LOCAL_MODEL_COST_MAP", "True" if source == "local" else "False")
+    try:
+        initial = get_model_cost_map("https://pricing.example/models.json")
+        reloaded = get_model_cost_map("https://pricing.example/models.json")
+
+        assert initial == reloaded
+        assert expected_models <= initial.keys()
+        assert {info["litellm_provider"] for info in initial.values()} == {"siliconflow", "volcengine", "dashscope"}
+        assert "sample_spec" not in initial
+        assert remote_get.call_count == (0 if source in {"default", "local"} else 2)
+        assert get_model_cost_map_source_info()["source"] == ("remote" if source == "remote" else "local")
+        assert get_model_cost_map_source_info()["is_env_forced"] is (source == "local")
+    finally:
+        set_fallback_generalizations(previous)
+
+
+def test_shipped_backup_contains_all_selected_provider_pricing() -> None:
+    source = json.loads((Path(__file__).resolve().parents[3] / "model_prices_and_context_window.json").read_text())
+    backup = GetModelCostMap.load_local_model_cost_map()
+    selected_providers = {"siliconflow", "volcengine", "dashscope"}
+
+    assert {name: info for name, info in backup.items() if info.get("litellm_provider") in selected_providers} == {
+        name: info for name, info in source.items() if info.get("litellm_provider") in selected_providers
+    }
 
 
 def test_shipped_backup_carries_the_claude_routing_rules():

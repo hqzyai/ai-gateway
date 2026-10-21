@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, waitFor } from "@testing-library/react";
-import { AgentControlPlaneView } from "./layout";
+import { AgentControlPlaneView } from "./components/AgentControlPlaneView";
 
 const { getMock } = vi.hoisted(() => ({ getMock: vi.fn(() => Promise.resolve({ session_claim: "claim" })) }));
 

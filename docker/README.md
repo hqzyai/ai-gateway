@@ -23,6 +23,14 @@ LITELLM_MASTER_KEY=your-secret-key
 
 Replace `your-secret-key` with a strong, randomly generated secret.
 
+“Add Model”的供应商下拉只提供硅基流动（SiliconFlow）、火山引擎（Volcengine）、DashScope 和 OpenAI。用户通过页面或自己的 `model_list` 配置添加模型，启动时不会自动创建示例模型。使用环境变量配置凭证时，可填写 `SILICONFLOW_API_KEY`、`VOLCENGINE_API_KEY`、`DASHSCOPE_API_KEY` 或 `OPENAI_API_KEY`；`OPENAI_API_BASE` 可设为 OpenAI 官方地址或兼容接口地址
+
+计费规则默认读取镜像内的价格表，只加载硅基流动、火山引擎和 DashScope 已有的规则；刷新、定时刷新和远程加载失败后的本地回退也保持这个范围。`LITELLM_LOCAL_MODEL_COST_MAP=False` 可显式开启远程价格数据源，供应商范围仍保持不变。页面的计费列表、供应商筛选、模式筛选和统计卡片均只计算这三家及用户手动添加的 OpenAI 规则
+
+OpenAI 不预设价格，包括零价格；用户需要在“计费规则”中按实际模型标识（`openai/模型名`）手动添加规则，保存后随数据库配置持久化，刷新价格表时继续保留
+
+已有数据库中的模型和自定义计费规则不会被删除；不在以上供应商范围内的规则不在此页面展示。重新构建并部署前端后，下拉框和计费列表的限制生效
+
 ### 2. Build and Run the Containers
 
 Once you have set the `LITELLM_MASTER_KEY`, you can build and run the containers using the following command:

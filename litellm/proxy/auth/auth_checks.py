@@ -97,7 +97,7 @@ from litellm.repositories.table_repositories import (
 from litellm.repositories.team_repository import TeamRepository
 from litellm.repositories.user_repository import UserRepository
 from litellm.router import Router
-from litellm.utils import get_utc_datetime
+from litellm.utils import get_model_cost_mutation_generation, get_utc_datetime
 
 from .auth_checks_organization import (
     add_team_org_context_to_request_body,
@@ -153,7 +153,30 @@ def _get_router_zero_cost_cache(llm_router: Router) -> Optional[Dict[str, bool]]
           previous router's ``id()`` and serving its cached entries.
     """
     cache = getattr(llm_router, "_zero_cost_cache", None)
-    return cache if isinstance(cache, dict) else None
+    if not isinstance(cache, dict):
+        return None
+    generation = get_model_cost_mutation_generation()
+    if llm_router._zero_cost_cache_generation != generation:
+        cache.clear()
+        llm_router._zero_cost_cache_generation = generation
+    return cache
+
+
+def _has_billable_deployment_pricing(model: str, llm_router: Router) -> bool:
+    for deployment in llm_router.get_model_list(model_name=model) or ():
+        model_info = llm_router.get_deployment_model_info(
+            model_id=deployment["model_info"]["id"],
+            model_name=deployment["litellm_params"]["model"],
+        )
+        if model_info is None:
+            return True
+        if any(
+            value is not None and value != 0
+            for field, value in model_info.items()
+            if "cost" in field or field in ("image_resolution_pricing", "tiered_pricing", "video_token_pricing")
+        ):
+            return True
+    return False
 
 
 def _is_model_cost_zero(model: Optional[Union[str, List[str]]], llm_router: Optional[Router]) -> bool:
@@ -215,6 +238,11 @@ def _is_model_cost_zero(model: Optional[Union[str, List[str]]], llm_router: Opti
                 verbose_proxy_logger.debug(
                     f"Model {model_name} has non-zero cost (input: {input_cost}, output: {output_cost})"
                 )
+                if zero_cost_cache is not None:
+                    zero_cost_cache[model_name] = False
+                return False
+
+            if _has_billable_deployment_pricing(model_name, llm_router):
                 if zero_cost_cache is not None:
                     zero_cost_cache[model_name] = False
                 return False

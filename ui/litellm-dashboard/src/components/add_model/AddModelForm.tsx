@@ -2,6 +2,7 @@ import { useProviderFields } from "@/app/(dashboard)/hooks/providers/useProvider
 import { useGuardrails } from "@/app/(dashboard)/hooks/guardrails/useGuardrails";
 import { useTags } from "@/app/(dashboard)/hooks/tags/useTags";
 import { all_admin_roles, isUserTeamAdminForAnyTeam } from "@/utils/roles";
+import { isModelProvider } from "@/utils/providerScope";
 import { Switch, Text } from "@tremor/react";
 import type { FormInstance } from "antd";
 import { Select as AntdSelect, Button, Card, Col, Form, Modal, Row, Tooltip, Typography, Alert } from "antd";
@@ -92,7 +93,12 @@ const AddModelForm: React.FC<AddModelFormProps> = ({
     if (!providerMetadata) {
       return [];
     }
-    return [...providerMetadata].sort((a, b) => a.provider_display_name.localeCompare(b.provider_display_name));
+    return providerMetadata
+      .filter(
+        (provider) =>
+          isModelProvider(provider.litellm_provider) && provider.provider.toLowerCase() === provider.litellm_provider,
+      )
+      .sort((a, b) => a.provider_display_name.localeCompare(b.provider_display_name));
   }, [providerMetadata]);
 
   const visibleProviderModels = useMemo(
@@ -158,7 +164,7 @@ const AddModelForm: React.FC<AddModelFormProps> = ({
                   rules={[{ required: true, message: "Required" }]}
                   label="Provider:"
                   name="custom_llm_provider"
-                  tooltip="E.g. OpenAI, Azure OpenAI, Anthropic, Bedrock, etc."
+                  tooltip="SiliconFlow, Volcengine, DashScope, OpenAI"
                   labelCol={{ span: 10 }}
                   labelAlign="left"
                 >

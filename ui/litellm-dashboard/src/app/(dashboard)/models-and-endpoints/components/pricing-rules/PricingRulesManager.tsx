@@ -1,6 +1,7 @@
 import PriceDataReload from "@/components/price_data_reload";
 import NotificationsManager from "@/components/molecules/notifications_manager";
 import { isProxyAdminRole } from "@/utils/roles";
+import { isDefaultPricingProvider, isModelProvider } from "@/utils/providerScope";
 import { DeleteOutlined, EditOutlined, PlusOutlined, SearchOutlined, SlidersOutlined } from "@ant-design/icons";
 import {
   Button,
@@ -57,6 +58,7 @@ interface PricingTableRow {
   dimensions: string[];
   videoPricingUnit: VideoPricingUnit;
   isOverride: boolean;
+  entry: ModelCostEntry;
 }
 
 const PricingRulesManager = ({
@@ -91,20 +93,32 @@ const PricingRulesManager = ({
 
   const rows = useMemo<PricingTableRow[]>(
     () =>
-      Object.entries(modelCostMap).map(([modelName, entry]) => {
-        const effectiveEntry = { ...entry, ...overridesByModel.get(modelName) };
-        return {
-          key: modelName,
-          modelName,
-          provider:
-            typeof effectiveEntry.litellm_provider === "string"
-              ? effectiveEntry.litellm_provider
-              : modelName.split("/")[0] || "custom",
-          mode: typeof effectiveEntry.mode === "string" ? effectiveEntry.mode : "unknown",
-          dimensions: pricingKeysForEntry(effectiveEntry),
-          videoPricingUnit: getVideoPricingUnit(effectiveEntry),
-          isOverride: overridesByModel.has(modelName),
-        };
+      [...new Set([...Object.keys(modelCostMap), ...overridesByModel.keys()])].flatMap((modelName) => {
+        const base = modelCostMap[modelName] ?? {};
+        const override = overridesByModel.get(modelName);
+        const combined = { ...base, ...override };
+        const provider =
+          typeof combined.litellm_provider === "string" ? combined.litellm_provider : modelName.split("/")[0];
+        const isAllowed = isDefaultPricingProvider(provider) || (provider === "openai" && override !== undefined);
+        if (modelName === "sample_spec" || modelName === combined.id || !isAllowed) {
+          return [];
+        }
+        const effectiveEntry: ModelCostEntry =
+          provider === "openai" ? { ...override, litellm_provider: provider, mode: combined.mode ?? "chat" } : combined;
+        const dimensions = pricingKeysForEntry(effectiveEntry);
+        if (dimensions.length === 0) return [];
+        return [
+          {
+            key: modelName,
+            modelName,
+            provider,
+            mode: typeof effectiveEntry.mode === "string" ? effectiveEntry.mode : "unknown",
+            dimensions,
+            videoPricingUnit: getVideoPricingUnit(effectiveEntry),
+            isOverride: override !== undefined,
+            entry: effectiveEntry,
+          },
+        ];
       }),
     [modelCostMap, overridesByModel],
   );
@@ -135,20 +149,24 @@ const PricingRulesManager = ({
   }, [mode, provider, rows, search, sourceFilter]);
 
   const openRule = (modelName: string) => {
-    const override = overridesByModel.get(modelName);
-    const base = modelCostMap[modelName] ?? {};
+    const row = rows.find((row) => row.modelName === modelName);
+    if (!row) return;
     setSelectedModel(modelName);
-    setDraft(createPricingRuleDraft(modelName, { ...base, ...override }));
+    setDraft(createPricingRuleDraft(modelName, row.entry));
   };
 
   const createRule = () => {
     setSelectedModel(null);
-    setDraft(createPricingRuleDraft("", {}));
+    setDraft(createPricingRuleDraft("", { litellm_provider: "siliconflow" }));
   };
 
   const saveRule = async (nextDraft: PricingRuleDraft) => {
     if (!nextDraft.modelName.trim()) {
       NotificationsManager.fromBackend("请输入模型标识");
+      return;
+    }
+    if (!isModelProvider(nextDraft.provider.trim())) {
+      NotificationsManager.fromBackend("仅支持 siliconflow、volcengine、dashscope 和 openai 供应商");
       return;
     }
     if (
@@ -182,7 +200,7 @@ const PricingRulesManager = ({
     setSaving(true);
     try {
       await deleteModelCostMapOverride(accessToken, modelName);
-      NotificationsManager.success(`已恢复 ${modelName} 的上游价格`);
+      NotificationsManager.success(`已删除 ${modelName} 的自定义计费规则`);
       setDraft(null);
       await refetchOverrides();
       onModelCostMapReload();
@@ -240,13 +258,18 @@ const PricingRulesManager = ({
           </Button>
           {row.isOverride && canWrite && (
             <Popconfirm
-              title="恢复上游价格？"
+              title={row.provider === "openai" ? "删除自定义计费规则？" : "恢复上游价格？"}
               description="这会删除该模型的自定义计费规则。"
-              okText="恢复"
+              okText={row.provider === "openai" ? "删除" : "恢复"}
               cancelText="取消"
               onConfirm={() => deleteRule(row.modelName)}
             >
-              <Button type="text" danger aria-label={`恢复 ${row.modelName}`} icon={<DeleteOutlined />} />
+              <Button
+                type="text"
+                danger
+                aria-label={`${row.provider === "openai" ? "删除" : "恢复"} ${row.modelName}`}
+                icon={<DeleteOutlined />}
+              />
             </Popconfirm>
           )}
         </Space>
@@ -288,7 +311,11 @@ const PricingRulesManager = ({
             />
           </Card>
           <Card size="small">
-            <Statistic title="自定义规则" value={overrides.length} valueStyle={{ color: "#7c3aed" }} />
+            <Statistic
+              title="自定义规则"
+              value={rows.filter((row) => row.isOverride).length}
+              valueStyle={{ color: "#7c3aed" }}
+            />
           </Card>
           <Card size="small">
             <Statistic title="计费模式" value={new Set(rows.map((row) => row.mode)).size} />

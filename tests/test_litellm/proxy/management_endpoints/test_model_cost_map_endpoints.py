@@ -7,6 +7,30 @@ from litellm.proxy._types import LitellmUserRoles, UserAPIKeyAuth
 from litellm.proxy.management_endpoints import model_cost_map_endpoints as endpoints
 
 
+def test_openai_pricing_is_only_loaded_from_manual_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
+    from litellm.litellm_core_utils.get_model_cost_map import get_model_cost_map
+
+    monkeypatch.setenv("LITELLM_LOCAL_MODEL_COST_MAP", "True")
+    base = get_model_cost_map("")
+    assert {info["litellm_provider"] for info in base.values()} == {"siliconflow", "volcengine", "dashscope"}
+    assert not any(name.startswith("openai/") for name in base)
+    manual_rule = {
+        "openai/custom-model": {
+            "litellm_provider": "openai",
+            "mode": "chat",
+            "input_cost_per_token": 1e-6,
+            "output_cost_per_token": 2e-6,
+        }
+    }
+
+    initial = endpoints.merge_model_cost_map(base, manual_rule)
+    reloaded = endpoints.merge_model_cost_map(get_model_cost_map(""), manual_rule)
+
+    assert initial == reloaded
+    assert len(reloaded) == len(base) + 1
+    assert reloaded["openai/custom-model"] == manual_rule["openai/custom-model"]
+
+
 def test_merge_model_cost_map_preserves_upstream_metadata_and_adds_models():
     base = {
         "volcengine/model": {"mode": "video_generation", "source": "upstream", "unmodified": True},

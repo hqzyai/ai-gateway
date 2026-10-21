@@ -12539,6 +12539,270 @@
         "supports_system_messages": true,
         "supports_tool_choice": false
     },
+    "dashscope/wan2.1-vace-plus": {
+        "litellm_provider": "dashscope",
+        "mode": "video_generation",
+        "output_cost_per_second": 0.1,
+        "output_cost_per_second_720p": 0.1,
+        "source": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
+        "supported_endpoints": [
+            "/v1/videos",
+            "/v1/videos/edits"
+        ],
+        "supported_modalities": [
+            "text",
+            "image",
+            "video"
+        ],
+        "supported_output_modalities": [
+            "video"
+        ]
+    },
+    "dashscope/wan2.2-i2v-plus": {
+        "litellm_provider": "dashscope",
+        "mode": "video_generation",
+        "output_cost_per_second": 0.02,
+        "output_cost_per_second_480p": 0.02,
+        "output_cost_per_second_1080p": 0.1,
+        "source": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
+        "supported_endpoints": [
+            "/v1/videos"
+        ],
+        "supported_modalities": [
+            "text",
+            "image"
+        ],
+        "supported_output_modalities": [
+            "video"
+        ]
+    },
+    "dashscope/wan2.2-kf2v-flash": {
+        "litellm_provider": "dashscope",
+        "mode": "video_generation",
+        "output_cost_per_second": 0.015,
+        "output_cost_per_second_480p": 0.015,
+        "output_cost_per_second_720p": 0.036,
+        "output_cost_per_second_1080p": 0.07,
+        "source": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
+        "supported_endpoints": [
+            "/v1/videos"
+        ],
+        "supported_modalities": [
+            "text",
+            "image"
+        ],
+        "supported_output_modalities": [
+            "video"
+        ]
+    },
+    "dashscope/wan2.2-t2v-plus": {
+        "litellm_provider": "dashscope",
+        "mode": "video_generation",
+        "output_cost_per_second": 0.02,
+        "output_cost_per_second_480p": 0.02,
+        "output_cost_per_second_1080p": 0.1,
+        "source": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
+        "supported_endpoints": [
+            "/v1/videos"
+        ],
+        "supported_modalities": [
+            "text"
+        ],
+        "supported_output_modalities": [
+            "video"
+        ]
+    },
+    "dashscope/wan2.5-i2v-preview": {
+        "litellm_provider": "dashscope",
+        "mode": "video_generation",
+        "output_cost_per_second": 0.05,
+        "output_cost_per_second_480p": 0.05,
+        "output_cost_per_second_720p": 0.1,
+        "output_cost_per_second_1080p": 0.15,
+        "source": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
+        "supported_endpoints": [
+            "/v1/videos"
+        ],
+        "supported_modalities": [
+            "text",
+            "image",
+            "audio"
+        ],
+        "supported_output_modalities": [
+            "video"
+        ]
+    },
+    "dashscope/wan2.6-i2v": {
+        "litellm_provider": "dashscope",
+        "mode": "video_generation",
+        "output_cost_per_second": 0.1,
+        "output_cost_per_second_720p": 0.1,
+        "output_cost_per_second_1080p": 0.15,
+        "source": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
+        "supported_endpoints": [
+            "/v1/videos"
+        ],
+        "supported_modalities": [
+            "text",
+            "image",
+            "audio"
+        ],
+        "supported_output_modalities": [
+            "video"
+        ]
+    },
+    "dashscope/wan2.6-i2v-flash": {
+        "litellm_provider": "dashscope",
+        "mode": "video_generation",
+        "output_cost_per_second": 0.05,
+        "output_cost_per_second_720p": 0.05,
+        "output_cost_per_second_1080p": 0.075,
+        "source": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
+        "supported_endpoints": [
+            "/v1/videos"
+        ],
+        "supported_modalities": [
+            "text",
+            "image",
+            "audio"
+        ],
+        "supported_output_modalities": [
+            "video"
+        ]
+    },
+    "dashscope/wan2.6-r2v": {
+        "litellm_provider": "dashscope",
+        "mode": "video_generation",
+        "output_cost_per_second": 0.1,
+        "output_cost_per_second_720p": 0.1,
+        "output_cost_per_second_1080p": 0.15,
+        "source": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
+        "supported_endpoints": [
+            "/v1/videos"
+        ],
+        "supported_modalities": [
+            "text",
+            "image",
+            "video"
+        ],
+        "supported_output_modalities": [
+            "video"
+        ]
+    },
+    "dashscope/wan2.6-r2v-flash": {
+        "litellm_provider": "dashscope",
+        "mode": "video_generation",
+        "output_cost_per_second": 0.05,
+        "output_cost_per_second_720p": 0.05,
+        "output_cost_per_second_1080p": 0.075,
+        "source": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
+        "supported_endpoints": [
+            "/v1/videos"
+        ],
+        "supported_modalities": [
+            "text",
+            "image",
+            "video"
+        ],
+        "supported_output_modalities": [
+            "video"
+        ]
+    },
+    "dashscope/wan2.6-t2v": {
+        "litellm_provider": "dashscope",
+        "mode": "video_generation",
+        "output_cost_per_second": 0.1,
+        "output_cost_per_second_720p": 0.1,
+        "output_cost_per_second_1080p": 0.15,
+        "source": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
+        "supported_endpoints": [
+            "/v1/videos"
+        ],
+        "supported_modalities": [
+            "text",
+            "audio"
+        ],
+        "supported_output_modalities": [
+            "video"
+        ]
+    },
+    "dashscope/wan2.7-i2v": {
+        "litellm_provider": "dashscope",
+        "mode": "video_generation",
+        "output_cost_per_second": 0.1,
+        "output_cost_per_second_720p": 0.1,
+        "output_cost_per_second_1080p": 0.15,
+        "source": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
+        "supported_endpoints": [
+            "/v1/videos"
+        ],
+        "supported_modalities": [
+            "text",
+            "image",
+            "audio"
+        ],
+        "supported_output_modalities": [
+            "video"
+        ]
+    },
+    "dashscope/wan2.7-r2v-2026-06-12": {
+        "litellm_provider": "dashscope",
+        "mode": "video_generation",
+        "output_cost_per_second": 0.1,
+        "output_cost_per_second_720p": 0.1,
+        "output_cost_per_second_1080p": 0.15,
+        "source": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
+        "supported_endpoints": [
+            "/v1/videos"
+        ],
+        "supported_modalities": [
+            "text",
+            "image",
+            "video",
+            "audio"
+        ],
+        "supported_output_modalities": [
+            "video"
+        ]
+    },
+    "dashscope/wan2.7-t2v-2026-06-12": {
+        "litellm_provider": "dashscope",
+        "mode": "video_generation",
+        "output_cost_per_second": 0.1,
+        "output_cost_per_second_720p": 0.1,
+        "output_cost_per_second_1080p": 0.15,
+        "source": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
+        "supported_endpoints": [
+            "/v1/videos"
+        ],
+        "supported_modalities": [
+            "text",
+            "audio"
+        ],
+        "supported_output_modalities": [
+            "video"
+        ]
+    },
+    "dashscope/wan2.7-videoedit": {
+        "litellm_provider": "dashscope",
+        "mode": "video_generation",
+        "output_cost_per_second": 0.1,
+        "output_cost_per_second_720p": 0.1,
+        "output_cost_per_second_1080p": 0.15,
+        "source": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
+        "supported_endpoints": [
+            "/v1/videos",
+            "/v1/videos/edits"
+        ],
+        "supported_modalities": [
+            "text",
+            "image",
+            "video"
+        ],
+        "supported_output_modalities": [
+            "video"
+        ]
+    },
     "dashscope/qwen-audio-3.0-asr-flash": {
         "input_cost_per_second": 0.00022,
         "litellm_provider": "dashscope",

@@ -42,6 +42,13 @@ vi.mock("../networking", async () => {
         credential_fields: [],
       },
       {
+        provider: "OpenAI_Compatible",
+        provider_display_name: "OpenAI-Compatible Endpoints (Together AI, etc.)",
+        litellm_provider: "openai",
+        default_model_placeholder: "openai/model",
+        credential_fields: [],
+      },
+      {
         provider: "SiliconFlow",
         provider_display_name: "SiliconFlow",
         litellm_provider: "siliconflow",
@@ -49,6 +56,13 @@ vi.mock("../networking", async () => {
         models: ["siliconflow/deepseek-ai/DeepSeek-V4-Flash", "siliconflow/TeleAI/TeleSpeechASR"],
         credential_fields: [],
       },
+      ...["volcengine", "dashscope", "bedrock", "anthropic", "openai_like"].map((provider) => ({
+        provider,
+        provider_display_name: provider,
+        litellm_provider: provider,
+        default_model_placeholder: `${provider}/model`,
+        credential_fields: [],
+      })),
     ]),
   };
 });
@@ -64,6 +78,13 @@ vi.mock("@/app/(dashboard)/hooks/providers/useProviderFields", () => ({
         credential_fields: [],
       },
       {
+        provider: "OpenAI_Compatible",
+        provider_display_name: "OpenAI-Compatible Endpoints (Together AI, etc.)",
+        litellm_provider: "openai",
+        default_model_placeholder: "openai/model",
+        credential_fields: [],
+      },
+      {
         provider: "SiliconFlow",
         provider_display_name: "SiliconFlow",
         litellm_provider: "siliconflow",
@@ -71,6 +92,13 @@ vi.mock("@/app/(dashboard)/hooks/providers/useProviderFields", () => ({
         models: ["siliconflow/deepseek-ai/DeepSeek-V4-Flash", "siliconflow/TeleAI/TeleSpeechASR"],
         credential_fields: [],
       },
+      ...["volcengine", "dashscope", "bedrock", "anthropic", "openai_like"].map((provider) => ({
+        provider,
+        provider_display_name: provider,
+        litellm_provider: provider,
+        default_model_placeholder: `${provider}/model`,
+        credential_fields: [],
+      })),
     ],
     isLoading: false,
     error: null,
@@ -122,6 +150,8 @@ vi.mock("@/app/(dashboard)/hooks/tags/useTags", () => ({
 }));
 
 const mockAuthorizedUser = (userRole: string, userId: string, premiumUser: boolean) => ({
+  isLoading: false,
+  isAuthorized: true,
   token: "test-token",
   accessToken: "test-access-token",
   userId,
@@ -137,6 +167,7 @@ const testTeam: Team = {
   team_alias: "Test Team",
   models: ["gpt-4"],
   max_budget: 100,
+  spend: 0,
   budget_duration: "monthly",
   tpm_limit: null,
   rpm_limit: null,
@@ -192,6 +223,22 @@ const createTestProps = (userRole = "proxy_admin", userId = "user-1", isTeamAdmi
 };
 
 describe("AddModelForm", () => {
+  it("only offers the four selected providers even when the backend returns the full catalog", async () => {
+    const mockUseAuthorized = vi.mocked(await import("@/app/(dashboard)/hooks/useAuthorized"));
+    mockUseAuthorized.default.mockReturnValue(mockAuthorizedUser("proxy_admin", "user-1", true));
+    renderWithProviders(<AddModelForm {...createTestProps()} />);
+
+    await userEvent.click((await screen.findAllByRole("combobox"))[0]);
+
+    expect(await screen.findAllByRole("option")).toHaveLength(4);
+    for (const provider of ["OpenAI", "SiliconFlow", "volcengine", "dashscope"]) {
+      expect(screen.getByTestId(`provider-logo-${provider}`)).toBeVisible();
+    }
+    for (const provider of ["bedrock", "anthropic", "openai_like", "OpenAI_Compatible"]) {
+      expect(screen.queryByTestId(`provider-logo-${provider}`)).not.toBeInTheDocument();
+    }
+  });
+
   it("should render", async () => {
     const mockUseAuthorized = vi.mocked(await import("@/app/(dashboard)/hooks/useAuthorized"));
     mockUseAuthorized.default.mockReturnValue(mockAuthorizedUser("proxy_admin", "user-1", true));

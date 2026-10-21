@@ -25,10 +25,11 @@ from litellm.litellm_core_utils.fallback_generalizations import (
 )
 
 FALLBACK_GENERALIZATIONS_KEY = "fallback_generalizations"
+DEFAULT_MODEL_PROVIDERS = frozenset(("siliconflow", "volcengine", "dashscope"))
 
 # Reserved top-level keys that are not model entries. They must be excluded
 # from the model-count integrity check so a real upstream shrink can't be masked.
-RESERVED_TOP_LEVEL_KEYS = frozenset({"sample_spec", FALLBACK_GENERALIZATIONS_KEY})
+RESERVED_TOP_LEVEL_KEYS = frozenset(("sample_spec", FALLBACK_GENERALIZATIONS_KEY))
 
 
 def _count_model_entries(model_cost: dict) -> int:
@@ -257,7 +258,14 @@ def _finalize_model_cost_map(model_cost: dict) -> dict:
     raw = model_cost.pop(FALLBACK_GENERALIZATIONS_KEY, None)
     rules = raw.get("rules") if isinstance(raw, dict) else None
     set_fallback_generalizations(rules)
-    return _expand_model_aliases(model_cost)
+    return _expand_model_aliases(
+        {
+            model_name: model_info
+            for model_name, model_info in model_cost.items()
+            if model_name not in RESERVED_TOP_LEVEL_KEYS
+            and model_info.get("litellm_provider") in DEFAULT_MODEL_PROVIDERS
+        }
+    )
 
 
 def get_model_cost_map(url: str) -> dict:
@@ -274,10 +282,10 @@ def get_model_cost_map(url: str) -> dict:
     """
     # Note: can't use get_secret_bool here — this runs during litellm.__init__
     # before litellm._key_management_settings is set.
-    if os.getenv("LITELLM_LOCAL_MODEL_COST_MAP", "").lower() == "true":
+    if os.getenv("LITELLM_LOCAL_MODEL_COST_MAP", "true").lower() == "true":
         _cost_map_source_info.source = "local"
         _cost_map_source_info.url = None
-        _cost_map_source_info.is_env_forced = True
+        _cost_map_source_info.is_env_forced = "LITELLM_LOCAL_MODEL_COST_MAP" in os.environ
         _cost_map_source_info.fallback_reason = None
         return _finalize_model_cost_map(GetModelCostMap.load_local_model_cost_map())
 
