@@ -424,7 +424,11 @@ class LowestTPMLoggingHandler_v2(BaseRoutingStrategy, CustomLogger):
         print_verbose("returning picked lowest tpm/rpm deployment.")
 
         if len(potential_deployments) > 0:
-            return random.choice(potential_deployments)
+            deployment = random.choice(potential_deployments)
+            from litellm.router_strategy.decision_observations import capture_usage_decision
+
+            capture_usage_decision(model_group, healthy_deployments, tpm_values, rpm_values, input_tokens, deployment)
+            return deployment
         else:
             return None
 

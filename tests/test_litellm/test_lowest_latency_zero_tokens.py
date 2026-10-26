@@ -15,6 +15,20 @@ from litellm.caching.caching import DualCache
 from litellm.router_strategy.lowest_latency import LowestLatencyLoggingHandler
 
 
+@pytest.mark.parametrize("samples", ((), (None, "invalid"), (0,), (1.0, 3.0, None)))
+@pytest.mark.parametrize("stream", (False, True))
+def test_cold_or_partial_latency_samples_remain_routable(samples, stream):
+    handler = LowestLatencyLoggingHandler(router_cache=DualCache())
+    deployment = {"model_info": {"id": "cold"}, "litellm_params": {"model": "openai/test"}}
+    result = handler._get_available_deployments(
+        model_group="test", healthy_deployments=[deployment], input="hello",
+        request_kwargs={"stream": stream},
+        request_count_dict={"cold": {"latency": samples, "time_to_first_token": samples}},
+    )
+    assert result is not None
+    assert result["model_info"]["id"] == "cold"
+
+
 def test_zero_completion_tokens_no_division_error():
     """
     Test that log_success_event handles zero completion tokens without ZeroDivisionError

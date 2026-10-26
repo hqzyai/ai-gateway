@@ -197,10 +197,14 @@ class LeastBusyLoggingHandler(CustomLogger):
         """
         request_count_api_key = f"{model_group}_request_count"
         all_deployments = self.router_cache.get_cache(key=request_count_api_key) or {}
-        return self._get_available_deployments(
+        deployment = self._get_available_deployments(
             healthy_deployments=healthy_deployments,
             all_deployments=all_deployments,
         )
+        from litellm.router_strategy.decision_observations import capture_least_busy_decision
+
+        capture_least_busy_decision(model_group, healthy_deployments, all_deployments, deployment)
+        return deployment
 
     async def async_get_available_deployments(self, model_group: str, healthy_deployments: list):
         """
@@ -208,7 +212,11 @@ class LeastBusyLoggingHandler(CustomLogger):
         """
         request_count_api_key = f"{model_group}_request_count"
         all_deployments = await self.router_cache.async_get_cache(key=request_count_api_key) or {}
-        return self._get_available_deployments(
+        deployment = self._get_available_deployments(
             healthy_deployments=healthy_deployments,
             all_deployments=all_deployments,
         )
+        from litellm.router_strategy.decision_observations import capture_least_busy_decision
+
+        capture_least_busy_decision(model_group, healthy_deployments, all_deployments, deployment)
+        return deployment

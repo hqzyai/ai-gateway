@@ -433,23 +433,16 @@ class LowestLatencyLoggingHandler(CustomLogger):
             item_tpm = item_map.get(precise_minute, {}).get("tpm", 0)
 
             # get average latency or average ttft (depending on streaming/non-streaming)
-            total: float = 0.0
             use_ttft = (
                 request_kwargs is not None
                 and request_kwargs.get("stream", None) is not None
                 and request_kwargs["stream"] is True
                 and len(item_ttft_latency) > 0
             )
-            if use_ttft:
-                for _call_latency in item_ttft_latency:
-                    if isinstance(_call_latency, float):
-                        total += _call_latency
-                item_latency = total / len(item_ttft_latency)
-            else:
-                for _call_latency in item_latency:
-                    if isinstance(_call_latency, float):
-                        total += _call_latency
-                item_latency = total / len(item_latency)
+            samples = tuple(
+                value for value in (item_ttft_latency if use_ttft else item_latency) if isinstance(value, float)
+            )
+            item_latency = sum(samples) / len(samples) if samples else 0.0
 
             # -------------- #
             # Debugging Logic
@@ -490,6 +483,18 @@ class LowestLatencyLoggingHandler(CustomLogger):
         metadata_field = self._select_metadata_field(request_kwargs)
         if request_kwargs is not None and metadata_field in request_kwargs:
             request_kwargs[metadata_field]["_latency_per_deployment"] = _latency_per_deployment
+        from litellm.router_strategy.decision_observations import capture_latency_decision
+
+        capture_latency_decision(
+            model_group,
+            healthy_deployments,
+            request_count_dict,
+            deployment,
+            stream=bool(request_kwargs and request_kwargs.get("stream")),
+            lowest_latency_buffer=self.routing_args.lowest_latency_buffer,
+            input_tokens=input_tokens,
+            precise_minute=precise_minute,
+        )
         return deployment
 
     async def async_get_available_deployments(
