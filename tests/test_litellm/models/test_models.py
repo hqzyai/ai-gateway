@@ -97,6 +97,21 @@ class TestCredentials:
 
 
 class TestModel:
+    def test_database_record_is_normalized_before_json_decoding(self):
+        from pydantic import BaseModel
+
+        class DatabaseRecord(BaseModel):
+            model_id: str = "model-1"
+            model_name: str = "public-name"
+            litellm_params: str = '{"model":"openai/upstream"}'
+            model_info: str = '{"team_id":"team-1"}'
+
+        record = DatabaseRecord()
+        model = LiteLLM_ProxyModelTable.model_validate(record)
+        assert model.litellm_params == {"model": "openai/upstream"}
+        assert model.team_id == "team-1"
+        assert isinstance(record.litellm_params, str)
+
     def test_model_creation(self):
         model = LiteLLM_ProxyModelTable(
             model_id="test-model-id",

@@ -37,6 +37,29 @@ def mock_custom_logger():
 
 
 # Test cases
+def test_saturated_duplicate_callbacks_recover_in_place(mock_custom_logger):
+    from litellm.constants import MAX_CALLBACKS
+
+    manager = LoggingCallbackManager()
+    callbacks = [mock_custom_logger] * MAX_CALLBACKS
+    original = callbacks
+    manager._safe_add_callback_to_list("new-callback", callbacks)
+    assert callbacks is original
+    assert callbacks == [mock_custom_logger, "new-callback"]
+    manager._safe_add_callback_to_list(mock_custom_logger, callbacks)
+    assert len(callbacks) == 2
+
+
+def test_unique_callbacks_still_obey_limit():
+    from litellm.constants import MAX_CALLBACKS
+
+    manager = LoggingCallbackManager()
+    callbacks = [f"callback-{index}" for index in range(MAX_CALLBACKS)]
+    manager._safe_add_callback_to_list("extra-callback", callbacks)
+    assert len(callbacks) == MAX_CALLBACKS
+    assert "extra-callback" not in callbacks
+
+
 def test_add_string_callback():
     """
     Test adding a string callback to litellm.callbacks - only 1 instance of the string callback should be added

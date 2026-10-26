@@ -248,7 +248,13 @@ class LoggingCallbackManager:
 
         Ensures no duplicates are added for `str`, `Callable`, and `CustomLogger` callbacks.
         """
-        # Check max callbacks limit first
+        identities = tuple(
+            (True, self._get_custom_logger_key(existing)) if isinstance(existing, CustomLogger) else (False, existing)
+            for existing in parent_list
+        )
+        parent_list[:] = tuple(
+            existing for index, existing in enumerate(parent_list) if identities[index] not in identities[:index]
+        )
         if not self._check_callback_list_size(parent_list):
             return
 

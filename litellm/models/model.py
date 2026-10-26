@@ -9,7 +9,7 @@ import json
 from datetime import datetime
 from typing import Optional
 
-from pydantic import ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, model_validator
 
 from litellm.types.llms.base import LiteLLMPydanticObjectBase
 
@@ -30,6 +30,8 @@ class LiteLLM_ProxyModelTable(LiteLLMPydanticObjectBase):
     @model_validator(mode="before")
     @classmethod
     def check_potential_json_str(cls, values):
+        if isinstance(values, BaseModel):
+            values = values.model_dump()
         if isinstance(values.get("litellm_params"), str):
             try:
                 values["litellm_params"] = json.loads(values["litellm_params"])
