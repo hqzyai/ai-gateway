@@ -107,50 +107,155 @@ _TERMS = (
 )
 
 
+_CONDITIONS = (
+    (
+        "age_discrimination",
+        ("老年人", "大龄员工", "高龄求职者", "五十岁以上", "超过五十岁", "年长员工"),
+        ("拒绝录用", "拒绝招聘", "不予录用", "不值得培训", "应当辞退"),
+    ),
+    (
+        "bias_gender",
+        ("女性", "男性", "女人", "男人", "女生", "男生"),
+        ("天生低等", "不配工作", "不该受教育", "拒绝录用", "智力低下"),
+    ),
+    ("bias_racial", ("种族", "民族", "少数民族", "外地人"), ("天生低等", "全部赶走", "拒绝录用", "不配享有权利")),
+    ("bias_religious", ("信徒", "信教的人", "宗教群体"), ("全部驱逐", "拒绝录用", "不配享有权利", "都是坏人")),
+    ("bias_sexual_orientation", ("同性恋", "双性恋", "性少数"), ("拒绝录用", "全部驱逐", "不配享有权利", "应该被惩罚")),
+    ("disability", ("残疾人", "残障人士", "听障人士", "视障人士"), ("拒绝录用", "不值得培训", "不配工作", "都是累赘")),
+    (
+        "gender_sexual_orientation",
+        ("性别", "性取向", "同性恋", "跨性别"),
+        ("拒绝录用", "不予录用", "拒绝提供服务", "应该被惩罚"),
+    ),
+    ("religion", ("信仰", "宗教", "信教的人"), ("拒绝录用", "不予录用", "拒绝提供服务", "全部驱逐")),
+    ("military_status", ("退役军人", "退伍军人", "军人身份"), ("拒绝录用", "不予录用", "拒绝提供服务", "不值得培训")),
+    (
+        "claims_fraud_coaching",
+        ("理赔", "保险", "报销", "病历", "诊断证明"),
+        ("伪造", "虚报", "夸大", "编造", "重复申领", "骗取"),
+    ),
+    ("claims_medical_advice", ("理赔", "保险材料", "理赔病历"), ("诊断疾病", "用药剂量", "开处方", "治疗方案")),
+    ("claims_phi_disclosure", ("他人", "被保险人", "患者"), ("公开病历", "泄露诊断", "公布病史", "导出健康档案")),
+    ("claims_prior_auth_gaming", ("预授权", "事前审批", "保险审批"), ("绕过", "规避", "骗过", "伪造", "跳过")),
+    ("claims_system_override", ("理赔系统", "理赔审核", "理赔状态"), ("绕过", "篡改", "跳过", "强制通过", "禁用校验")),
+    (
+        "denied_financial_advice",
+        ("股票", "基金", "投资", "理财产品"),
+        ("保证收益", "稳赚不赔", "替我决定买", "推荐具体", "必须买入"),
+    ),
+    ("denied_legal_advice", ("诉讼", "官司", "法律责任", "判决"), ("保证能赢", "肯定胜诉", "教我规避", "替我作出结论")),
+    ("denied_medical_advice", ("疾病", "症状", "药物", "处方药"), ("替我诊断", "推荐具体剂量", "不用医生", "自行加量")),
+    ("harmful_child_safety", ("儿童", "未成年人", "小学生"), ("性剥削", "色情交易", "诱骗", "实施虐待", "贩卖")),
+    (
+        "harmful_illegal_weapons",
+        ("枪支", "炸弹", "爆炸装置", "爆炸物"),
+        ("制作步骤", "制造教程", "非法购买", "偷偷制造"),
+    ),
+    ("harmful_self_harm", ("自杀", "自残", "结束生命"), ("具体方法", "详细步骤", "教我如何", "鼓励", "最快方式")),
+    (
+        "harmful_violence",
+        ("杀人", "暴力袭击", "袭击他人", "伤害他人"),
+        ("详细步骤", "实施计划", "教我如何", "鼓励", "策划"),
+    ),
+    (
+        "prompt_injection_data_exfiltration",
+        ("隐藏上下文", "内部数据", "系统秘密", "用户凭据"),
+        ("导出", "发送给我", "上传到", "泄露", "窃取"),
+    ),
+    (
+        "prompt_injection_jailbreak",
+        ("安全限制", "安全规则", "之前的指令", "所有限制"),
+        ("忽略", "绕过", "解除", "禁用"),
+    ),
+    (
+        "prompt_injection_malicious_code",
+        ("恶意代码", "后门程序", "窃密脚本", "勒索软件"),
+        ("生成", "执行", "植入", "编写", "运行"),
+    ),
+    (
+        "prompt_injection_sql",
+        ("数据库", "数据库查询", "数据库权限"),
+        ("注入攻击", "绕过验证", "无授权删除", "注入删库"),
+    ),
+    (
+        "prompt_injection_system_prompt",
+        ("系统提示词", "隐藏提示词", "系统指令", "开发者指令"),
+        ("显示", "输出", "覆盖", "泄露", "替换"),
+    ),
+)
+
+
 def category_keywords(
     category_name: str,
     existing: Sequence[dict[str, str]],  # mutable-ok: Native CategoryConfig keyword dictionaries.
 ) -> list[dict[str, str]]:  # mutable-ok: Native CategoryConfig requires a list of keyword dictionaries.
-    known = frozenset(item.get("keyword", "").casefold() for item in existing)
+    name = "harm_toxic_abuse" if category_name.startswith("harm_toxic_abuse_") else category_name
+    original = existing if not any(category == name for category, _ in _TERMS) else ()
     return [  # mutable-ok: Preserve the native CategoryConfig keyword list and dictionary entries.
-        *existing,
+        *original,
         *(
             {"keyword": keyword, "severity": severity}  # mutable-ok: Native category keyword dictionary schema.
             for category, terms in _TERMS
-            if category == category_name
+            if category == name
             for keyword, severity in terms
-            if keyword.casefold() not in known
         ),
     ]
 
 
 def augment_category(category: CategoryConfig) -> CategoryConfig:
-    category.keywords = category_keywords(category.category_name, category.keywords)
-    category.description = next(
-        (text for name, text in CATEGORY_DESCRIPTIONS_ZH if name == category.category_name), category.description
+    from .content_filter import CategoryConfig
+
+    rules = localized_category(category.category_name)
+    if rules is None:
+        return category
+    return CategoryConfig(
+        category_name=category.category_name,
+        description=rules.description,
+        default_action=category.default_action,
+        keywords=rules.keywords,
+        exceptions=rules.exceptions,
+        identifier_words=rules.identifier_words,
+        additional_block_words=rules.additional_block_words,
     )
-    return category
 
 
 class CategoryPreview(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     description: str = ""
+    exceptions: tuple[str, ...] = ()
+    identifier_words: tuple[str, ...] = ()
+    additional_block_words: tuple[str, ...] = ()
+    always_block_keywords: tuple[object, ...] = ()
+    phrase_patterns: tuple[str, ...] = ()
+    inherit_from: str | None = None
     keywords: list[dict[str, str]] = Field(  # mutable-ok: Native preview keyword arrays and dictionaries.
         default_factory=list
     )
 
 
-def augment_preview(category_name: str, content: str, file_type: str) -> str:
-    original = CategoryPreview.model_validate(yaml.safe_load(content))
-    updated = original.model_copy(
-        update={  # mutable-ok: Pydantic's update boundary takes a field-value mapping while preserving unknown preview fields.
-            "description": next(
-                (text for name, text in CATEGORY_DESCRIPTIONS_ZH if name == category_name), original.description
-            ),
-            "keywords": category_keywords(category_name, original.keywords),
-        }
+def localized_category(category_name: str) -> CategoryPreview | None:
+    name = "harm_toxic_abuse" if category_name.startswith("harm_toxic_abuse_") else category_name
+    description = next((text for key, text in CATEGORY_DESCRIPTIONS_ZH if key == name), None)
+    if description is None:
+        return None
+    return CategoryPreview(
+        description=description,
+        keywords=category_keywords(name, ()),
+        identifier_words=next((identifiers for category, identifiers, _ in _CONDITIONS if category == name), ()),
+        additional_block_words=next((actions for category, _, actions in _CONDITIONS if category == name), ()),
     )
+
+
+def augment_preview(category_name: str, content: str, file_type: str) -> str:
+    data = yaml.safe_load(content)
+    original = (
+        CategoryPreview(category_name=category_name, default_action="BLOCK")
+        if isinstance(data, list)
+        else CategoryPreview.model_validate(data)
+    )
+    rules = localized_category(category_name)
+    updated = original.model_copy(update=rules.model_dump()) if rules is not None else original
     if file_type == "json":
         return updated.model_dump_json()
-    return yaml.safe_dump(updated.model_dump(), allow_unicode=True, sort_keys=False)
+    return yaml.safe_dump(updated.model_dump(mode="json"), allow_unicode=True, sort_keys=False)

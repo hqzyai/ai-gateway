@@ -66,6 +66,21 @@ The source branch already implements BM25 scoring in Python, so the old overlay'
 `rank-bm25` installation is not required. No deployment-time source replacement
 scripts or generated dashboard bundle edits are needed for this integration
 
+## Managed content rules
+
+Managed built-in topic dictionaries use Chinese keywords and same-sentence
+identifier/action combinations from `chinese_categories.py`. The preview endpoint
+uses the same definitions as runtime detection. English keyword, conditional,
+inheritance, exception and phrase-pattern rules are not silently retained.
+Category identifiers, configured actions, severity thresholds and enabled flags
+are preserved; explicit custom category files are not localized. Non-managed
+deployments retain their original topic dictionaries
+
+Topic matching is lexical, not semantic moderation. Paraphrases outside the
+published rules may not match, and quotation or negation is not generally
+understood. Assess false positives and missed matches with business examples
+before applying a category to production traffic
+
 ## Regression checks
 
 The tests under `tests/test_litellm/integrations/agentos/` cover attribution,

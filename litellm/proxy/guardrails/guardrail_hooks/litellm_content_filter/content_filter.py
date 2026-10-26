@@ -104,11 +104,11 @@ class CategoryConfig:
         description: str,
         default_action: ContentFilterAction,
         keywords: List[Dict[str, str]],
-        exceptions: List[str],
-        identifier_words: Optional[List[str]] = None,
+        exceptions: Sequence[str],
+        identifier_words: Optional[Sequence[str]] = None,
         always_block_keywords: Optional[List[Dict[str, str]]] = None,
         inherit_from: Optional[str] = None,
-        additional_block_words: Optional[List[str]] = None,
+        additional_block_words: Optional[Sequence[str]] = None,
         phrase_patterns: Optional[List[str]] = None,
     ):
         self.category_name = category_name
@@ -454,7 +454,7 @@ class ContentFilterGuardrail(CustomGuardrail):
 
             try:
                 category_config_obj = self._load_category_file(category_file_path)
-                if self.managed_mode:
+                if self.managed_mode and not custom_file:
                     from .chinese_categories import augment_category
 
                     category_config_obj = augment_category(category_config_obj)
@@ -945,7 +945,7 @@ class ContentFilterGuardrail(CustomGuardrail):
 
         # Split text into sentences for more precise matching
         # Simple sentence splitting on common terminators
-        sentences = re.split(r"[.!?]+", text)
+        sentences = re.split(r"[.!?。！？]+", text)
 
         for category_name, config in self.conditional_categories.items():
             identifier_words = config["identifier_words"]
@@ -987,7 +987,7 @@ class ContentFilterGuardrail(CustomGuardrail):
                 block_word_found = None
                 for block_word in block_words:
                     # Use word boundary for single words to avoid false positives
-                    if " " in block_word:
+                    if " " in block_word or any("\u3400" <= char <= "\u9fff" for char in block_word):
                         # Multi-word phrase
                         if block_word in sentence_lower:
                             block_word_found = block_word
