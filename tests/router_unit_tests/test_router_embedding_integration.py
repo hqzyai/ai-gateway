@@ -351,6 +351,20 @@ class TestRouterEmbeddingIntegration:
             assert call_kwargs["headers"]["X-Custom-Azure-Header"] == "azure-value"
 
 
+@pytest.mark.asyncio
+async def test_aembedding_preserves_deployment_zero_retries():
+    from litellm import EmbeddingResponse
+
+    router = Router(model_list=[{
+        "model_name": "embedding-test",
+        "litellm_params": {"model": "openai/text-embedding-3-small", "api_key": "test", "num_retries": 0},
+    }], num_retries=3)
+    with patch("litellm.aembedding", new_callable=AsyncMock) as call:
+        call.return_value = EmbeddingResponse(data=[], model="test", usage={"prompt_tokens": 0, "total_tokens": 0})
+        await router._aembedding(input=["hello"], model="embedding-test", num_retries=3)
+    assert call.call_args.kwargs["num_retries"] == 0
+
+
 if __name__ == "__main__":
     # Run tests
     pytest.main([__file__, "-v"])

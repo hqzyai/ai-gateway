@@ -4788,6 +4788,11 @@ class Router:
                     "caching": self.cache_responses,
                     "client": model_client,
                     **kwargs,
+                    **(
+                        {"num_retries": data["num_retries"]}  # mutable-ok: Native embedding keyword arguments.
+                        if data.get("num_retries") is not None
+                        else {}  # mutable-ok: Native aembedding keyword arguments.
+                    ),
                 }
             )
 

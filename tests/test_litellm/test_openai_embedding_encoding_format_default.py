@@ -5,6 +5,23 @@ import pytest
 from litellm import embedding
 
 
+@pytest.mark.parametrize("retries", (0, 2, None))
+def test_embedding_sdk_receives_explicit_retry_setting(retries):
+    import litellm
+    from litellm.llms.openai.openai import OpenAIChatCompletion
+
+    class CaptureEmbedding(OpenAIChatCompletion):
+        def aembedding(self, **kwargs):
+            return kwargs["max_retries"]
+
+    result = CaptureEmbedding().embedding(
+        model="test", input=["hello"], timeout=10, logging_obj=MagicMock(),
+        model_response=litellm.EmbeddingResponse(), optional_params={}, aembedding=True,
+        max_retries=retries,
+    )
+    assert result == (litellm.DEFAULT_MAX_RETRIES if retries is None else retries)
+
+
 @pytest.mark.parametrize(
     "set_env, env_value, expected",
     [
