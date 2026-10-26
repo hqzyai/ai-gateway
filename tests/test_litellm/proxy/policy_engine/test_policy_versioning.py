@@ -450,3 +450,26 @@ class TestGetPolicyRegistrySingleton:
         a = get_policy_registry()
         b = get_policy_registry()
         assert a is b
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("database_fails", (False, True))
+    async def test_deactivation_preserves_publication_and_only_evicts_after_save(self, database_fails):
+        registry = PolicyRegistry()
+        registry.load_policies({"foo": {"guardrails": {"add": ["g1"]}}})
+        prisma = MagicMock()
+        published_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        prisma.db.litellm_policytable.find_unique = AsyncMock(return_value=_make_row(
+            policy_id="p-1", policy_name="foo", version_status="production", published_at=published_at,
+        ))
+        prisma.db.litellm_policytable.update = AsyncMock(
+            side_effect=RuntimeError("database unavailable") if database_fails else None,
+            return_value=_make_row(policy_id="p-1", policy_name="foo", version_status="published"),
+        )
+        if database_fails:
+            with pytest.raises(Exception, match="database unavailable"):
+                await registry.update_version_status("p-1", "published", prisma)
+            assert registry.has_policy("foo")
+        else:
+            result = await registry.update_version_status("p-1", "published", prisma)
+            assert result.version_status == "published"
+            assert not registry.has_policy("foo")
+        assert prisma.db.litellm_policytable.update.call_args.kwargs["data"]["published_at"] == published_at

@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Literal, Optional, Type, TypeVar, Union, cas
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, TypeAdapter
 
 from litellm._logging import verbose_proxy_logger
 from litellm.constants import DEFAULT_MAX_RECURSE_DEPTH
@@ -469,16 +469,24 @@ async def update_guardrail(
         guardrail_name = result.get("guardrail_name", "Unknown")
 
         try:
-            IN_MEMORY_GUARDRAIL_HANDLER.update_in_memory_guardrail(
-                guardrail_id=guardrail_id, guardrail=cast(Guardrail, result)
+            IN_MEMORY_GUARDRAIL_HANDLER.reinitialize_guardrail(
+                guardrail=TypeAdapter(Guardrail).validate_python(result), source="db"
             )
             verbose_proxy_logger.info(
                 f"Immediate sync: Successfully updated guardrail '{guardrail_name}' (ID: {guardrail_id})"
             )
         except Exception as update_error:
-            verbose_proxy_logger.warning(
-                f"Immediate sync: Failed to update '{guardrail_name}' (ID: {guardrail_id}) in memory: {update_error}"
+            await GUARDRAIL_REGISTRY.update_guardrail_in_db(
+                guardrail_id=guardrail_id,
+                guardrail=TypeAdapter(Guardrail).validate_python(existing_guardrail),
+                prisma_client=prisma_client,
             )
+            IN_MEMORY_GUARDRAIL_HANDLER.reinitialize_guardrail(
+                guardrail=TypeAdapter(Guardrail).validate_python(existing_guardrail), source="db"
+            )
+            raise HTTPException(
+                status_code=400, detail=f"Invalid guardrail configuration: {update_error}"
+            ) from update_error
 
         return result
     except HTTPException as e:
@@ -1161,16 +1169,24 @@ async def patch_guardrail(
         guardrail_name = result.get("guardrail_name", "Unknown")
 
         try:
-            IN_MEMORY_GUARDRAIL_HANDLER.sync_guardrail_from_db(
-                guardrail=guardrail,
+            IN_MEMORY_GUARDRAIL_HANDLER.reinitialize_guardrail(
+                guardrail=TypeAdapter(Guardrail).validate_python(result), source="db"
             )
             verbose_proxy_logger.info(
                 f"Immediate sync: Successfully updated guardrail '{guardrail_name}' (ID: {guardrail_id})"
             )
         except Exception as update_error:
-            verbose_proxy_logger.warning(
-                f"Immediate sync: Failed to update '{guardrail_name}' (ID: {guardrail_id}) in memory: {update_error}"
+            await GUARDRAIL_REGISTRY.update_guardrail_in_db(
+                guardrail_id=guardrail_id,
+                guardrail=TypeAdapter(Guardrail).validate_python(existing_guardrail),
+                prisma_client=prisma_client,
             )
+            IN_MEMORY_GUARDRAIL_HANDLER.reinitialize_guardrail(
+                guardrail=TypeAdapter(Guardrail).validate_python(existing_guardrail), source="db"
+            )
+            raise HTTPException(
+                status_code=400, detail=f"Invalid guardrail configuration: {update_error}"
+            ) from update_error
 
         return result
     except HTTPException as e:
@@ -1376,6 +1392,12 @@ async def get_category_yaml(category_name: str):
         # Read and return the raw content
         with open(category_file_path, "r") as f:
             content = f.read()
+        if os.getenv("AGENTOS_GUARDRAIL_MODE", "false").lower() == "true":
+            from litellm.proxy.guardrails.guardrail_hooks.litellm_content_filter.chinese_categories import (
+                augment_preview,
+            )
+
+            content = augment_preview(category_name, content, file_type)
 
         return {
             "category_name": category_name,

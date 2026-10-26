@@ -187,6 +187,25 @@ def test_get_logging_caching_headers_merges_metadata_and_litellm_metadata():
     assert headers["x-litellm-policy-sources"] == "global-baseline=team_default"
 
 
+def test_logging_headers_encode_localized_names_and_delimiters():
+    from urllib.parse import unquote
+
+    from starlette.responses import Response
+
+    headers = get_logging_caching_headers({"metadata": {
+        "applied_guardrails": ["敏感信息", "guard,rail"],
+        "applied_policies": ["部门策略"],
+        "policy_sources": {"部门策略": "研发部; key=1"},
+    }})
+    Response(headers=headers)
+    assert tuple(unquote(name) for name in headers["x-litellm-applied-guardrails"].split(",")) == (
+        "敏感信息", "guard,rail",
+    )
+    assert unquote(headers["x-litellm-applied-policies"]) == "部门策略"
+    assert headers["x-litellm-policy-sources"].count("=") == 1
+    assert unquote(headers["x-litellm-policy-sources"]) == "部门策略=研发部; key=1"
+
+
 def test_initialize_callbacks_on_proxy_instantiates_compression_interception(
     monkeypatch,
 ):

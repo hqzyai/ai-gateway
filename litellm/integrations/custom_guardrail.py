@@ -215,6 +215,35 @@ class CustomGuardrail(CustomLogger):
                 )
         """
         model = request_data.get("model", "unknown")
+        if os.getenv("AGENTOS_GUARDRAIL_MODE", "false").lower() == "true":
+            reason = violation_message.strip()
+            lower = reason.lower()
+            if "execution request" in lower:
+                reason = "检测到代码执行请求"
+            elif "executable code block" in lower:
+                language = reason.rsplit("language:", 1)[-1].rstrip(") ").strip() or "未知"
+                reason = f"检测到可执行代码块（语言：{language}）"
+            elif "tool" in lower and ("denied" in lower or "permission" in lower):
+                reason = "工具调用不符合权限规则"
+            elif "competitor" in lower:
+                reason = "检测到竞品比较或排名意图"
+            elif lower.startswith("content blocked:"):
+                if "conditional match" in lower or "category keyword" in lower:
+                    reason = "命中主题词表规则"
+                elif "pattern detected" in lower:
+                    reason = "命中敏感信息规则"
+                elif "keyword" in lower:
+                    reason = "命中关键词规则"
+                elif "image description" in lower:
+                    reason = "命中图片内容规则"
+                elif "mcp tool call" in lower:
+                    reason = "工具调用参数命中内容规则"
+                else:
+                    reason = "命中内容过滤规则"
+            elif not any("\u3400" <= char <= "\u9fff" for char in reason):
+                reason = "命中安全规则"
+            if not reason.startswith("触发护栏"):
+                violation_message = f"触发护栏「{self.guardrail_name}」，内容已拦截：{reason}"
 
         raise ModifyResponseException(
             message=violation_message,
@@ -617,6 +646,10 @@ class CustomGuardrail(CustomLogger):
         """
         Returns True if the guardrail should be run on the event_type
         """
+        from litellm.proxy.guardrails.guardrail_registry import attachment_authorizes_guardrail
+
+        if not attachment_authorizes_guardrail(data, self.guardrail_name):
+            return False
         requested_guardrails = self.get_guardrail_from_metadata(data)
         disable_global_guardrail = self.get_disable_global_guardrail(data)
         opted_out_global_guardrails = self.get_opted_out_global_guardrails_from_metadata(data)
@@ -1039,7 +1072,7 @@ class CustomGuardrail(CustomLogger):
         """
         Update the guardrails litellm params in memory
         """
-        for key, value in vars(litellm_params).items():
+        for key, value in (litellm_params if isinstance(litellm_params, dict) else vars(litellm_params)).items():
             setattr(self, key, value)
 
     def get_guardrails_messages_for_call_type(

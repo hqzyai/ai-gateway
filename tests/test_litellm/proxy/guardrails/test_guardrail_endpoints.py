@@ -839,7 +839,7 @@ async def test_create_guardrail_endpoint(
     "scenario,expected_result,expected_exception",
     [
         ("success_with_sync", "test-db-guardrail", None),
-        ("success_sync_fails", "test-db-guardrail", None),
+        ("success_sync_fails", None, HTTPException),
         ("database_failure", None, HTTPException),
         ("no_prisma_client", None, HTTPException),
     ],
@@ -877,9 +877,7 @@ async def test_update_guardrail_endpoint(
 
     elif scenario == "success_sync_fails":
         mock_prisma_client = mocker.Mock()
-        mock_in_memory_handler.update_in_memory_guardrail.side_effect = Exception(
-            "Sync failed"
-        )
+        mock_in_memory_handler.reinitialize_guardrail.side_effect = [Exception("Sync failed"), MOCK_DB_GUARDRAIL]
         mock_logger = mocker.patch(
             "litellm.proxy.guardrails.guardrail_endpoints.verbose_proxy_logger"
         )
@@ -918,6 +916,10 @@ async def test_update_guardrail_endpoint(
                 user_api_key_dict=MOCK_ADMIN_USER,
             )
 
+        if scenario == "success_sync_fails":
+            assert exc_info.value.status_code == 400
+            assert mock_guardrail_registry.update_guardrail_in_db.call_count == 2
+            assert mock_in_memory_handler.reinitialize_guardrail.call_count == 2
         if scenario == "database_failure":
             assert "Database error" in str(exc_info.value.detail)
         elif scenario == "no_prisma_client":
@@ -937,8 +939,8 @@ async def test_update_guardrail_endpoint(
             prisma_client=mocker.ANY,
         )
 
-        mock_in_memory_handler.update_in_memory_guardrail.assert_called_once_with(
-            guardrail_id="test-guardrail-id", guardrail=mocker.ANY
+        mock_in_memory_handler.reinitialize_guardrail.assert_called_once_with(
+            guardrail=mocker.ANY, source="db"
         )
 
         if scenario == "success_sync_fails":
@@ -951,7 +953,7 @@ async def test_update_guardrail_endpoint(
     "scenario,expected_result,expected_exception",
     [
         ("success_with_sync", "test-db-guardrail", None),
-        ("success_sync_fails", "test-db-guardrail", None),
+        ("success_sync_fails", None, HTTPException),
         ("database_failure", None, HTTPException),
         ("no_prisma_client", None, HTTPException),
     ],
@@ -977,7 +979,7 @@ async def test_patch_guardrail_endpoint(
     mock_logger = None
     if scenario == "success_with_sync":
         mock_prisma_client = mocker.Mock()
-        mock_in_memory_handler.sync_guardrail_from_db = mocker.Mock()
+        mock_in_memory_handler.reinitialize_guardrail = mocker.Mock()
         mocker.patch("litellm.proxy.proxy_server.prisma_client", mock_prisma_client)
         mocker.patch(
             "litellm.proxy.guardrails.guardrail_endpoints.GUARDRAIL_REGISTRY",
@@ -990,8 +992,8 @@ async def test_patch_guardrail_endpoint(
 
     elif scenario == "success_sync_fails":
         mock_prisma_client = mocker.Mock()
-        mock_in_memory_handler.sync_guardrail_from_db = mocker.Mock(
-            side_effect=Exception("Sync failed")
+        mock_in_memory_handler.reinitialize_guardrail = mocker.Mock(
+            side_effect=[Exception("Sync failed"), MOCK_DB_GUARDRAIL]
         )
         mock_logger = mocker.patch(
             "litellm.proxy.guardrails.guardrail_endpoints.verbose_proxy_logger"
@@ -1031,6 +1033,10 @@ async def test_patch_guardrail_endpoint(
                 user_api_key_dict=MOCK_ADMIN_USER,
             )
 
+        if scenario == "success_sync_fails":
+            assert exc_info.value.status_code == 400
+            assert mock_guardrail_registry.update_guardrail_in_db.call_count == 2
+            assert mock_in_memory_handler.reinitialize_guardrail.call_count == 2
         if scenario == "database_failure":
             assert "Database error" in str(exc_info.value.detail)
         elif scenario == "no_prisma_client":
@@ -1046,8 +1052,8 @@ async def test_patch_guardrail_endpoint(
 
         mock_guardrail_registry.update_guardrail_in_db.assert_called_once()
 
-        mock_in_memory_handler.sync_guardrail_from_db.assert_called_once_with(
-            guardrail=mocker.ANY
+        mock_in_memory_handler.reinitialize_guardrail.assert_called_once_with(
+            guardrail=mocker.ANY, source="db"
         )
 
         if scenario == "success_sync_fails":

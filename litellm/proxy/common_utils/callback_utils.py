@@ -1,6 +1,7 @@
 import copy
 import os
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Literal, Optional
+from urllib.parse import quote
 
 import litellm
 from litellm import get_secret
@@ -376,16 +377,22 @@ def get_logging_caching_headers(request_data: Dict) -> Optional[Dict]:
         _metadata.update(litellm_metadata_bucket)
     headers = {}
     if "applied_guardrails" in _metadata:
-        headers["x-litellm-applied-guardrails"] = ",".join(_metadata["applied_guardrails"])
+        headers["x-litellm-applied-guardrails"] = ",".join(
+            quote(str(name), safe="-._~") for name in _metadata["applied_guardrails"]
+        )
 
     if "applied_policies" in _metadata:
-        headers["x-litellm-applied-policies"] = ",".join(_metadata["applied_policies"])
+        headers["x-litellm-applied-policies"] = ",".join(
+            quote(str(name), safe="-._~") for name in _metadata["applied_policies"]
+        )
 
     if "policy_sources" in _metadata:
         sources = _metadata["policy_sources"]
         if isinstance(sources, dict) and sources:
             # Use ';' as delimiter — matched_via reasons may contain commas
-            headers["x-litellm-policy-sources"] = "; ".join(f"{name}={reason}" for name, reason in sources.items())
+            headers["x-litellm-policy-sources"] = "; ".join(
+                f"{quote(str(name), safe='-._~')}={quote(str(reason), safe='-._~')}" for name, reason in sources.items()
+            )
 
     if "semantic-similarity" in _metadata:
         headers["x-litellm-semantic-similarity"] = str(_metadata["semantic-similarity"])

@@ -1,6 +1,7 @@
 """LLM-as-a-Judge guardrail: uses an LLM to score responses against weighted criteria."""
 
 import json
+import os
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Union
 
@@ -8,7 +9,7 @@ import litellm
 from fastapi import HTTPException
 
 from litellm._logging import verbose_logger
-from litellm.integrations.custom_guardrail import CustomGuardrail
+from litellm.integrations.custom_guardrail import CustomGuardrail, ModifyResponseException
 from litellm.types.guardrails import GuardrailEventHooks, SupportedGuardrailIntegrations
 from litellm.types.utils import GenericGuardrailAPIInputs, GuardrailStatus
 
@@ -198,6 +199,16 @@ class LLMAsAJudgeGuardrail(CustomGuardrail):
             if not passed:
                 status = "guardrail_intervened"
                 if self.on_failure == "block":
+                    if os.getenv("AGENTOS_GUARDRAIL_MODE", "false").lower() == "true":
+                        self.raise_passthrough_exception(
+                            violation_message="模型评审分数低于阈值",
+                            request_data=request_data,
+                            detection_info={  # mutable-ok: Native passthrough exception detection metadata dictionary.
+                                "source": "llm_as_a_judge",
+                                "overall_score": overall_score,
+                                "threshold": self.overall_threshold,
+                            },
+                        )
                     raise HTTPException(
                         status_code=422,
                         detail={
@@ -210,7 +221,7 @@ class LLMAsAJudgeGuardrail(CustomGuardrail):
 
             return inputs
 
-        except HTTPException:
+        except (HTTPException, ModifyResponseException):
             raise
         except Exception as e:
             verbose_logger.warning(f"llm_as_a_judge guardrail unexpected error: {e}")

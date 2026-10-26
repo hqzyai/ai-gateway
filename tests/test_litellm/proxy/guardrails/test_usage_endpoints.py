@@ -30,6 +30,45 @@ from litellm.proxy.guardrails.usage_endpoints import (
 from litellm.types.guardrails import Guardrail, LitellmParams
 
 ADMIN = UserAPIKeyAuth(user_role=LitellmUserRoles.PROXY_ADMIN)
+
+
+@pytest.mark.parametrize("entry, expected", [
+    ({"guardrail_status": "success", "masked_entity_count": {"phone": 1}}, "masked"),
+    ({"guardrail_status": "success", "guardrail_response": "redacted"}, "masked"),
+    ({"guardrail_status": "success", "guardrail_response": [{"action": "MASK"}]}, "masked"),
+    ({"guardrail_status": "guardrail_intervened", "masked_entity_count": {"phone": 1}}, "blocked"),
+    ({"guardrail_status": "error", "guardrail_response": "masked"}, "flagged"),
+    ({"guardrail_status": "success", "masked_entity_count": {"phone": 0}}, "passed"),
+])
+def test_native_guardrail_action_preserves_masking(entry, expected):
+    from litellm.proxy.guardrails.usage_tracking import guardrail_entry_to_action
+
+    assert guardrail_entry_to_action(entry) == expected
+
+
+@pytest.mark.asyncio
+async def test_usage_action_filter_scans_before_pagination():
+    from types import SimpleNamespace
+    from litellm.proxy.guardrails.usage_endpoints import _collect_usage_log_page
+
+    indices = tuple(SimpleNamespace(request_id=str(i), guardrail_id="guardrail") for i in range(350))
+    logs = tuple(SimpleNamespace(
+        request_id=str(i), startTime=datetime(2026, 10, 1), model="model",
+        metadata={"guardrail_information": [{
+            "guardrail_id": "guardrail", "guardrail_status": "success",
+            "masked_entity_count": {"phone": int(i in (205, 310))},
+            "guardrail_response": [{"action": "MASK", "pattern_name": "phone"}] if i in (205, 310) else [],
+        }]}, messages=None, response=None, proxy_server_request=None,
+    ) for i in range(350))
+    prisma = _prisma()
+    prisma.db.litellm_spendlogguardrailindex.count.return_value = len(indices)
+    prisma.db.litellm_spendlogguardrailindex.find_many.side_effect = lambda **kw: indices[kw["skip"]:kw["skip"] + kw["take"]]
+    prisma.db.litellm_spendlogs.find_many.side_effect = lambda **kw: [row for row in logs if row.request_id in kw["where"]["request_id"]["in"]]
+    entries, total = await _collect_usage_log_page(prisma, {}, 1, 2, "masked")
+    assert [entry.id for entry in entries] == ["205", "310"]
+    assert [entry.reason for entry in entries] == ["phone", "phone"]
+    assert total == 2
+    assert [call.kwargs["skip"] for call in prisma.db.litellm_spendlogguardrailindex.find_many.await_args_list] == [0, 200]
 # Query() defaults don't resolve to None when the handler is called directly.
 START, END = "2026-04-20", "2026-04-27"
 

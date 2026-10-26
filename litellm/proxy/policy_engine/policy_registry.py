@@ -757,17 +757,19 @@ class PolicyRegistry:
             now = datetime.now(timezone.utc)
 
             if new_status == "published":
-                if current != "draft":
-                    raise Exception(f"Only draft versions can be published. Current status: '{current}'.")
+                if current not in ("draft", "production"):
+                    raise Exception(f"Only draft or production versions can be published. Current status: '{current}'.")
                 updated = await PolicyRepository(prisma_client).table.update(
                     where={"policy_id": policy_id},
                     data={
                         "version_status": "published",
-                        "published_at": now,
+                        "published_at": now if current == "draft" else row.published_at,
                         "updated_at": now,
                         "updated_by": updated_by,
                     },
                 )
+                if current == "production":
+                    self.remove_policy(policy_name)
                 return _row_to_policy_db_response(updated)
 
             # new_status == "production"

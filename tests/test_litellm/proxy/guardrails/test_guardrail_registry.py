@@ -11,6 +11,53 @@ def test_get_guardrail_initializer_from_hooks():
     assert "aim" in initializers
 
 
+def test_managed_guardrail_requires_enabled_record_and_attachment(monkeypatch):
+    from litellm.proxy.guardrails import guardrail_registry as registry
+
+    monkeypatch.setenv("AGENTOS_GUARDRAIL_MODE", "true")
+    handler = InMemoryGuardrailHandler()
+    monkeypatch.setattr(registry, "IN_MEMORY_GUARDRAIL_HANDLER", handler)
+    rule = _make_guardrail("scoped", "scoped")
+    rule["guardrail_info"] = {"agentos_enabled": True}
+    handler.IN_MEMORY_GUARDRAILS["scoped"] = rule
+    assert not registry.attachment_authorizes_guardrail({"metadata": {"guardrails": ["scoped"]}}, "scoped")
+    data = {"metadata": {"_agentos_policy_guardrails": ("scoped",)}}
+    assert registry.attachment_authorizes_guardrail(data, "scoped")
+    rule["guardrail_info"] = {"agentos_enabled": False}
+    assert not registry.attachment_authorizes_guardrail(data, "scoped")
+    monkeypatch.delenv("AGENTOS_GUARDRAIL_MODE")
+    assert registry.attachment_authorizes_guardrail({}, "unmanaged")
+
+
+def test_metadata_only_change_requires_runtime_reload():
+    handler = InMemoryGuardrailHandler()
+    old = _make_guardrail("metadata-change")
+    handler.IN_MEMORY_GUARDRAILS["metadata-change"] = old
+    new = _make_guardrail("metadata-change")
+    new["guardrail_info"] = {"scope": "team"}
+    assert handler._has_guardrail_params_changed("metadata-change", new)
+
+
+def test_failed_reinitialization_restores_previous_record_and_source():
+    import pytest
+
+    class FailingHandler(InMemoryGuardrailHandler):
+        def initialize_guardrail(self, guardrail, config_file_path=None, source="config"):
+            if guardrail["guardrail_name"] == "invalid":
+                raise ValueError("invalid configuration")
+            self.IN_MEMORY_GUARDRAILS[guardrail["guardrail_id"]] = guardrail
+            self._sources[guardrail["guardrail_id"]] = source
+            return guardrail
+
+    handler = FailingHandler()
+    previous = _make_guardrail("rollback", "valid")
+    handler.initialize_guardrail(previous, source="db")
+    with pytest.raises(ValueError, match="invalid configuration"):
+        handler.reinitialize_guardrail(_make_guardrail("rollback", "invalid"))
+    assert handler.IN_MEMORY_GUARDRAILS["rollback"] == previous
+    assert handler.get_source("rollback") == "db"
+
+
 def test_guardrail_class_registry():
     from litellm.proxy.guardrails.guardrail_registry import guardrail_class_registry
 

@@ -1,4 +1,5 @@
 import json
+import os
 import re
 from typing import Any, AsyncGenerator, Dict, List, Literal, Optional, Union
 
@@ -681,6 +682,14 @@ class ToolPermissionGuardrail(CustomGuardrail):
             if not is_allowed and message is not None:
                 verbose_proxy_logger.warning(f"Tool Permission Guardrail: {message}")
                 if self.on_disallowed_action == "block":
+                    if os.getenv("AGENTOS_GUARDRAIL_MODE", "false").lower() == "true":
+                        self.raise_passthrough_exception(
+                            violation_message=message,
+                            request_data=data,
+                            detection_info={  # mutable-ok: Native exception metadata dictionary.
+                                "source": "tool_permission"
+                            },
+                        )
                     raise HTTPException(
                         status_code=400,
                         detail={
@@ -740,6 +749,15 @@ class ToolPermissionGuardrail(CustomGuardrail):
                 verbose_proxy_logger.warning(f"Tool Permission Guardrail: {message}")
 
                 if self.on_disallowed_action == "block":
+                    if os.getenv("AGENTOS_GUARDRAIL_MODE", "false").lower() == "true":
+                        self.raise_passthrough_exception(
+                            violation_message=message,
+                            request_data=data,
+                            detection_info={  # mutable-ok: Native exception metadata dictionary.
+                                "source": "tool_permission",
+                                "rule_id": rule_id,
+                            },
+                        )
                     raise GuardrailRaisedException(
                         guardrail_name=self.guardrail_name,
                         message=message,
@@ -819,6 +837,15 @@ class ToolPermissionGuardrail(CustomGuardrail):
                     verbose_proxy_logger.warning(f"Tool Permission Guardrail: {message}")
 
                     if self.on_disallowed_action == "block":
+                        if os.getenv("AGENTOS_GUARDRAIL_MODE", "false").lower() == "true":
+                            self.raise_passthrough_exception(
+                                violation_message=message,
+                                request_data=request_data,
+                                detection_info={  # mutable-ok: Native exception metadata dictionary.
+                                    "source": "tool_permission",
+                                    "rule_id": rule_id,
+                                },
+                            )
                         raise GuardrailRaisedException(
                             guardrail_name=self.guardrail_name,
                             message=message,

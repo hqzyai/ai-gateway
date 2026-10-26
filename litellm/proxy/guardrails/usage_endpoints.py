@@ -4,11 +4,13 @@ GET /guardrails/usage/overview, /guardrails/usage/detail/:id, /guardrails/usage/
 """
 
 import json
+from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta, timezone
+from types import MappingProxyType
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, TypeAdapter
 
 from litellm.proxy._types import UserAPIKeyAuth
 from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
@@ -456,11 +458,9 @@ def _usage_log_entry_from_row(r: Any, sl: Any, action_filter: Optional[str]) -> 
     latency_val = None
     reason_val = None
     if entry_for_guardrail:
-        st = (entry_for_guardrail.get("guardrail_status") or "").lower()
-        if "intervened" in st or "block" in st:
-            action_val = "blocked"
-        elif "fail" in st or "error" in st:
-            action_val = "flagged"
+        from litellm.proxy.guardrails.usage_tracking import guardrail_entry_to_action
+
+        action_val = guardrail_entry_to_action(entry_for_guardrail)
         duration = entry_for_guardrail.get("duration")
         if duration is not None:
             latency_val = round(float(duration) * 1000, 0)
@@ -472,6 +472,13 @@ def _usage_log_entry_from_row(r: Any, sl: Any, action_filter: Optional[str]) -> 
             reason_val = resp[:500]
         elif isinstance(resp, dict):
             reason_val = str(resp)[:500]
+        elif isinstance(resp, list):
+            names = tuple(
+                str(item.get("pattern_name") or item.get("keyword") or item.get("category"))
+                for item in resp
+                if isinstance(item, dict) and (item.get("pattern_name") or item.get("keyword") or item.get("category"))
+            )
+            reason_val = ", ".join(names)[:500] if names else None
     if action_filter and action_val != action_filter:
         return None
     ts = sl.startTime.isoformat() if hasattr(sl.startTime, "isoformat") else str(sl.startTime)
@@ -534,6 +541,99 @@ def _input_snippet_for_log(sl: Any) -> Optional[str]:
     return _snippet(psr)
 
 
+class UsageIndexRow(BaseModel):
+    model_config = ConfigDict(from_attributes=True, frozen=True)
+    request_id: str
+    guardrail_id: str
+
+
+class UsageSpendRow(BaseModel):
+    model_config = ConfigDict(from_attributes=True, frozen=True)
+    request_id: str
+    metadata: object
+    startTime: datetime | str
+    model: str
+    messages: object = None
+    response: object = None
+    proxy_server_request: object = None
+
+
+async def _collect_usage_log_page(
+    prisma_client: object,
+    where: Mapping[str, object],
+    page: int,
+    page_size: int,
+    action: str | None,
+) -> tuple[list[UsageLogEntry], int]:  # mutable-ok: Native UsageLogsResponse requires its entries as a list.
+    index = SpendLogGuardrailIndexRepository(prisma_client).table
+    total = TypeAdapter(int).validate_python(await index.count(where=where))
+
+    async def _entries(rows: Sequence[UsageIndexRow], action_filter: str | None) -> tuple[UsageLogEntry, ...]:
+        if not rows:
+            return ()
+        spend_logs = TypeAdapter(tuple[UsageSpendRow, ...]).validate_python(
+            await SpendLogsRepository(prisma_client).table.find_many(
+                where={  # mutable-ok: Prisma requires native where dictionaries.
+                    "request_id": {"in": [row.request_id for row in rows]}  # mutable-ok: Prisma requires ID lists.
+                }
+            )
+        )
+        by_id = MappingProxyType(
+            {row.request_id: row for row in spend_logs}  # mutable-ok: Immediately frozen lookup dictionary.
+        )
+        return tuple(
+            entry
+            for row in rows
+            if (spend := by_id.get(row.request_id)) is not None
+            if (entry := _usage_log_entry_from_row(row, spend, action_filter)) is not None
+        )
+
+    async def _fetch(skip: int, take: int) -> tuple[UsageIndexRow, ...]:
+        return TypeAdapter(tuple[UsageIndexRow, ...]).validate_python(
+            await index.find_many(
+                where=where,
+                order={"start_time": "desc"},  # mutable-ok: Prisma order dictionary.
+                skip=skip,
+                take=take,
+            )
+        )
+
+    if action:
+        matched: tuple[UsageLogEntry, ...] = ()
+        skip = 0
+        while len(matched) < page * page_size and skip < 4000:
+            batch = await _fetch(skip, 200)
+            if not batch:
+                break
+            matched += await _entries(batch, action)
+            skip += len(batch)
+            if len(batch) < 200:
+                break
+        start = (page - 1) * page_size
+        return list(matched[start : start + page_size]), len(  # mutable-ok: Native response-list boundary.
+            matched
+        )
+
+    page_rows = await _fetch((page - 1) * page_size, page_size)
+    logs_out = await _entries(page_rows, None)
+    if page == 1:
+        blocked: tuple[UsageLogEntry, ...] = ()
+        skip = 0
+        while len(blocked) < page_size and skip < 4000:
+            batch = await _fetch(skip, 200)
+            if not batch:
+                break
+            blocked += await _entries(batch, "blocked")
+            skip += len(batch)
+            if len(batch) < 200:
+                break
+        seen = frozenset(item.id for item in blocked)
+        logs_out = (*blocked, *(item for item in logs_out if item.id not in seen))[:page_size]
+    return list(  # mutable-ok: Native UsageLogsResponse expects a list.
+        logs_out
+    ), total
+
+
 @router.get(
     "/guardrails/usage/logs",
     tags=["Guardrails"],
@@ -577,26 +677,7 @@ async def guardrails_usage_logs(
                     effective_guardrail_ids.append(logical_name)
 
         where = _build_usage_logs_where(effective_guardrail_ids or None, policy_id, start_date, end_date)
-        index_rows = await SpendLogGuardrailIndexRepository(prisma_client).table.find_many(
-            where=where,
-            order={"start_time": "desc"},
-            skip=(page - 1) * page_size,
-            take=page_size + 1,
-        )
-        total = await SpendLogGuardrailIndexRepository(prisma_client).table.count(where=where)
-        request_ids = [r.request_id for r in index_rows[:page_size]]
-        if not request_ids:
-            return UsageLogsResponse(logs=[], total=total, page=page, page_size=page_size)
-        spend_logs = await SpendLogsRepository(prisma_client).table.find_many(where={"request_id": {"in": request_ids}})
-        log_by_id = {s.request_id: s for s in spend_logs}
-        logs_out: List[UsageLogEntry] = []
-        for r in index_rows[:page_size]:
-            sl = log_by_id.get(r.request_id)
-            if not sl:
-                continue
-            entry = _usage_log_entry_from_row(r, sl, action)
-            if entry is not None:
-                logs_out.append(entry)
+        logs_out, total = await _collect_usage_log_page(prisma_client, where, page, page_size, action)
         return UsageLogsResponse(logs=logs_out, total=total, page=page, page_size=page_size)
     except Exception as e:
         from litellm.proxy.utils import handle_exception_on_proxy

@@ -9,6 +9,7 @@ import asyncio
 import json
 import os
 import re
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import (
     TYPE_CHECKING,
@@ -26,11 +27,12 @@ from typing import (
 
 import yaml
 from fastapi import HTTPException
+from pydantic import TypeAdapter
 
 from litellm import Router
 from litellm._logging import verbose_proxy_logger
 from litellm.constants import DEFAULT_MAX_RECURSE_DEPTH
-from litellm.integrations.custom_guardrail import CustomGuardrail
+from litellm.integrations.custom_guardrail import CustomGuardrail, ModifyResponseException
 from litellm.proxy._types import UserAPIKeyAuth
 from litellm.types.utils import (
     CallTypes,
@@ -192,6 +194,10 @@ class ContentFilterGuardrail(CustomGuardrail):
         self.config_policy_template = policy_template
         self.pattern_redaction_format = pattern_redaction_format or self.PATTERN_REDACTION_FORMAT
         self.keyword_redaction_tag = keyword_redaction_tag or self.KEYWORD_REDACTION_STR
+        self.managed_mode = os.getenv("AGENTOS_GUARDRAIL_MODE", "false").lower() == "true"
+        if self.managed_mode:
+            self.pattern_redaction_format = "****"
+            self.keyword_redaction_tag = "****"
         self.severity_threshold = severity_threshold
         self.llm_router = llm_router
         self.image_model = image_model
@@ -448,6 +454,10 @@ class ContentFilterGuardrail(CustomGuardrail):
 
             try:
                 category_config_obj = self._load_category_file(category_file_path)
+                if self.managed_mode:
+                    from .chinese_categories import augment_category
+
+                    category_config_obj = augment_category(category_config_obj)
                 self.loaded_categories[category_name] = category_config_obj
 
                 # Use action from config, or default from category file
@@ -757,6 +767,19 @@ class ContentFilterGuardrail(CustomGuardrail):
             raise Exception(f"Error loading blocked words file {file_path}: {str(e)}")
 
     def _find_pattern_spans(self, text: str, pattern_entry: Dict[str, Any]) -> List[Tuple[int, int]]:
+        if os.getenv("AGENTOS_GUARDRAIL_MODE", "false").lower() == "true":
+            from .sensitive_normalization import find_spans
+
+            return find_spans(self, text, pattern_entry)
+        return self._find_raw_pattern_spans(text, pattern_entry)
+
+    def _find_raw_pattern_spans(
+        self,
+        text: str,
+        pattern_entry: dict[str, Any],  # mutable-ok: Native scanner takes compiled pattern dictionaries.
+    ) -> list[  # mutable-ok: Native scanner returns a span list.
+        tuple[int, int]
+    ]:
         """Return all match spans for a pattern, applying contextual rules if required."""
 
         regex: Pattern = pattern_entry["regex"]
@@ -1062,7 +1085,7 @@ class ContentFilterGuardrail(CustomGuardrail):
             action,
         ) in self.always_block_category_keywords.items():
             keyword_pattern_str = self._keyword_to_regex_pattern(keyword)
-            if " " in keyword:
+            if " " in keyword or (self.managed_mode and re.search(r"[\u3400-\u9fff]", keyword)):
                 keyword_found = bool(re.search(keyword_pattern_str, text_lower))
             else:
                 keyword_pattern = r"\b" + keyword_pattern_str + r"\b"
@@ -1081,7 +1104,7 @@ class ContentFilterGuardrail(CustomGuardrail):
             # Use word boundary matching for single words to avoid false positives
             # (e.g., "men" should not match "recommend")
             # For multi-word phrases, use substring matching
-            if " " in keyword:
+            if " " in keyword or (self.managed_mode and re.search(r"[\u3400-\u9fff]", keyword)):
                 # Multi-word phrase - use substring matching with wildcards
                 keyword_pattern = keyword_pattern_str
                 keyword_found = bool(re.search(keyword_pattern, text_lower))
@@ -1258,7 +1281,12 @@ class ContentFilterGuardrail(CustomGuardrail):
             )
         elif action == ContentFilterAction.MASK:
             redaction_tag = self.pattern_redaction_format.format(pattern_name=pattern_name.upper())
-            text = self._mask_spans(text, spans, redaction_tag)
+            if self.managed_mode:
+                from .sensitive_mask import mask_sensitive_spans
+
+                text = mask_sensitive_spans(text, spans, pattern_name)
+            else:
+                text = self._mask_spans(text, spans, redaction_tag)
             verbose_proxy_logger.info(f"Masked all {pattern_name} matches in content")
 
         return text
@@ -1272,6 +1300,7 @@ class ContentFilterGuardrail(CustomGuardrail):
         detections: Optional[List[ContentFilterDetection]],
     ) -> str:
         """Handle blocked word match detection and action."""
+        original_text = text
         verbose_proxy_logger.debug(f"Blocked word '{keyword}' found with action {action}")
 
         if detections is not None:
@@ -1304,6 +1333,10 @@ class ContentFilterGuardrail(CustomGuardrail):
                 text,
                 flags=re.IGNORECASE,
             )
+            if self.managed_mode:
+                from .keyword_mask import mask_blocked_keyword
+
+                text = mask_blocked_keyword(original_text, keyword, self.keyword_redaction_tag)
             verbose_proxy_logger.info(f"Masked keyword '{keyword}' in content")
 
         return text
@@ -1745,6 +1778,33 @@ class ContentFilterGuardrail(CustomGuardrail):
         request_data["mcp_arguments"] = filtered_arguments
         request_data["modified_arguments"] = filtered_arguments
 
+    def _mask_response_reasoning(
+        self,
+        request_data: Mapping[str, object],
+        sources: Sequence[tuple[str, str]],
+        detections: list[  # mutable-ok: Native matcher appends findings to the supplied log.
+            ContentFilterDetection
+        ],
+    ) -> None:
+        from .sensitive_mask import mask_sensitive_fragments
+
+        choices = TypeAdapter(tuple[object, ...]).validate_python(
+            getattr(request_data.get("response"), "choices", ()) or ()
+        )
+        for choice in choices:
+            message = getattr(choice, "message", None)
+            for field in ("reasoning_content", "reasoning"):
+                value = getattr(message, field, None)
+                if isinstance(value, str):
+                    setattr(
+                        message,
+                        field,
+                        self._filter_single_text(
+                            mask_sensitive_fragments(value, sources, detections),
+                            detections=detections,
+                        ),
+                    )
+
     async def apply_guardrail(
         self,
         inputs: "GenericGuardrailAPIInputs",
@@ -1780,6 +1840,32 @@ class ContentFilterGuardrail(CustomGuardrail):
             texts = inputs.get("texts", [])
             images = inputs.get("images", [])
 
+            from .sensitive_mask import (
+                contains_sensitive_value,
+                current_turn_start,
+                mask_history_arguments,
+                mask_history_text,
+                mask_sensitive_fragments,
+                sensitive_sources,
+            )
+
+            sources = sensitive_sources(self, request_data) if self.managed_mode else ()
+            if self.managed_mode:
+                tool_calls = inputs.get("tool_calls")
+                if tool_calls and input_type == "request":
+                    inputs["tool_calls"] = mask_history_arguments(self, tool_calls, detections)
+                elif tool_calls and contains_sensitive_value(tool_calls, sources):
+                    self.raise_passthrough_exception(
+                        violation_message="检测到敏感信息即将发送给工具",
+                        request_data=request_data,
+                        detection_info={  # mutable-ok: Native exception metadata dictionary.
+                            "source": "litellm_content_filter",
+                            "target": "tool_call",
+                        },
+                    )
+                if input_type == "response":
+                    self._mask_response_reasoning(request_data, sources, detections)
+
             # Process images if present
             await self._process_images(images, detections)
 
@@ -1787,13 +1873,20 @@ class ContentFilterGuardrail(CustomGuardrail):
             verbose_proxy_logger.debug(f"ContentFilterGuardrail: Applying guardrail to {len(texts)} text(s)")
 
             processed_texts = []
-            for text in texts:
+            turn_start = current_turn_start(inputs, len(texts)) if self.managed_mode and input_type == "request" else 0
+            for index, text in enumerate(texts):
+                if index < turn_start:
+                    processed_texts.append(mask_history_text(self, text, detections))
+                    continue
                 # Competitor intent check first (optional; may refuse/reframe)
                 if self._competitor_intent_checker and text:
                     intent_result = self._competitor_intent_checker.run(text)
                     if intent_result.get("intent", "other") != "other":
                         self._apply_competitor_intent_policy(intent_result, request_data, detections)
-                filtered_text = self._filter_single_text(text, detections=detections)
+                filtered_text = self._filter_single_text(
+                    mask_sensitive_fragments(text, sources, detections),
+                    detections=detections,
+                )
                 processed_texts.append(filtered_text)
 
             verbose_proxy_logger.debug("ContentFilterGuardrail: Guardrail applied successfully")
@@ -1808,8 +1901,23 @@ class ContentFilterGuardrail(CustomGuardrail):
             self._count_masked_entities(detections, masked_entity_count)
 
             return inputs
-        except HTTPException:
+        except HTTPException as exc:
             status = "guardrail_intervened"
+            if self.managed_mode:
+                detail = exc.detail
+                if isinstance(detail, dict):
+                    detail = detail.get("error") or detail.get("detection_message")
+                self.raise_passthrough_exception(
+                    violation_message=str(detail or "命中内容过滤规则"),
+                    request_data=request_data,
+                    detection_info={  # mutable-ok: Native exception metadata dictionary.
+                        "source": "litellm_content_filter"
+                    },
+                )
+            raise
+        except ModifyResponseException as exc:
+            status = "guardrail_intervened"
+            exception_str = exc.message
             raise
         except Exception as e:
             status = "guardrail_failed_to_respond"
@@ -1844,9 +1952,33 @@ class ContentFilterGuardrail(CustomGuardrail):
         and the UI Request Lifecycle panel. Mirrors apply_guardrail's finally-block
         contract.
         """
-        accumulated_text_by_choice: Dict[int, str] = {}
-        yielded_masked_text_len_by_choice: Dict[int, int] = {}
-        latest_detections_by_choice: Dict[int, List[ContentFilterDetection]] = {}
+        from litellm.types.utils import ChatCompletionDeltaToolCall, Delta, StreamingChoices
+
+        from .sensitive_mask import (
+            contains_sensitive_value,
+            mask_sensitive_fragments,
+            merge_tool_fragments,
+            sensitive_sources,
+        )
+
+        sources = sensitive_sources(self, request_data) if self.managed_mode else ()
+        pending_tools: tuple[tuple[int, tuple[ChatCompletionDeltaToolCall, ...]], ...] = ()
+        has_blocking_rules = self.managed_mode and (
+            any(pattern["action"] == ContentFilterAction.BLOCK for pattern in self.compiled_patterns)
+            or any(action == ContentFilterAction.BLOCK for action, _ in self.blocked_words.values())
+            or any(action == ContentFilterAction.BLOCK for _, _, action in self.category_keywords.values())
+            or any(action == ContentFilterAction.BLOCK for _, _, action in self.always_block_category_keywords.values())
+            or any(config.get("action") == ContentFilterAction.BLOCK for config in self.conditional_categories.values())
+        )
+        accumulated_text_by_choice: Dict[  # mutable-ok: Native stream buffers.
+            tuple[int, str], str
+        ] = {}  # mutable-ok: Native stream updates partial buffers.
+        yielded_masked_text_len_by_choice: Dict[  # mutable-ok: Native stream emission offsets.
+            tuple[int, str], int
+        ] = {}  # mutable-ok: Native stream emission offsets.
+        latest_detections_by_choice: Dict[  # mutable-ok: Native stream detection logs.
+            tuple[int, str], List[ContentFilterDetection]
+        ] = {}  # mutable-ok: Native logs.
         buffer_size = 50  # Increased buffer to catch patterns split across many chunks
 
         start_time = datetime.now()
@@ -1870,55 +2002,96 @@ class ContentFilterGuardrail(CustomGuardrail):
                         if not isinstance(choice_index, int):
                             choice_index = 0
 
-                        content = getattr(choice.delta, "content", None)
                         is_final = bool(getattr(choice, "finish_reason", None))
-                        if isinstance(content, str) and content:
-                            accumulated_text_by_choice[choice_index] = (
-                                accumulated_text_by_choice.get(choice_index, "") + content
+                        if sources:
+                            previous_tools = next(
+                                (parts for index, parts in pending_tools if index == choice_index), ()
                             )
-                        elif not is_final:
-                            continue
+                            pending_tools = (
+                                *((index, parts) for index, parts in pending_tools if index != choice_index),
+                                (choice_index, (*previous_tools, *(choice.delta.tool_calls or ()))),
+                            )
+                            choice.delta.tool_calls = None
+                            if is_final:
+                                calls = merge_tool_fragments(
+                                    next(parts for index, parts in pending_tools if index == choice_index)
+                                )
+                                pending_tools = tuple(
+                                    (index, parts) for index, parts in pending_tools if index != choice_index
+                                )
+                                if any(contains_sensitive_value(call.function.arguments, sources) for call in calls):
+                                    self.raise_passthrough_exception(
+                                        violation_message="检测到敏感信息即将发送给工具",
+                                        request_data=request_data,
+                                        detection_info={  # mutable-ok: Native exception metadata dictionary.
+                                            "source": "litellm_content_filter",
+                                            "target": "tool_call",
+                                        },
+                                    )
+                                choice.delta.tool_calls = (
+                                    list(calls)  # mutable-ok: Native Delta.tool_calls requires a list.
+                                    if calls
+                                    else None
+                                )
+                        fields = ("content", "reasoning_content", "reasoning") if self.managed_mode else ("content",)
+                        for field_name in fields:
+                            field_key = (choice_index, field_name)
+                            content = getattr(choice.delta, field_name, None)
+                            if isinstance(content, str) and content:
+                                accumulated_text_by_choice[field_key] = (
+                                    accumulated_text_by_choice.get(field_key, "") + content
+                                )
+                            elif not is_final:
+                                continue
 
-                        text_to_check = accumulated_text_by_choice.get(choice_index, "")
-                        if not text_to_check:
-                            continue
+                            text_to_check = accumulated_text_by_choice.get(field_key, "")
+                            if not text_to_check:
+                                continue
 
-                        # Add a space at the end if it's the final chunk to trigger word boundaries (\b)
-                        text_to_scan = text_to_check + (" " if is_final else "")
-                        choice_detections: List[ContentFilterDetection] = []
+                            # Add a space at the end if it's the final chunk to trigger word boundaries (\b)
+                            choice_detections: List[  # mutable-ok: Native matcher appends findings to this log.
+                                ContentFilterDetection
+                            ] = []  # mutable-ok: Native matcher appends findings into the supplied per-choice log list.
+                            text_to_scan = mask_sensitive_fragments(
+                                text_to_check + (" " if is_final else ""), sources, choice_detections
+                            )
 
-                        try:
-                            # _filter_single_text scans the whole accumulated
-                            # choice buffer every chunk, so previous-chunk
-                            # matches are guaranteed to be re-found. Keeping
-                            # only each choice's latest scan avoids duplicate
-                            # detections in the final log row.
-                            masked_text = self._filter_single_text(text_to_scan, detections=choice_detections)
-                            if is_final and masked_text.endswith(" "):
-                                masked_text = masked_text[:-1]
-                            latest_detections_by_choice[choice_index] = choice_detections
-                        except HTTPException:
-                            latest_detections_by_choice[choice_index] = choice_detections
-                            raise
-                        except Exception as e:
-                            verbose_proxy_logger.error(f"ContentFilterGuardrail: Error in masking: {e}")
-                            masked_text = text_to_scan  # Fallback to current text
+                            try:
+                                # _filter_single_text scans the whole accumulated
+                                # choice buffer every chunk, so previous-chunk
+                                # matches are guaranteed to be re-found. Keeping
+                                # only each choice's latest scan avoids duplicate
+                                # detections in the final log row.
+                                masked_text = self._filter_single_text(text_to_scan, detections=choice_detections)
+                                if is_final and masked_text.endswith(" "):
+                                    masked_text = masked_text[:-1]
+                                latest_detections_by_choice[field_key] = choice_detections
+                            except HTTPException:
+                                latest_detections_by_choice[field_key] = choice_detections
+                                raise
+                            except Exception as e:
+                                verbose_proxy_logger.error(f"ContentFilterGuardrail: Error in masking: {e}")
+                                if self.managed_mode:
+                                    raise
+                                masked_text = text_to_scan  # Fallback to current text
 
-                        # Determine how much can be safely yielded
-                        if is_final:
-                            safe_to_yield_len = len(masked_text)
-                        else:
-                            safe_to_yield_len = max(0, len(masked_text) - buffer_size)
+                            # Determine how much can be safely yielded
+                            if is_final:
+                                safe_to_yield_len = len(masked_text)
+                            elif has_blocking_rules:
+                                safe_to_yield_len = 0
+                            else:
+                                safe_to_yield_len = max(0, len(masked_text) - buffer_size)
 
-                        yielded_masked_text_len = yielded_masked_text_len_by_choice.get(choice_index, 0)
-                        if safe_to_yield_len > yielded_masked_text_len:
-                            new_masked_content = masked_text[yielded_masked_text_len:safe_to_yield_len]
-                            choice.delta.content = new_masked_content
-                            yielded_masked_text_len_by_choice[choice_index] = safe_to_yield_len
-                        else:
-                            # Hold content by yielding empty content on this choice
-                            # while preserving chunk metadata and other choices.
-                            choice.delta.content = ""
+                            yielded_masked_text_len = yielded_masked_text_len_by_choice.get(field_key, 0)
+                            if safe_to_yield_len > yielded_masked_text_len:
+                                new_masked_content = masked_text[yielded_masked_text_len:safe_to_yield_len]
+                                setattr(choice.delta, field_name, new_masked_content)
+                                yielded_masked_text_len_by_choice[field_key] = safe_to_yield_len
+                            else:
+                                # Hold content by yielding empty content on this choice
+                                # while preserving chunk metadata and other choices.
+                                setattr(choice.delta, field_name, "")
 
                     yield item
                 else:
@@ -1932,9 +2105,34 @@ class ContentFilterGuardrail(CustomGuardrail):
             ):
                 # We already reached the end of the generator
                 pass
-        except HTTPException:
+        except ModifyResponseException as exc:
             status = "guardrail_intervened"
+            exception_str = exc.message
             raise
+        except HTTPException as exc:
+            status = "guardrail_intervened"
+            if not self.managed_mode:
+                raise
+            detail = exc.detail
+            if isinstance(detail, dict):
+                detail = detail.get("error") or detail.get("detection_message")
+            try:
+                self.raise_passthrough_exception(
+                    violation_message=str(detail or "命中内容过滤规则"),
+                    request_data=request_data,
+                    detection_info={  # mutable-ok: Native exception metadata dictionary.
+                        "source": "litellm_content_filter"
+                    },
+                )
+            except ModifyResponseException as block:
+                exception_str = block.message
+                yield ModelResponseStream(
+                    choices=[  # mutable-ok: Native ModelResponseStream requires a choices list.
+                        StreamingChoices(
+                            index=0, delta=Delta(role="assistant", content=block.message), finish_reason="stop"
+                        )
+                    ]
+                )
         except Exception as e:
             status = "guardrail_failed_to_respond"
             exception_str = str(e)

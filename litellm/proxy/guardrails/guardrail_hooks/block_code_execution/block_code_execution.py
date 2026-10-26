@@ -6,6 +6,7 @@ when the language is in the blocked list (or all blocks when list is empty). Sup
 confidence scoring and a tunable threshold (only block when confidence >= threshold).
 """
 
+import os
 import re
 from datetime import datetime
 from typing import (
@@ -419,6 +420,10 @@ class BlockCodeExecutionGuardrail(CustomGuardrail):
         (execution-intent heuristics only apply to user requests, not LLM output).
         Returns (modified_text, should_raise).
         """
+        if os.getenv("AGENTOS_GUARDRAIL_MODE", "false").lower() == "true":
+            from .detection import scan_text
+
+            return scan_text(self, _normalize_escaped_newlines(text), detections, input_type)
         if not text:
             return text, False
         text = _normalize_escaped_newlines(text)
@@ -496,12 +501,24 @@ class BlockCodeExecutionGuardrail(CustomGuardrail):
         new_text = "".join(parts)
         return new_text, should_raise
 
+    async def async_post_call_streaming_iterator_hook(self, user_api_key_dict, response, request_data):
+        if os.getenv("AGENTOS_GUARDRAIL_MODE", "false").lower() == "true":
+            from .detection import checked_stream
+
+            async for chunk in checked_stream(self, response, request_data):
+                yield chunk
+        else:
+            async for chunk in super().async_post_call_streaming_iterator_hook(
+                user_api_key_dict, response, request_data
+            ):
+                yield chunk
+
     def _raise_block_error(self, language: str, is_output: bool, request_data: dict) -> None:
         if language == "execution_request":
             msg = "Content blocked: execution request detected"
         else:
             msg = f"Content blocked: executable code block detected (language: {language})"
-        if is_output:
+        if is_output and os.getenv("AGENTOS_GUARDRAIL_MODE", "false").lower() != "true":
             raise HTTPException(
                 status_code=400,
                 detail={
@@ -530,13 +547,24 @@ class BlockCodeExecutionGuardrail(CustomGuardrail):
         exception_str = ""
 
         try:
+            managed = os.getenv("AGENTOS_GUARDRAIL_MODE", "false").lower() == "true"
+            if managed and input_type == "response" and inputs.get("tool_calls"):
+                from .detection import filter_tool_calls
+
+                inputs["tool_calls"] = filter_tool_calls(self, inputs["tool_calls"], detections, request_data)
             texts = inputs.get("texts", [])
             if not texts:
                 return inputs
 
             is_output = input_type == "response"
             processed: List[str] = []
-            for text in texts:
+            from ..litellm_content_filter.sensitive_mask import current_turn_start
+
+            turn_start = current_turn_start(inputs, len(texts)) if managed and not is_output else 0
+            for index, text in enumerate(texts):
+                if index < turn_start:
+                    processed.append(text)
+                    continue
                 new_text, should_raise = self._scan_text(text, detections, input_type)
                 processed.append(new_text)
                 if should_raise:

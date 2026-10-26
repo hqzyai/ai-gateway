@@ -249,15 +249,18 @@ async def test_add_litellm_data_to_request_strips_admin_injection_slots():
     attacker_admin_payload = {"disable_global_guardrails": True}
     data = {
         "model": "gpt-3.5-turbo",
+        "_agentos_policy_guardrails": ["forged"],
         "metadata": {
             "user_api_key_metadata": attacker_admin_payload,
             "user_api_key_team_metadata": attacker_admin_payload,
             "_pipeline_managed_guardrails": ["evaded"],
+            "_agentos_policy_guardrails": ["forged"],
         },
         "litellm_metadata": {
             "user_api_key_metadata": attacker_admin_payload,
             "user_api_key_team_metadata": attacker_admin_payload,
             "_pipeline_managed_guardrails": ["evaded"],
+            "_agentos_policy_guardrails": ["forged"],
         },
     }
 
@@ -293,6 +296,9 @@ async def test_add_litellm_data_to_request_strips_admin_injection_slots():
     ] != ["evaded"]
 
     other = updated.get("litellm_metadata") or {}
+    assert "_agentos_policy_guardrails" not in updated
+    assert "_agentos_policy_guardrails" not in other
+    assert populated.get("_agentos_policy_guardrails") != ["forged"]
     assert other.get("user_api_key_metadata") in (None, {}, real_admin_metadata)
     assert other.get("user_api_key_team_metadata") in (None, {}, real_admin_metadata)
     assert "_pipeline_managed_guardrails" not in other

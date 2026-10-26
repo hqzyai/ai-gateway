@@ -134,6 +134,7 @@ _UNTRUSTED_ROOT_CONTROL_FIELDS = (
     "pillar_response_headers",
     "_guardrail_pipelines",
     "_pipeline_managed_guardrails",
+    "_agentos_policy_guardrails",
     # Callback-registration fields. ``callbacks``, ``service_callback``,
     # and ``logger_fn`` are read by ``litellm.utils.function_setup`` and
     # appended to process-wide ``litellm.{input,success,failure,_async_*,
@@ -183,6 +184,7 @@ _UNTRUSTED_METADATA_CONTROL_FIELDS = (
     "secret_fields",
     "_guardrail_pipelines",
     "_pipeline_managed_guardrails",
+    "_agentos_policy_guardrails",
     "client_disconnected",
     "error_information",
     PRE_CALL_EXECUTED_GUARDRAILS_KEY,
@@ -2651,7 +2653,7 @@ async def add_guardrails_from_policy_engine(
     request_body_policies = request_body_names + fetched_policy_names
 
     # Match and track policies (with merged_policies when we have version overrides)
-    applied_policy_names, _ = _match_and_track_policies(
+    applied_policy_names, policy_reasons = _match_and_track_policies(
         data,
         context,
         request_body_policies,
@@ -2666,6 +2668,31 @@ async def add_guardrails_from_policy_engine(
         context,
         policy_names=applied_policy_names if applied_policy_names else None,
         policies=merged_policies if request_body_version_ids else None,
+    )
+
+    from litellm.proxy.policy_engine.policy_resolver import PolicyResolver
+
+    attached_names = tuple(name for name in applied_policy_names if name in policy_reasons)
+    attached_guardrails = PolicyResolver.resolve_guardrails_for_context(
+        context=context,
+        policies=registry.get_all_policies(),
+        policy_names=attached_names,
+    )
+    attached_pipelines = PolicyResolver.resolve_pipelines_for_context(
+        context=context,
+        policies=registry.get_all_policies(),
+        policy_names=attached_names,
+    )
+    data.setdefault(metadata_variable_name, {})[
+        "_agentos_policy_guardrails"
+    ] = (  # mutable-ok: Native request metadata.
+        tuple(
+            sorted(
+                frozenset(attached_guardrails).union(
+                    step.guardrail for _, pipeline in attached_pipelines for step in pipeline.steps
+                )
+            )
+        )
     )
 
 

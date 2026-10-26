@@ -2,10 +2,11 @@
 
 import importlib
 import os
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional, Set, Type, cast
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 import litellm
 from litellm import Router
@@ -221,6 +222,31 @@ guardrail_class_registry.update(get_guardrail_class_from_hooks())
 _discovered_initializers = get_guardrail_initializer_from_hooks()
 
 guardrail_initializer_registry.update(_discovered_initializers)
+
+
+def attachment_authorizes_guardrail(data: Mapping[str, object], guardrail_name: str) -> bool:
+    if os.getenv("AGENTOS_GUARDRAIL_MODE", "false").lower() != "true":
+        return True
+    records = tuple(
+        row
+        for row in IN_MEMORY_GUARDRAIL_HANDLER.IN_MEMORY_GUARDRAILS.values()
+        if row.get("guardrail_name") == guardrail_name
+    )
+    if len(records) != 1:
+        return False
+    params = records[0].get("litellm_params")
+    provider = params.get("guardrail") if isinstance(params, Mapping) else getattr(params, "guardrail", None)
+    if isinstance(provider, str) and provider.strip().lower() in ("headroom", "compresr", "typesafe"):
+        return True
+    raw_info = records[0].get("guardrail_info")
+    info = raw_info.model_dump() if isinstance(raw_info, BaseModel) else raw_info
+    if not isinstance(info, Mapping) or info.get("agentos_enabled") is not True:
+        return False
+    metadata = data.get("metadata", data.get("litellm_metadata"))
+    if not isinstance(metadata, Mapping):
+        return False
+    attached = metadata.get("_agentos_policy_guardrails")
+    return isinstance(attached, (list, tuple, set, frozenset)) and guardrail_name in attached
 
 
 class GuardrailRegistry:
@@ -692,6 +718,9 @@ class InMemoryGuardrailHandler:
         if existing is None:
             return True
 
+        if existing.get("guardrail_info") != new_guardrail.get("guardrail_info"):
+            return True
+
         # Compare guardrail_name
         if existing.get("guardrail_name") != new_guardrail.get("guardrail_name"):
             return True
@@ -734,12 +763,24 @@ class InMemoryGuardrailHandler:
             verbose_proxy_logger.error("Cannot reinitialize guardrail without guardrail_id")
             return None
 
-        # Remove from memory if exists (also removes from callbacks)
+        previous = self.IN_MEMORY_GUARDRAILS.get(guardrail_id)
+        previous_source = self._sources.get(guardrail_id, source)
+        previous_callbacks = tuple(litellm.logging_callback_manager.get_custom_loggers_for_type(CustomGuardrail))
         if guardrail_id in self.IN_MEMORY_GUARDRAILS:
             self.delete_in_memory_guardrail(guardrail_id)
 
-        # Initialize fresh (will add new callback to litellm.callbacks)
-        return self.initialize_guardrail(guardrail=guardrail, config_file_path=config_file_path, source=source)
+        try:
+            result = self.initialize_guardrail(guardrail=guardrail, config_file_path=config_file_path, source=source)
+            if result is None:
+                raise ValueError("Guardrail initialization returned no record")
+            return result
+        except Exception:
+            for callback in tuple(litellm.logging_callback_manager.get_custom_loggers_for_type(CustomGuardrail)):
+                if callback not in previous_callbacks:
+                    litellm.logging_callback_manager.remove_callback_from_all_lists(callback)
+            if previous is not None:
+                self.initialize_guardrail(guardrail=previous, config_file_path=config_file_path, source=previous_source)
+            raise
 
     def sync_guardrail_from_db(
         self, guardrail: Guardrail, config_file_path: Optional[str] = None

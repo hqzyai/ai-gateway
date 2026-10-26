@@ -5,8 +5,11 @@ insert into SpendLogGuardrailIndex when spend logs are written.
 
 import json
 from collections import defaultdict
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+
+from pydantic import TypeAdapter
 
 from litellm._logging import verbose_proxy_logger
 from litellm.proxy.utils import PrismaClient
@@ -14,6 +17,30 @@ from litellm.repositories.table_repositories import (
     DailyGuardrailMetricsRepository,
     SpendLogGuardrailIndexRepository,
 )
+
+
+def guardrail_entry_to_action(entry: Mapping[str, object]) -> str:
+    status = str(entry.get("guardrail_status") or "").lower()
+    if "intervened" in status or "block" in status:
+        return "blocked"
+    if "fail" in status or "error" in status:
+        return "flagged"
+    masked = entry.get("masked_entity_count")
+    if isinstance(masked, dict) and any(
+        int(value or 0) > 0
+        for value in TypeAdapter(Mapping[str, int | str | float | None]).validate_python(masked).values()
+    ):
+        return "masked"
+    response = entry.get("guardrail_response")
+    if isinstance(response, str) and response.strip().lower() in ("mask", "masked", "redact", "redacted"):
+        return "masked"
+    if isinstance(response, list):
+        for item in TypeAdapter(tuple[object, ...]).validate_python(response):
+            if isinstance(item, dict) and str(
+                TypeAdapter(Mapping[str, object]).validate_python(item).get("action") or ""
+            ).upper() in ("MASK", "REDACT"):
+                return "masked"
+    return "passed"
 
 
 def _guardrail_status_to_action(status: Optional[str]) -> str:
@@ -92,7 +119,7 @@ async def process_spend_logs_guardrail_usage(
                 continue
             key = (guardrail_id, date_key)
             daily_guardrail[key]["requests_evaluated"] += 1
-            action = _guardrail_status_to_action(entry.get("guardrail_status"))
+            action = guardrail_entry_to_action(entry)
             if action == "passed":
                 daily_guardrail[key]["passed_count"] += 1
             elif action == "blocked":

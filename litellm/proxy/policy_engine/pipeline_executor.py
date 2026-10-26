@@ -61,7 +61,11 @@ class PipelineExecutor:
         if "metadata" in working_data:
             working_data["metadata"] = working_data["metadata"].copy()
 
+        from litellm.proxy.guardrails.guardrail_registry import attachment_authorizes_guardrail
+
         for i, step in enumerate(steps):
+            if not attachment_authorizes_guardrail(working_data, step.guardrail):
+                continue
             start_time = time.perf_counter()
 
             (

@@ -6,7 +6,7 @@ from pydantic import Field
 
 from .base import GuardrailConfigModel
 
-CodeBlockActionTaken = Literal["block", "allow", "log_only"]
+CodeBlockActionTaken = Literal["block", "allow", "log_only", "mask"]
 
 # Supported language tags for the blocked_languages multiselect dropdown.
 # Only canonical names are listed; LANGUAGE_ALIASES in the guardrail normalizes

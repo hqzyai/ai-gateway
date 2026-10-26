@@ -171,17 +171,24 @@ async def test_apply_guardrail_passes_above_threshold(mock_completion):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("managed", [False, True])
 @patch("litellm.proxy.guardrails.guardrail_hooks.llm_as_a_judge.litellm.acompletion")
-async def test_apply_guardrail_blocks_below_threshold(mock_completion):
+async def test_apply_guardrail_blocks_below_threshold(mock_completion, managed, monkeypatch):
+    from litellm.integrations.custom_guardrail import ModifyResponseException
+
+    monkeypatch.setenv("AGENTOS_GUARDRAIL_MODE", str(managed).lower())
     mock_completion.return_value = MagicMock(
         choices=[MagicMock(message=MagicMock(content=json.dumps(_make_verdict_response(50.0))))]
     )
     guardrail = _make_guardrail(overall_threshold=80.0, on_failure="block")
     inputs = {"texts": ["bad response"]}
     request_data: dict = {"messages": [], "metadata": {}}
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(ModifyResponseException if managed else HTTPException) as exc_info:
         await guardrail.apply_guardrail(inputs, request_data, "response")
-    assert exc_info.value.status_code == 422
+    if managed:
+        assert "模型评审分数低于阈值" in exc_info.value.message
+    else:
+        assert exc_info.value.status_code == 422
 
 
 @pytest.mark.asyncio

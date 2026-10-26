@@ -503,7 +503,11 @@ class TestToolPermissionGuardrail:
                 )
 
     @pytest.mark.asyncio
-    async def test_async_pre_call_hook_block_mode(self):
+    @pytest.mark.parametrize("managed", [False, True])
+    async def test_async_pre_call_hook_block_mode(self, managed, monkeypatch):
+        from litellm.integrations.custom_guardrail import ModifyResponseException
+
+        monkeypatch.setenv("AGENTOS_GUARDRAIL_MODE", str(managed).lower())
         data = {
             "tools": [
                 {"type": "function", "function": {"name": "Bash"}},
@@ -514,14 +518,17 @@ class TestToolPermissionGuardrail:
         cache = DualCache(default_in_memory_ttl=1)
 
         with patch.object(self.guardrail, "should_run_guardrail", return_value=True):
-            with pytest.raises(HTTPException) as excinfo:
+            with pytest.raises(ModifyResponseException if managed else HTTPException) as excinfo:
                 await self.guardrail.async_pre_call_hook(
                     user_api_key_dict=user_api_key_dict,
                     cache=cache,
                     data=data,
                     call_type="completion",
                 )
-        assert excinfo.value.status_code == 400
+        if managed:
+            assert "工具调用不符合权限规则" in excinfo.value.message
+        else:
+            assert excinfo.value.status_code == 400
 
     @pytest.mark.asyncio
     async def test_async_pre_call_hook_blocks_legacy_functions(self):
