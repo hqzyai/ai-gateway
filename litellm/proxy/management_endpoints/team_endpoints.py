@@ -4034,6 +4034,30 @@ async def _build_team_list_where_conditions(
             else:
                 where_conditions["team_id"] = {"in": user_team_ids}
 
+    for term, alias_filter in ((search, False), (team_alias, True)):
+        if not term:
+            continue
+        table = "LiteLLM_DeletedTeamTable" if use_deleted_table else "LiteLLM_TeamTable"
+        escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        rows = await prisma_client.db.query_raw(
+            f"SELECT team_id FROM \"{table}\" WHERE metadata->>'display_name' ILIKE $1",
+            f"%{escaped}%",
+        )
+        name_filter = {  # mutable-ok: Prisma requires native where dictionaries.
+            "team_id": {  # mutable-ok: Prisma ID filter dictionary.
+                "in": [row["team_id"] for row in rows]  # mutable-ok: Prisma ID list.
+            }
+        }
+        if alias_filter:
+            original = where_conditions.pop("team_alias")
+            where_conditions.setdefault("AND", []).append(  # mutable-ok: Prisma uses AND filter lists.
+                {  # mutable-ok: Prisma OR filter dictionary.
+                    "OR": [{"team_alias": original}, name_filter]  # mutable-ok: Prisma OR filter list.
+                }
+            )
+        else:
+            where_conditions["OR"].append(name_filter)
+
     return where_conditions
 
 
@@ -4212,14 +4236,18 @@ async def list_team_v2(
     team_id: Optional[str] = fastapi.Query(
         default=None, description="Only return teams which this 'team_id' belongs to"
     ),
-    team_alias: Optional[str] = fastapi.Query(
-        default=None,
-        description="Only return teams which this 'team_alias' belongs to. Supports partial matching.",
-    ),
-    search: Optional[str] = fastapi.Query(
-        default=None,
-        description="Combined search: matches teams whose 'team_id' equals the value OR whose 'team_alias' contains it (case-insensitive).",
-    ),
+    team_alias: Annotated[
+        Optional[str],
+        fastapi.Query(
+            description="Filter teams by alias or metadata display name. Supports partial matching.",
+        ),
+    ] = None,
+    search: Annotated[
+        Optional[str],
+        fastapi.Query(
+            description="Combined search: matches team ID, alias or metadata display name (case-insensitive).",
+        ),
+    ] = None,
     page: int = fastapi.Query(default=1, description="Page number for pagination", ge=1),
     page_size: int = fastapi.Query(default=10, description="Number of teams per page", ge=1, le=100),
     sort_by: Optional[str] = fastapi.Query(

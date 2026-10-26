@@ -1,4 +1,5 @@
 import { isAdminRole } from "@/utils/roles";
+import { teamDisplayName } from "@/utils/teamUtils";
 import { QuestionCircleOutlined, SearchOutlined } from "@ant-design/icons";
 import { Button, Tab, TabGroup, TabList, TabPanel, TabPanels, Text, Title } from "@tremor/react";
 import NewBadge from "@/components/common_components/NewBadge";
@@ -546,7 +547,7 @@ const MCPServers: React.FC<MCPServerProps> = ({ accessToken, userRole, userID })
                           </Option>
                           {uniqueTeams.map((team) => (
                             <Option key={team.team_id} value={team.team_id}>
-                              <span className="font-medium">{team.team_alias || team.team_id}</span>
+                              <span className="font-medium">{teamDisplayName(team)}</span>
                             </Option>
                           ))}
                         </Select>

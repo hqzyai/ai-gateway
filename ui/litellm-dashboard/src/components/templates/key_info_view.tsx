@@ -1,4 +1,5 @@
 import useAuthorized from "@/app/(dashboard)/hooks/useAuthorized";
+import { teamDisplayName } from "@/utils/teamUtils";
 import { useProjects } from "@/app/(dashboard)/hooks/projects/useProjects";
 import { useUISettings } from "@/app/(dashboard)/hooks/uiSettings/useUISettings";
 import useTeams from "@/app/(dashboard)/hooks/useTeams";
@@ -452,7 +453,7 @@ export default function KeyInfoView({
     currentKeyData.max_budget !== null
       ? `$${formatNumberWithCommas(currentKeyData.max_budget, 2)}`
       : parentTeam?.max_budget != null
-        ? `$${formatNumberWithCommas(parentTeam.max_budget, 2)} (Team: ${parentTeam.team_alias || parentTeam.team_id}${parentTeam.budget_duration ? ` / ${parentTeam.budget_duration}` : ""})`
+        ? `$${formatNumberWithCommas(parentTeam.max_budget, 2)} (Team: ${teamDisplayName(parentTeam)}${parentTeam.budget_duration ? ` / ${parentTeam.budget_duration}` : ""})`
         : "Unlimited";
 
   return (

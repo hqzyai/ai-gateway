@@ -1,4 +1,5 @@
 "use client";
+import { teamDisplayName } from "@/utils/teamUtils";
 
 import { useKeys } from "@/app/(dashboard)/hooks/keys/useKeys";
 import { useOrganizations } from "@/app/(dashboard)/hooks/organizations/useOrganizations";
@@ -110,7 +111,7 @@ export function VirtualKeysTable({ headerActions }: VirtualKeysTableProps) {
   const teamOptions = useMemo(
     () =>
       allTeams.map((team) => ({
-        label: team.team_alias || team.team_id,
+        label: teamDisplayName(team),
         value: team.team_id,
         sublabel: team.team_alias ? team.team_id : undefined,
       })),
@@ -132,7 +133,7 @@ export function VirtualKeysTable({ headerActions }: VirtualKeysTableProps) {
     (columnId: string, value: unknown): string => {
       const raw = String(value);
       if (columnId === "team_id") {
-        return allTeams.find((team) => team.team_id === raw)?.team_alias || raw;
+        return teamDisplayName(allTeams.find((team) => team.team_id === raw)) || raw;
       }
       if (columnId === "org_id") {
         return organizations.find((org) => org.organization_id === raw)?.organization_alias || raw;

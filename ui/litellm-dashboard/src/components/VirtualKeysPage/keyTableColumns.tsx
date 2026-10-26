@@ -1,4 +1,5 @@
 "use client";
+import { teamDisplayName } from "@/utils/teamUtils";
 
 import { InfoCircleOutlined } from "@ant-design/icons";
 import { ColumnDef } from "@tanstack/react-table";
@@ -184,7 +185,7 @@ export const getKeyTableColumns = ({
       const teamId = info.getValue() as string | null;
       if (!teamId) return "-";
       const team = allTeams.find((t) => t.team_id === teamId);
-      const displayValue = team?.team_alias || teamId;
+      const displayValue = teamDisplayName(team) || teamId;
       const width = info.cell.column.getSize();
       return (
         <span className="font-mono text-xs truncate block" style={{ maxWidth: width, overflow: "hidden" }}>

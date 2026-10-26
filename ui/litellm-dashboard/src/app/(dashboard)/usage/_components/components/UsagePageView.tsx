@@ -7,6 +7,7 @@
  */
 
 import { DownOutlined, ExportOutlined, InfoCircleOutlined, LoadingOutlined, RightOutlined } from "@ant-design/icons";
+import { teamDisplayName } from "@/utils/teamUtils";
 import { useDebouncedState } from "@tanstack/react-pacer/debouncer";
 import { DEBOUNCE_WAIT_MS } from "@/utils/debounceConstants";
 import {
@@ -882,7 +883,7 @@ const UsagePage: React.FC<UsagePageProps> = ({ teams, organizations }) => {
               userRole={userRole}
               entityList={
                 teams?.map((team) => ({
-                  label: team.team_alias,
+                  label: teamDisplayName(team),
                   value: team.team_id,
                 })) || null
               }

@@ -1,4 +1,5 @@
 import useAuthorized from "@/app/(dashboard)/hooks/useAuthorized";
+import { managedTeamName, teamDisplayName } from "@/utils/teamUtils";
 import { organizationKeys, useOrganizations } from "@/app/(dashboard)/hooks/organizations/useOrganizations";
 import { useQueryClient } from "@tanstack/react-query";
 import UserSearchModal from "@/components/common_components/user_search_modal";
@@ -517,7 +518,7 @@ const TeamInfoView: React.FC<TeamInfoProps> = ({
 
       const updateData: any = {
         team_id: teamId,
-        team_alias: values.team_alias,
+        team_alias: managedTeamName(info) ? info.team_alias : values.team_alias,
         models: values.models,
         tpm_limit: sanitizeNumeric(values.tpm_limit),
         rpm_limit: sanitizeNumeric(values.rpm_limit),
@@ -727,7 +728,7 @@ const TeamInfoView: React.FC<TeamInfoProps> = ({
           <Button type="text" icon={<ArrowLeftIcon className="h-4 w-4" />} onClick={onClose} className="mb-4">
             Back to Teams
           </Button>
-          <Title>{info.team_alias}</Title>
+          <Title>{teamDisplayName(info)}</Title>
           <div className="flex items-center">
             <Text className="text-gray-500 font-mono">{info.team_id}</Text>
             <Button
@@ -893,7 +894,9 @@ const TeamInfoView: React.FC<TeamInfoProps> = ({
           {
             key: TEAM_INFO_TAB_KEYS.VIRTUAL_KEYS,
             label: TEAM_INFO_TAB_LABELS[TEAM_INFO_TAB_KEYS.VIRTUAL_KEYS],
-            children: <TeamVirtualKeysTable teamId={teamId} teamAlias={info.team_alias} organization={organization} />,
+            children: (
+              <TeamVirtualKeysTable teamId={teamId} teamAlias={teamDisplayName(info)} organization={organization} />
+            ),
           },
           {
             key: TEAM_INFO_TAB_KEYS.MEMBERS,
@@ -953,7 +956,7 @@ const TeamInfoView: React.FC<TeamInfoProps> = ({
                     }}
                     initialValues={{
                       ...info,
-                      team_alias: info.team_alias,
+                      team_alias: teamDisplayName(info),
                       models: info.models,
                       tpm_limit: info.tpm_limit,
                       rpm_limit: info.rpm_limit,
@@ -1025,7 +1028,11 @@ const TeamInfoView: React.FC<TeamInfoProps> = ({
                       name="team_alias"
                       rules={[{ required: true, message: "Please input a team name" }]}
                     >
-                      <Input type="" />
+                      <Input
+                        type=""
+                        disabled={!!managedTeamName(info)}
+                        title={managedTeamName(info) ? "Managed in AgentOS department settings" : undefined}
+                      />
                     </Form.Item>
 
                     <Form.Item
@@ -1521,7 +1528,7 @@ const TeamInfoView: React.FC<TeamInfoProps> = ({
                   <div className="space-y-4">
                     <div>
                       <Text className="font-medium">Team Name</Text>
-                      <div>{info.team_alias}</div>
+                      <div>{teamDisplayName(info)}</div>
                     </div>
                     <div>
                       <Text className="font-medium">Team ID</Text>

@@ -1,6 +1,55 @@
 import { describe, expect, it } from "vitest";
-import { resolveTeamAliasFromTeamID, createTeamAliasMap } from "./teamUtils";
+import {
+  resolveTeamAliasFromTeamID,
+  createTeamAliasMap,
+  managedTeamName,
+  teamDisplayName,
+  matchesTeamSearch,
+} from "./teamUtils";
 import type { Team } from "@/components/key_team_helpers/key_list";
+
+describe("department display names", () => {
+  it("uses the managed label without changing the alias or ID", () => {
+    const team = Object.freeze({ team_id: "team-1", team_alias: "engineering", metadata: { display_name: "研发部" } });
+    expect(teamDisplayName(team)).toBe("研发部");
+    expect(matchesTeamSearch(team, "研发")).toBe(true);
+    expect(matchesTeamSearch(team, "ENGINEERING")).toBe(true);
+    expect(matchesTeamSearch(team, "team-1")).toBe(true);
+    expect(matchesTeamSearch(team, "unknown")).toBe(false);
+    expect(team.team_alias).toBe("engineering");
+  });
+
+  it.each([undefined, null, {}, { display_name: 10 }, { display_name: " " }])(
+    "falls back for malformed metadata %j",
+    (metadata) => {
+      expect(managedTeamName({ metadata })).toBeUndefined();
+      expect(teamDisplayName({ metadata, team_alias: "original", team_id: "id" })).toBe("original");
+      expect(teamDisplayName({ metadata, team_id: "id" })).toBe("id");
+    },
+  );
+
+  it("uses the same names in usage and key lookup maps", () => {
+    const teams: Team[] = [
+      {
+        team_id: "team-1",
+        team_alias: "engineering",
+        metadata: { display_name: "研发部" },
+        models: [],
+        max_budget: null,
+        budget_duration: null,
+        tpm_limit: null,
+        rpm_limit: null,
+        organization_id: "org",
+        created_at: "",
+        keys: [],
+        members_with_roles: [],
+        spend: 0,
+      },
+    ];
+    expect(createTeamAliasMap(teams)).toEqual({ "team-1": "研发部" });
+    expect(resolveTeamAliasFromTeamID("team-1", teams)).toBe("研发部");
+  });
+});
 
 describe("resolveTeamAliasFromTeamID", () => {
   it("should return team alias when team is found", () => {

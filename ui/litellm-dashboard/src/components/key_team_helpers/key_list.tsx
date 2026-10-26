@@ -5,6 +5,7 @@ import { keyListCall, Member, Organization } from "../networking";
 export interface Team {
   team_id: string;
   team_alias: string;
+  metadata?: Record<string, unknown> | null;
   models: string[];
   max_budget: number | null;
   budget_duration: string | null;

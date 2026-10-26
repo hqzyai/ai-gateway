@@ -1,4 +1,5 @@
 "use client";
+import { teamDisplayName } from "@/utils/teamUtils";
 
 import { ColumnDef } from "@tanstack/react-table";
 import { Info, Play, RefreshCw } from "lucide-react";
@@ -268,7 +269,7 @@ export const getHealthChecksTableColumns = ({
       if (!teamId) {
         return <span className="text-sm text-muted-foreground">-</span>;
       }
-      const teamAlias = teams?.find((team) => team.team_id === teamId)?.team_alias || teamId;
+      const teamAlias = teamDisplayName(teams?.find((team) => team.team_id === teamId)) || teamId;
       return (
         <span className="block max-w-40 truncate text-sm" title={teamAlias}>
           {teamAlias}

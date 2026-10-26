@@ -1,4 +1,5 @@
 "use client";
+import { teamDisplayName } from "@/utils/teamUtils";
 
 import { ColumnDef } from "@tanstack/react-table";
 import { Copy, KeyRound, Layers, MoreHorizontal, Pencil, Trash2, Users } from "lucide-react";
@@ -155,10 +156,10 @@ export const getTeamTableColumns = ({
       enableSorting: true,
       cell: ({ row }) => {
         const team = row.original;
-        const hasAlias = Boolean(team.team_alias);
+        const hasAlias = teamDisplayName(team) !== team.team_id;
         return (
           <IdentityCell
-            title={team.team_alias || team.team_id}
+            title={teamDisplayName(team)}
             subtitle={hasAlias ? team.team_id : undefined}
             onClick={() => onSelectTeam(team)}
           />

@@ -1,4 +1,5 @@
 "use client";
+import { teamDisplayName } from "@/utils/teamUtils";
 
 import { ColumnDef } from "@tanstack/react-table";
 
@@ -15,7 +16,7 @@ export const getDeletedTeamsTableColumns = (): ColumnDef<DeletedTeam>[] => [
     size: 150,
     enableSorting: false,
     cell: ({ row }) => {
-      const value = row.original.team_alias;
+      const value = teamDisplayName(row.original);
       if (!value) {
         return <span className="text-muted-foreground">-</span>;
       }

@@ -1,4 +1,5 @@
 "use client";
+import { teamDisplayName } from "@/utils/teamUtils";
 
 import { ColumnDef } from "@tanstack/react-table";
 import { MoreHorizontal, UserPlus } from "lucide-react";
@@ -57,7 +58,7 @@ export const getAvailableTeamsTableColumns = ({
     size: 220,
     enableSorting: true,
     cell: ({ row }) => (
-      <IdentityCell title={row.original.team_alias} className="max-w-72" titleClassName="font-medium" />
+      <IdentityCell title={teamDisplayName(row.original)} className="max-w-72" titleClassName="font-medium" />
     ),
   },
   {

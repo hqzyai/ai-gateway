@@ -1,4 +1,5 @@
 import React, { useMemo, useState, type UIEvent } from "react";
+import { teamDisplayName } from "@/utils/teamUtils";
 import { Select, Typography } from "antd";
 import { LoadingOutlined } from "@ant-design/icons";
 import { useDebouncedState } from "@tanstack/react-pacer/debouncer";
@@ -94,7 +95,7 @@ const TeamMultiSelect: React.FC<TeamMultiSelectProps> = ({
     >
       {teams.map((team) => (
         <Select.Option key={team.team_id} value={team.team_id}>
-          <span className="font-medium">{team.team_alias}</span> <Text type="secondary">({team.team_id})</Text>
+          <span className="font-medium">{teamDisplayName(team)}</span> <Text type="secondary">({team.team_id})</Text>
         </Select.Option>
       ))}
     </Select>

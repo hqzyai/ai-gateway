@@ -1,4 +1,5 @@
 import { useModelCostMap } from "@/app/(dashboard)/hooks/models/useModelCostMap";
+import { teamDisplayName } from "@/utils/teamUtils";
 import { useTeams } from "@/app/(dashboard)/hooks/teams/useTeams";
 import useAuthorized from "@/app/(dashboard)/hooks/useAuthorized";
 import { Team } from "@/components/key_team_helpers/key_list";
@@ -285,7 +286,7 @@ const AllModelsTab = ({
                                 <Space direction="horizontal" align="center">
                                   <Badge color="green" size="small" />
                                   <Text ellipsis style={{ fontSize: 16 }}>
-                                    {team.team_alias ? team.team_alias : team.team_id}
+                                    {teamDisplayName(team)}
                                   </Text>
                                 </Space>
                               ),
@@ -350,8 +351,7 @@ const AllModelsTab = ({
                     ) : (
                       <span>
                         To access these models: Create a Virtual Key and select Team as &quot;
-                        {typeof currentTeam !== "string" ? currentTeam.team_alias || currentTeam.team_id : ""}&quot; on
-                        the{" "}
+                        {typeof currentTeam !== "string" ? teamDisplayName(currentTeam) : ""}&quot; on the{" "}
                         <a
                           href="/public?login=success&page=api-keys"
                           className="text-gray-600 hover:text-gray-800 underline"

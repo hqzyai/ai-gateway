@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { matchesTeamSearch, teamDisplayName } from "@/utils/teamUtils";
 import {
   Alert,
   Col,
@@ -135,14 +136,12 @@ export function ProjectBaseForm({ form }: ProjectBaseFormProps) {
                 const team = teams?.find((t) => t.team_id === option?.value);
                 if (!team) return false;
                 const search = input.toLowerCase().trim();
-                return (
-                  (team.team_alias || "").toLowerCase().includes(search) || team.team_id.toLowerCase().includes(search)
-                );
+                return matchesTeamSearch(team, search);
               }}
             >
               {teams?.map((team) => (
-                <Select.Option key={team.team_id} value={team.team_id} label={team.team_alias || team.team_id}>
-                  <span style={{ fontWeight: 500 }}>{team.team_alias}</span>{" "}
+                <Select.Option key={team.team_id} value={team.team_id} label={teamDisplayName(team)}>
+                  <span style={{ fontWeight: 500 }}>{teamDisplayName(team)}</span>{" "}
                   <span style={{ color: "#9ca3af" }}>({team.team_id})</span>
                 </Select.Option>
               ))}

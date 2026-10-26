@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { teamDisplayName, type TeamLabel } from "@/utils/teamUtils";
 import { Modal, Form, Select, Radio, Divider, Typography } from "antd";
 import { Button } from "@tremor/react";
 import { Policy } from "@/components/policies/types";
@@ -31,7 +32,7 @@ const AddAttachmentForm: React.FC<AddAttachmentFormProps> = ({
   const [form] = Form.useForm();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [scopeType, setScopeType] = useState<"global" | "specific">("global");
-  const [availableTeams, setAvailableTeams] = useState<string[]>([]);
+  const [availableTeams, setAvailableTeams] = useState<{ label: string; value: string }[]>([]);
   const [teamsLoaded, setTeamsLoaded] = useState(false);
   const [availableKeys, setAvailableKeys] = useState<string[]>([]);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
@@ -58,7 +59,9 @@ const AddAttachmentForm: React.FC<AddAttachmentFormProps> = ({
     try {
       const teamsResponse = await teamListCall(accessToken, null, null);
       const teamsArray = Array.isArray(teamsResponse) ? teamsResponse : teamsResponse?.data || [];
-      const teamAliases = teamsArray.map((t: any) => t.team_alias).filter(Boolean);
+      const teamAliases = teamsArray.flatMap((team: TeamLabel) =>
+        team.team_alias ? [{ label: teamDisplayName(team), value: team.team_alias }] : [],
+      );
       setAvailableTeams(teamAliases);
       setTeamsLoaded(true);
     } catch (error) {
@@ -234,7 +237,10 @@ const AddAttachmentForm: React.FC<AddAttachmentFormProps> = ({
                 {
                   validator: async (_rule, value?: string[]) => {
                     if (!teamsLoaded) return;
-                    const invalid = getInvalidTeamEntries(value ?? [], availableTeams);
+                    const invalid = getInvalidTeamEntries(
+                      value ?? [],
+                      availableTeams.map((team) => team.value),
+                    );
                     if (invalid.length > 0) {
                       throw new Error(
                         `These teams don't exist: ${invalid.join(", ")}. ` +
@@ -249,13 +255,12 @@ const AddAttachmentForm: React.FC<AddAttachmentFormProps> = ({
                 mode="tags"
                 placeholder={isLoadingTeams ? "Loading teams..." : "Select or enter team aliases"}
                 loading={isLoadingTeams}
-                options={availableTeams.map((team) => ({
-                  label: team,
-                  value: team,
-                }))}
+                options={availableTeams}
                 tokenSeparators={[","]}
                 showSearch
-                filterOption={(input, option) => (option?.label ?? "").toLowerCase().includes(input.toLowerCase())}
+                filterOption={(input, option) =>
+                  [option?.label, option?.value].some((value) => value?.toLowerCase().includes(input.toLowerCase()))
+                }
                 style={{ width: "100%" }}
               />
             </Form.Item>

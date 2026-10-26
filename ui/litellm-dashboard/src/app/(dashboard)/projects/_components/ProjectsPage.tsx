@@ -1,4 +1,5 @@
 import { useProjects } from "@/app/(dashboard)/hooks/projects/useProjects";
+import { teamDisplayName } from "@/utils/teamUtils";
 import { useTeams } from "@/app/(dashboard)/hooks/teams/useTeams";
 import { PlusOutlined } from "@ant-design/icons";
 import { Button, Flex, Input, Layout, Space, theme, Typography } from "antd";
@@ -23,7 +24,7 @@ export function ProjectsPage() {
   const teamAliasMap = useMemo(() => {
     const map = new Map<string, string>();
     for (const team of teams ?? []) {
-      map.set(team.team_id, team.team_alias ?? team.team_id);
+      map.set(team.team_id, teamDisplayName(team));
     }
     return map;
   }, [teams]);

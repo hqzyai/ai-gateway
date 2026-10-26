@@ -7,6 +7,31 @@ from typing import Optional, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("deleted", [False, True])
+async def test_department_display_search_keeps_scope_and_escapes_wildcards(deleted):
+    from litellm.proxy.management_endpoints.team_endpoints import _build_team_list_where_conditions
+
+    client = MagicMock()
+    client.db.query_raw = AsyncMock(return_value=[{"team_id": "match"}])
+    result = await _build_team_list_where_conditions(
+        client, team_id="exact", team_alias="研发%_", organization_id="org",
+        user_id=None, use_deleted_table=deleted, search="研究'部",
+    )
+    assert result["team_id"] == "exact"
+    assert result["organization_id"] == "org"
+    assert result["AND"] == [{"OR": [
+        {"team_alias": {"contains": "研发%_", "mode": "insensitive"}},
+        {"team_id": {"in": ["match"]}},
+    ]}]
+    assert result["OR"][-1] == {"team_id": {"in": ["match"]}}
+    calls = client.db.query_raw.call_args_list
+    table = "LiteLLM_DeletedTeamTable" if deleted else "LiteLLM_TeamTable"
+    assert calls[0].args == (f'SELECT team_id FROM "{table}" WHERE metadata->>\'display_name\' ILIKE $1', "%研究'部%")
+    assert calls[1].args[1] == "%研发\\%\\_%"
+
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
@@ -677,6 +702,10 @@ async def test_team_update_object_permissions_existing_permission(monkeypatch):
     # Mock upsert operation
     updated_permission = MagicMock()
     updated_permission.object_permission_id = "existing_perm_id_123"
+    updated_permission.model_dump.return_value = {
+        "object_permission_id": "existing_perm_id_123",
+        "vector_stores": ["new_store_1", "new_store_2", "new_store_3"],
+    }
     mock_prisma_client.db.litellm_objectpermissiontable.upsert = AsyncMock(
         return_value=updated_permission
     )
@@ -742,6 +771,10 @@ async def test_team_update_object_permissions_no_existing_permission(monkeypatch
     # Mock upsert to create new record
     new_permission = MagicMock()
     new_permission.object_permission_id = "new_perm_id_456"
+    new_permission.model_dump.return_value = {
+        "object_permission_id": "new_perm_id_456",
+        "vector_stores": ["brand_new_store"],
+    }
     mock_prisma_client.db.litellm_objectpermissiontable.upsert = AsyncMock(
         return_value=new_permission
     )
@@ -802,6 +835,10 @@ async def test_team_update_object_permissions_missing_permission_record(monkeypa
     # Mock upsert to create new record
     new_permission = MagicMock()
     new_permission.object_permission_id = "recreated_perm_id_789"
+    new_permission.model_dump.return_value = {
+        "object_permission_id": "recreated_perm_id_789",
+        "vector_stores": ["recreated_store"],
+    }
     mock_prisma_client.db.litellm_objectpermissiontable.upsert = AsyncMock(
         return_value=new_permission
     )
@@ -3576,6 +3613,7 @@ async def test_list_team_v2_search_builds_or_clause():
         mock_prisma_client.db = mock_db
         mock_db.litellm_teamtable.find_many = AsyncMock(return_value=[])
         mock_db.litellm_teamtable.count = AsyncMock(return_value=0)
+        mock_db.query_raw = AsyncMock(return_value=[{"team_id": "display-match"}])
 
         await list_team_v2(
             http_request=mock_request,
@@ -3595,6 +3633,7 @@ async def test_list_team_v2_search_builds_or_clause():
             "OR": [
                 {"team_id": "platform"},
                 {"team_alias": {"contains": "platform", "mode": "insensitive"}},
+                {"team_id": {"in": ["display-match"]}},
             ]
         }
 
@@ -3644,6 +3683,7 @@ async def test_list_team_v2_search_composes_with_user_id_filter():
         mock_prisma.db = mock_db
         mock_db.litellm_teamtable.find_many = AsyncMock(return_value=[])
         mock_db.litellm_teamtable.count = AsyncMock(return_value=0)
+        mock_db.query_raw = AsyncMock(return_value=[{"team_id": "display-match"}])
 
         await list_team_v2(
             http_request=mock_request,
@@ -3663,6 +3703,7 @@ async def test_list_team_v2_search_composes_with_user_id_filter():
         assert where["OR"] == [
             {"team_id": "team_a"},
             {"team_alias": {"contains": "team_a", "mode": "insensitive"}},
+            {"team_id": {"in": ["display-match"]}},
         ]
         assert where["team_id"] == {"in": ["team_a", "team_b"]}
 

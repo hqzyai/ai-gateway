@@ -1,4 +1,5 @@
 import GuardrailSelector from "@/components/guardrails/GuardrailSelector";
+import { matchesTeamSearch, teamDisplayName } from "@/utils/teamUtils";
 import { useOrganizations } from "@/app/(dashboard)/hooks/organizations/useOrganizations";
 import { useProjects } from "@/app/(dashboard)/hooks/projects/useProjects";
 import { useUISettings } from "@/app/(dashboard)/hooks/uiSettings/useUISettings";
@@ -813,13 +814,13 @@ export function KeyEditView({
               : teams;
             const team = filteredTeams?.find((t) => t.team_id === option?.value);
             if (!team) return false;
-            return team.team_alias?.toLowerCase().includes(input.toLowerCase()) ?? false;
+            return matchesTeamSearch(team, input);
           }}
         >
           {(selectedOrganizationId ? teams?.filter((t) => t.organization_id === selectedOrganizationId) : teams)?.map(
             (team) => (
               <Select.Option key={team.team_id} value={team.team_id}>
-                {`${team.team_alias} (${team.team_id})`}
+                {`${teamDisplayName(team)} (${team.team_id})`}
               </Select.Option>
             ),
           )}

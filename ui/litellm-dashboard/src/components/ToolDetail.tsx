@@ -109,9 +109,10 @@ export function ToolDetail({ toolName, onBack, accessToken }: ToolDetailProps) {
 
   const teams: Team[] = useMemo(() => {
     const arr = Array.isArray(teamsData) ? teamsData : teamsData?.data ?? [];
-    return arr.map((t: { team_id?: string; id?: string; team_alias?: string }) => ({
+    return arr.map((t: { team_id?: string; id?: string; team_alias?: string; metadata?: Record<string, unknown> }) => ({
       team_id: t.team_id ?? t.id ?? "",
       team_alias: t.team_alias ?? t.team_id ?? "",
+      metadata: t.metadata,
       models: [],
       max_budget: null,
       budget_duration: null,

@@ -1,4 +1,5 @@
 import { useProjectDetails } from "@/app/(dashboard)/hooks/projects/useProjectDetails";
+import { teamDisplayName } from "@/utils/teamUtils";
 import { useTeam } from "@/app/(dashboard)/hooks/teams/useTeams";
 import {
   Button,
@@ -229,7 +230,7 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
                     {/* Team name + ID */}
                     <div>
                       <Text strong style={{ fontSize: 16 }}>
-                        {teamInfo.team_alias || teamInfo.team_id}
+                        {teamDisplayName(teamInfo)}
                       </Text>
                       <br />
                       <Text type="secondary" style={{ fontSize: 12 }}>
