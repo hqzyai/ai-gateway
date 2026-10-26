@@ -23,9 +23,11 @@ Response format:
 }
 """
 
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, List, Optional
 
 import httpx
+from pydantic import TypeAdapter
 
 from litellm.llms.base_llm.image_generation.transformation import (
     BaseImageGenerationConfig,
@@ -35,8 +37,7 @@ from litellm.types.llms.openai import (
     AllMessageValues,
     OpenAIImageGenerationOptionalParams,
 )
-from litellm.types.utils import ImageObject, ImageResponse
-from litellm.types.utils import ImageUsage, ImageUsageInputTokensDetails
+from litellm.types.utils import ImageObject, ImageResponse, ImageUsage, ImageUsageInputTokensDetails
 
 if TYPE_CHECKING:
     from litellm.litellm_core_utils.litellm_logging import Logging as _LiteLLMLoggingObj
@@ -235,6 +236,34 @@ class DashScopeImageGenerationConfig(BaseImageGenerationConfig):
 
         usage_data = response_data.get("usage")
         if isinstance(usage_data, dict):
+            empty_pricing = MappingProxyType(
+                dict[str, object]()
+            )  # mutable-ok: Freeze the fallback dictionary immediately for native pricing lookups.
+            output_image_count = usage_data.get("output_image_count")
+            if output_image_count is None:
+                output_image_count = len(model_response.data)
+            pricing_candidates = tuple(
+                candidate
+                for params in (litellm_params, getattr(logging_obj, "litellm_params", empty_pricing))
+                for candidate in (
+                    params.get("model_info") or empty_pricing,
+                    (params.get("metadata") or empty_pricing).get("model_info") or empty_pricing,
+                    (params.get("litellm_metadata") or empty_pricing).get("model_info") or empty_pricing,
+                )
+            )
+            pricing = next(
+                (item for item in pricing_candidates if item.get("output_cost_per_image") is not None), empty_pricing
+            )
+            output_price = pricing.get("output_cost_per_image")
+            if (
+                isinstance(output_price, (int, float))
+                and not isinstance(output_price, bool)
+                and not pricing.get("image_resolution_pricing")
+            ):
+                input_price = TypeAdapter(float).validate_python(pricing.get("input_cost_per_image") or 0)
+                model_response._hidden_params["response_cost"] = output_price * output_image_count + input_price * (
+                    usage_data.get("input_image_count") or 0
+                )
             input_tokens = usage_data.get("input_tokens", 0)
             output_tokens = usage_data.get("output_tokens", 0)
             normalized_input_tokens = input_tokens if isinstance(input_tokens, int) else 0
@@ -249,7 +278,7 @@ class DashScopeImageGenerationConfig(BaseImageGenerationConfig):
                 total_tokens=normalized_input_tokens + normalized_output_tokens,
                 input_image_count=usage_data.get("input_image_count"),
                 input_image_type=usage_data.get("input_image_type"),
-                output_image_count=usage_data.get("output_image_count"),
+                output_image_count=output_image_count,
                 output_image_type=usage_data.get("output_image_type"),
                 output_width=usage_data.get("output_width"),
                 output_height=usage_data.get("output_height"),
@@ -257,7 +286,7 @@ class DashScopeImageGenerationConfig(BaseImageGenerationConfig):
             model_response._hidden_params["model"] = response_data.get("model", model)
             model_response._hidden_params["input_image_count"] = usage_data.get("input_image_count")
             model_response._hidden_params["input_image_type"] = usage_data.get("input_image_type")
-            model_response._hidden_params["output_image_count"] = usage_data.get("output_image_count")
+            model_response._hidden_params["output_image_count"] = output_image_count
             model_response._hidden_params["output_image_type"] = usage_data.get("output_image_type")
             model_response._hidden_params["output_width"] = usage_data.get("output_width")
             model_response._hidden_params["output_height"] = usage_data.get("output_height")

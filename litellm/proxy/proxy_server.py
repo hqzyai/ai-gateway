@@ -1105,6 +1105,10 @@ async def proxy_startup_event(app: FastAPI):
     ## Initialize shared aiohttp session for connection reuse
     shared_aiohttp_session = await _initialize_shared_aiohttp_session()
 
+    if prisma_client is not None:
+        from litellm.proxy.management_endpoints.model_cost_map_endpoints import restore_persisted_model_cost_map
+
+        await restore_persisted_model_cost_map(prisma_client)
     # End of startup event
     yield
 
@@ -6433,6 +6437,8 @@ class ProxyConfig:
                 # Repopulate provider model sets (e.g. litellm.anthropic_models) so that
                 # wildcard patterns like "anthropic/*" include any newly added models.
                 litellm.add_known_models(model_cost_map=new_model_cost_map)
+                if llm_router is not None:
+                    llm_router._replay_model_cost_registrations()
 
                 # Update pod's in-memory last reload time
                 last_model_cost_map_reload = current_time.isoformat()
@@ -15615,6 +15621,8 @@ async def reload_model_cost_map(
         # Repopulate provider model sets (e.g. litellm.anthropic_models) so that
         # wildcard patterns like "anthropic/*" include any newly added models.
         litellm.add_known_models(model_cost_map=new_model_cost_map)
+        if llm_router is not None:
+            llm_router._replay_model_cost_registrations()
 
         # Update pod's in-memory last reload time
         global last_model_cost_map_reload
@@ -16281,6 +16289,9 @@ app.include_router(ui_sso_router)
 app.include_router(organization_router)
 app.include_router(customer_router)
 app.include_router(spend_management_router)
+from litellm.proxy.management_endpoints.agentos_usage_endpoints import router as agentos_usage_router
+
+app.include_router(agentos_usage_router)
 from litellm.proxy.management_endpoints.routing_decision_endpoints import router as routing_decision_router
 
 app.include_router(routing_decision_router)

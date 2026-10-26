@@ -8190,6 +8190,43 @@ class Router:
             pass
         pass
 
+    def _replay_model_cost_registrations(self) -> None:
+        for record in self.model_list:
+            deployment = Deployment(**record)
+            info = deployment.model_info.model_dump(exclude_none=True)
+            for field in CustomPricingLiteLLMParams.model_fields:
+                value = deployment.litellm_params.get(field)
+                if value is not None:
+                    info[field] = value
+            if info.get("input_cost_per_token") is not None:
+                Router._inherit_builtin_cache_pricing(
+                    model_info=info,
+                    backend_model=deployment.litellm_params.model,
+                    custom_llm_provider=deployment.litellm_params.custom_llm_provider,
+                )
+            if deployment.model_info.id is not None:
+                litellm.register_model(
+                    model_cost={deployment.model_info.id: info}  # mutable-ok: Native model-cost dictionary.
+                )
+            backend = deployment.litellm_params.model
+            if deployment.litellm_params.custom_llm_provider is not None:
+                backend = deployment.litellm_params.custom_llm_provider + "/" + backend
+            shared = shared_backend_model_info(info)
+            existing_mode = litellm.model_cost.get(backend, {}).get(  # mutable-ok: Native dictionary fallback.
+                "mode"
+            )
+            if existing_mode is not None and (
+                shared.get("mode") is None or (existing_mode == "responses" and shared.get("mode") == "chat")
+            ):
+                shared["mode"] = existing_mode
+            litellm.register_model(
+                model_cost={backend: shared}  # mutable-ok: Native model-cost dictionary.
+            )
+            if "responses/" in backend:
+                litellm.register_model(
+                    model_cost={backend.replace("responses/", ""): shared}  # mutable-ok: Native alias dictionary.
+                )
+
     def add_deployment(self, deployment: Deployment) -> Optional[Deployment]:
         """
         Parameters:

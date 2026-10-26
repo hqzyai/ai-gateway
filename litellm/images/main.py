@@ -301,6 +301,7 @@ def image_generation(
                 "litellm_call_id": litellm_call_id,
                 "logger_fn": logger_fn,
                 "proxy_server_request": proxy_server_request,
+                "metadata": metadata,
                 "model_info": model_info,
                 "preset_cache_key": None,
                 "stream_response": {},

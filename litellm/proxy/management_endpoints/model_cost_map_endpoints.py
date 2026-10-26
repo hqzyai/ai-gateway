@@ -143,6 +143,40 @@ def _apply_cost_map(cost_map: ModelCostMap) -> None:
     litellm.model_cost = cost_map
     invalidate_model_cost_cache()
     litellm.add_known_models(model_cost_map=cost_map)
+    from litellm.proxy.proxy_server import llm_router
+
+    if llm_router is not None:
+        llm_router._replay_model_cost_registrations()
+
+
+async def restore_persisted_model_cost_map(prisma_client: object) -> None:
+    overrides = await load_model_cost_map_overrides(prisma_client)
+    if overrides:
+        _apply_cost_map(merge_model_cost_map(litellm.model_cost, overrides))
+
+
+async def apply_pricing_import(updates: object) -> int:
+    """Use the gateway's existing pricing repository and reload mechanism once."""
+    updates = parse_model_cost_map_overrides(updates)
+    prisma = _get_prisma_client()
+    before = await load_model_cost_map_overrides(prisma)
+    base = _load_latest_model_cost_map()
+    previous = merge_model_cost_map(base, before)
+    merged = {  # mutable-ok: ConfigRepository persists native JSON pricing dictionaries.
+        **before,
+        **updates,
+    }
+    effective = merge_model_cost_map(base, merged)
+    repository = ConfigRepository(prisma)
+    await repository.set_param(_CONFIG_NAME, merged)
+    try:
+        await _schedule_cluster_reload(prisma)
+        _apply_cost_map(effective)
+    except Exception:
+        await repository.set_param(_CONFIG_NAME, before)
+        _apply_cost_map(previous)
+        raise
+    return len(updates)
 
 
 def _load_latest_model_cost_map() -> ModelCostMap:

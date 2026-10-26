@@ -57,7 +57,10 @@ def cost_calculator(
     model_info = litellm.get_model_info(model=model, custom_llm_provider=custom_llm_provider)
     pricing = model_info.get("image_resolution_pricing")
     if not isinstance(pricing, Mapping):
-        return None
+        if custom_llm_provider == "dashscope" and model_info.get("output_cost_per_image") is not None:
+            pricing = {}  # mutable-ok: Native price lookup consumes an empty resolution dictionary to use flat fallback prices.
+        else:
+            return None
 
     input_count = _non_negative_int(image_response.get_hidden_param("input_image_count"))
     output_count = _non_negative_int(

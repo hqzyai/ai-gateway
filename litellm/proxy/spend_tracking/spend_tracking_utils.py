@@ -490,6 +490,10 @@ def get_logging_payload(  # noqa: C901  # payload assembly preserves compatibili
         # Explicitly clear large intermediate objects to reduce memory pressure
         del response_obj_dict, usage, clean_metadata, additional_usage_values
 
+        if os.getenv("AGENTOS_SPEND_ATTRIBUTION_ENABLED", "false").lower() == "true":
+            from litellm.integrations.agentos.spend_attribution import apply_logical_model_alias_to_spend_payload
+
+            return apply_logical_model_alias_to_spend_payload(kwargs, payload)
         return payload
     except Exception as e:
         spend_log_error("Error creating spendlogs object - %s", str(e), exc=e)

@@ -1,0 +1,12 @@
+litellm_settings:
+  timezone: Asia/Shanghai
+  callbacks:
+    - litellm.integrations.agentos.identity.agentos_identity_callback
+    - litellm.integrations.agentos.live_counters.agentos_live_counters_callback
+    - litellm.integrations.agentos.usage_callback.agentos_usage_callback
+
+environment_variables:
+  AGENTOS_GUARDRAIL_MODE: "true"
+  AGENTOS_MCP_EGRESS_ENABLED: "true"
+  AGENTOS_ROUTING_OBSERVATIONS_ENABLED: "true"
+  AGENTOS_SPEND_ATTRIBUTION_ENABLED: "true"

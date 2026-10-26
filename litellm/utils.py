@@ -2759,6 +2759,10 @@ def register_model(model_cost: Union[str, dict]):
             if _cost_field not in _raw_entry and _cost_field not in value:
                 existing_model.pop(_cost_field, None)
         ## override / add new keys to the existing model cost dictionary
+        if provider == "dashscope" and _raw_entry.get("mode") == "image_generation":
+            for field in ("input_cost_per_image", "output_cost_per_image", "image_resolution_pricing"):
+                if field not in value and _raw_entry.get(field) is not None:
+                    existing_model[field] = _raw_entry[field]
         updated_dictionary = _update_dictionary(existing_model, value)
         litellm.model_cost.setdefault(model_cost_key, {}).update(updated_dictionary)
 

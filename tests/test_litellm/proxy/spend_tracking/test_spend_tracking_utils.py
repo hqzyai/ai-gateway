@@ -62,6 +62,29 @@ def _get_additional_usage_values_for_usage(usage: litellm.Usage) -> dict:
     return metadata["additional_usage_values"]
 
 
+def test_native_spend_attribution_is_opt_in_and_preserves_usage(monkeypatch):
+    kwargs = {
+        "model": "transport-model", "custom_llm_provider": "openai",
+        "litellm_params": {
+            "model_info": {"agentos_model_group_name": "public-group", "litellm_provider": "dashscope"},
+            "metadata": {"user_api_key": "test-key"},
+        },
+    }
+    response = litellm.ModelResponse(id="native-attribution", choices=[], usage=litellm.Usage(prompt_tokens=10, completion_tokens=2, total_tokens=12))
+    now = datetime.datetime.now(timezone.utc)
+    monkeypatch.delenv("AGENTOS_SPEND_ATTRIBUTION_ENABLED", raising=False)
+    original = get_logging_payload(kwargs, response, now, now)
+    monkeypatch.setenv("AGENTOS_SPEND_ATTRIBUTION_ENABLED", "true")
+    attributed = get_logging_payload(kwargs, response, now, now)
+    assert original["custom_llm_provider"] == "openai"
+    assert "agentos_routing_hops" not in json.loads(original["metadata"])
+    assert attributed["model"] == attributed["model_group"] == "public-group"
+    assert attributed["custom_llm_provider"] == "dashscope"
+    assert json.loads(attributed["metadata"])["agentos_transport_provider"] == "openai"
+    for field in ("spend", "prompt_tokens", "completion_tokens", "total_tokens"):
+        assert attributed[field] == original[field]
+
+
 def test_get_logging_payload_maps_openai_cached_tokens_to_cache_read_input_tokens():
     additional_usage_values = _get_additional_usage_values_for_usage(
         litellm.Usage(
