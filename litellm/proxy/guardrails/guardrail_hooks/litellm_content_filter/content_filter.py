@@ -1341,7 +1341,41 @@ class ContentFilterGuardrail(CustomGuardrail):
 
         return text
 
-    def _filter_single_text(self, text: str, detections: Optional[List[ContentFilterDetection]] = None) -> str:
+    def _filter_known_credentials(
+        self,
+        text: str,
+        request_data: Mapping[str, object],
+        detections: List[ContentFilterDetection] | None,
+    ) -> str:
+        from .sensitive_mask import text_values
+
+        for entry in self.compiled_patterns:
+            if entry.get("pattern_name") != "generic_api_key" or "credential" not in entry["regex"].groupindex:
+                continue
+            tokens = frozenset(
+                match.group("credential")
+                for source in text_values(request_data.get("messages"))
+                for match in entry["regex"].finditer(source)
+            )
+            spans = sorted(
+                frozenset(
+                    match.span()
+                    for token in tokens
+                    for match in re.finditer(
+                        r"(?<![A-Za-z0-9_~+/-])" + re.escape(token) + r"(?![A-Za-z0-9_~+/-])", text
+                    )
+                )
+            )
+            if spans:
+                text = self._handle_pattern_match("generic_api_key", entry["action"], text, spans, detections)
+        return text
+
+    def _filter_single_text(
+        self,
+        text: str,
+        detections: Optional[List[ContentFilterDetection]] = None,
+        request_data: Mapping[str, object] | None = None,
+    ) -> str:
         """
         Apply all content filtering checks to a single text.
 
@@ -1360,6 +1394,9 @@ class ContentFilterGuardrail(CustomGuardrail):
         Raises:
             HTTPException: If sensitive content is detected and action is BLOCK
         """
+        if self.managed_mode and request_data is not None:
+            text = self._filter_known_credentials(text, request_data, detections)
+
         # Collect all exceptions from loaded categories
         all_exceptions = []
         for category in self.loaded_categories.values():
@@ -1802,6 +1839,7 @@ class ContentFilterGuardrail(CustomGuardrail):
                         self._filter_single_text(
                             mask_sensitive_fragments(value, sources, detections),
                             detections=detections,
+                            request_data=request_data,
                         ),
                     )
 
@@ -1886,6 +1924,7 @@ class ContentFilterGuardrail(CustomGuardrail):
                 filtered_text = self._filter_single_text(
                     mask_sensitive_fragments(text, sources, detections),
                     detections=detections,
+                    request_data=request_data if input_type == "response" else None,
                 )
                 processed_texts.append(filtered_text)
 
@@ -1963,8 +2002,11 @@ class ContentFilterGuardrail(CustomGuardrail):
 
         sources = sensitive_sources(self, request_data) if self.managed_mode else ()
         pending_tools: tuple[tuple[int, tuple[ChatCompletionDeltaToolCall, ...]], ...] = ()
-        has_blocking_rules = self.managed_mode and (
-            any(pattern["action"] == ContentFilterAction.BLOCK for pattern in self.compiled_patterns)
+        requires_complete_response = self.managed_mode and (
+            any(
+                pattern["action"] == ContentFilterAction.BLOCK or pattern.get("pattern_name") == "generic_api_key"
+                for pattern in self.compiled_patterns
+            )
             or any(action == ContentFilterAction.BLOCK for action, _ in self.blocked_words.values())
             or any(action == ContentFilterAction.BLOCK for _, _, action in self.category_keywords.values())
             or any(action == ContentFilterAction.BLOCK for _, _, action in self.always_block_category_keywords.values())
@@ -2062,7 +2104,9 @@ class ContentFilterGuardrail(CustomGuardrail):
                                 # matches are guaranteed to be re-found. Keeping
                                 # only each choice's latest scan avoids duplicate
                                 # detections in the final log row.
-                                masked_text = self._filter_single_text(text_to_scan, detections=choice_detections)
+                                masked_text = self._filter_single_text(
+                                    text_to_scan, detections=choice_detections, request_data=request_data
+                                )
                                 if is_final and masked_text.endswith(" "):
                                     masked_text = masked_text[:-1]
                                 latest_detections_by_choice[field_key] = choice_detections
@@ -2078,7 +2122,7 @@ class ContentFilterGuardrail(CustomGuardrail):
                             # Determine how much can be safely yielded
                             if is_final:
                                 safe_to_yield_len = len(masked_text)
-                            elif has_blocking_rules:
+                            elif requires_complete_response:
                                 safe_to_yield_len = 0
                             else:
                                 safe_to_yield_len = max(0, len(masked_text) - buffer_size)

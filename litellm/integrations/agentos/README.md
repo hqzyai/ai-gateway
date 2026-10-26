@@ -68,6 +68,20 @@ scripts or generated dashboard bundle edits are needed for this integration
 
 ## Managed content rules
 
+The `generic_api_key` preset recognizes Chinese API/access credential labels and
+case-insensitive English API key/access key/access token labels. Values contain
+at least 8 characters with digits or credential symbols, or at least 20 letters.
+Hyphens, underscores, dotted tokens and base64-style symbols are supported.
+These are lexical detection criteria, not verification that a credential is valid.
+Shorter or differently formatted secrets require a custom pattern
+
+In managed post-call filtering, a credential identified in request messages is
+also protected when the response repeats its exact value without the label.
+BLOCK and MASK apply to response text and reasoning. Streams using this preset
+are buffered until completion to avoid releasing a prefix of a long credential;
+this trades first-content latency for safe redaction. Unlabeled arbitrary strings
+without credential context are not automatically classified as API keys
+
 Managed built-in topic dictionaries use Chinese keywords and same-sentence
 identifier/action combinations from `chinese_categories.py`. The preview endpoint
 uses the same definitions as runtime detection. English keyword, conditional,

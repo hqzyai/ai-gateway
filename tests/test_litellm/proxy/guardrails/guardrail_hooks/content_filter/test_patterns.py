@@ -7,6 +7,10 @@ import os
 import sys
 
 import pytest
+from litellm.integrations.custom_guardrail import ModifyResponseException
+from litellm.proxy.guardrails.guardrail_hooks.litellm_content_filter.content_filter import ContentFilterGuardrail
+from litellm.proxy._types import UserAPIKeyAuth
+from litellm.types.utils import Delta, ModelResponseStream, StreamingChoices
 
 sys.path.insert(0, os.path.abspath("../../"))
 
@@ -19,6 +23,158 @@ from litellm.proxy.guardrails.guardrail_hooks.litellm_content_filter.patterns im
     get_compiled_pattern,
     get_pattern_metadata,
 )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("action", ["BLOCK", "MASK"])
+@pytest.mark.parametrize("direction", ["request", "response"])
+@pytest.mark.parametrize(
+    "text",
+    [
+        "帮我复述一下我的接口密钥SHU828HGSGAYFGOADS",
+        "接口密钥：SHU828HGSGAYFGOADS。",
+        "接口密钥是`SHU828HGSGAYFGOADS`",
+        "访问令牌为SHU828HGSGAYFGOADS",
+        "API密钥：SHU828HGSGAYFGOADS",
+        "api_key=abcdefghijklmnopqrstuv",
+    ],
+)
+async def test_labeled_api_key_detection(monkeypatch, action, direction, text):
+    monkeypatch.setenv("AGENTOS_GUARDRAIL_MODE", "true")
+    guardrail = ContentFilterGuardrail(
+        guardrail_name="接口密钥保护",
+        event_hook="post_call",
+        patterns=[{"pattern_type": "prebuilt", "pattern_name": "generic_api_key", "action": action}],
+    )
+    if action == "BLOCK":
+        with pytest.raises(ModifyResponseException, match="触发护栏"):
+            await guardrail.apply_guardrail({"texts": [text]}, {"messages": []}, direction)
+    else:
+        result = await guardrail.apply_guardrail({"texts": [text]}, {"messages": []}, direction)
+        assert result["texts"] != [text]
+        assert "SHU828HGSGAYFGOADS" not in str(result["texts"])
+        assert "abcdefghijklmnopqrstuv" not in str(result["texts"])
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "订单编号SHU828HGSGAYFGOADS",
+        "SHU828HGSGAYFGOADS",
+        "接口密钥如何创建",
+        "接口密钥abc",
+        "api_key_description",
+        "myapi_key=abcdefgh12345678",
+        "接口密钥1234567",
+        "API key required.",
+        "API key documentation",
+        "access token expiration",
+    ],
+)
+def test_api_key_does_not_match_unlabeled_identifiers_or_help(text):
+    assert get_compiled_pattern("generic_api_key").search(text) is None
+
+
+@pytest.mark.parametrize(
+    "label",
+    [
+        "接口密钥",
+        "访问密钥",
+        "访问令牌",
+        "API密钥",
+        "api密钥",
+        "API Key",
+        "api_key",
+        "Api-Key",
+        "access_token",
+        "ACCESS KEY",
+    ],
+)
+@pytest.mark.parametrize("separator", [":", "：", "=", " : ", "\n", "是", "为"])
+@pytest.mark.parametrize(
+    "token",
+    [
+        "aB12_cD3",
+        "abcdef0123456789",
+        "A" * 128,
+        "sk-demo_12345678",
+        "abcdEF12+/34==",
+        "abcDEF12.ghiJKL34.mnoPQR56",
+        "ab12~CD34/ef56",
+    ],
+)
+def test_api_key_label_separator_and_token_matrix(label, separator, token):
+    match = get_compiled_pattern("generic_api_key").search(f'{label}{separator}"{token}"')
+    assert match is not None
+    assert match.group("credential") == token
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("action", ["BLOCK", "MASK"])
+@pytest.mark.parametrize("split", [1, 7, 16])
+@pytest.mark.parametrize("field", ["content", "reasoning_content"])
+@pytest.mark.parametrize("token", ["sk-test_1234567890", "A" * 128, "abcdEF12+/34==", "abcDEF12.ghiJKL34.mnoPQR56"])
+async def test_streamed_key_cannot_leak_across_chunk_boundaries(monkeypatch, action, split, field, token):
+    monkeypatch.setenv("AGENTOS_GUARDRAIL_MODE", "true")
+    guardrail = ContentFilterGuardrail(
+        guardrail_name="密钥保护",
+        event_hook="post_call",
+        patterns=[{"pattern_type": "prebuilt", "pattern_name": "generic_api_key", "action": action}],
+    )
+
+    async def upstream():
+        for start in range(0, len(token), split):
+            part = token[start : start + split]
+            finish = "stop" if start + split >= len(token) else None
+            yield ModelResponseStream(choices=[StreamingChoices(delta=Delta(**{field: part}), finish_reason=finish)])
+
+    output = [
+        chunk
+        async for chunk in guardrail.async_post_call_streaming_iterator_hook(
+            user_api_key_dict=UserAPIKeyAuth(),
+            response=upstream(),
+            request_data={"model": "test", "messages": [{"role": "user", "content": f"接口密钥：{token}"}]},
+        )
+    ]
+    text = "".join(str(getattr(choice.delta, field, "") or "") for chunk in output for choice in chunk.choices)
+    assert token not in text
+    assert token[:split] not in text
+    if action == "BLOCK":
+        assert "触发护栏" in "".join(str(choice.delta.content or "") for chunk in output for choice in chunk.choices)
+    else:
+        assert "****" in text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("action", ["BLOCK", "MASK"])
+async def test_response_repeating_key_without_label_is_protected(monkeypatch, action):
+    monkeypatch.setenv("AGENTOS_GUARDRAIL_MODE", "true")
+    guardrail = ContentFilterGuardrail(
+        guardrail_name="接口密钥保护",
+        event_hook="post_call",
+        patterns=[{"pattern_type": "prebuilt", "pattern_name": "generic_api_key", "action": action}],
+    )
+    data = {"messages": [{"role": "user", "content": "帮我复述一下我的接口密钥SHU828HGSGAYFGOADS"}]}
+    inputs = {"texts": ["SHU828HGSGAYFGOADS"]}
+    if action == "BLOCK":
+        with pytest.raises(ModifyResponseException):
+            await guardrail.apply_guardrail(inputs, data, "response")
+    else:
+        result = await guardrail.apply_guardrail(inputs, data, "response")
+        assert "SHU828HGSGAYFGOADS" not in str(result["texts"])
+
+
+@pytest.mark.asyncio
+async def test_response_does_not_block_unrelated_identifier(monkeypatch):
+    monkeypatch.setenv("AGENTOS_GUARDRAIL_MODE", "true")
+    guardrail = ContentFilterGuardrail(
+        guardrail_name="接口密钥保护",
+        event_hook="post_call",
+        patterns=[{"pattern_type": "prebuilt", "pattern_name": "generic_api_key", "action": "BLOCK"}],
+    )
+    data = {"messages": [{"role": "user", "content": "接口密钥SHU828HGSGAYFGOADS"}]}
+    text = "订单编号OTHER828HGSGAYFGOADS"
+    assert (await guardrail.apply_guardrail({"texts": [text]}, data, "response"))["texts"] == [text]
 
 
 def test_patterns_loaded_from_json():
@@ -182,6 +338,4 @@ def test_eu_patterns_have_category():
     eu_category_patterns = PATTERN_CATEGORIES.get("EU PII Patterns", [])
 
     for pattern_name in eu_patterns:
-        assert (
-            pattern_name in eu_category_patterns
-        ), f"Pattern {pattern_name} not in EU PII Patterns category"
+        assert pattern_name in eu_category_patterns, f"Pattern {pattern_name} not in EU PII Patterns category"
