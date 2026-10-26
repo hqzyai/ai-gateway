@@ -6191,6 +6191,9 @@ class TestMCPServerTimestamps:
 
         assert table.tool_name_to_display_name == {"read_wiki_structure": "browse_docs"}
         assert table.tool_name_to_description == {"read_wiki_structure": "Browse repository documentation"}
+        from litellm.proxy._experimental.mcp_server.utils import get_server_prefix, normalize_server_name
+
+        assert table.mcp_info["tool_prefix"] == normalize_server_name(get_server_prefix(server))
 
     @pytest.mark.asyncio
     async def test_round_trip_timestamps_preserved(self):

@@ -68,6 +68,28 @@ async def test_resolve_mcp_auth_fetches_oauth2_token():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("field,value", (
+    ("client_id", "new-id"), ("client_secret", "new-secret"),
+    ("token_url", "https://auth.example.com/new"), ("scopes", ["new-scope"]),
+    ("token_endpoint_auth_method", "client_secret_basic"),
+))
+async def test_rotated_credentials_fetch_fresh_token(field, value):
+    cache = MCPOAuth2TokenCache()
+    client = AsyncMock()
+    client.post.side_effect = [_token_response("old"), _token_response("new"), _token_response("renewed")]
+    original = _server()
+    rotated = _server(**{field: value})
+    with patch("litellm.proxy._experimental.mcp_server.oauth2_token_cache.get_async_httpx_client", return_value=client):
+        assert await cache.async_get_token(original) == "old"
+        assert await cache.async_get_token(rotated) == "new"
+        assert await cache.async_get_token(rotated) == "new"
+        cache.invalidate(original.server_id)
+        assert await cache.async_get_token(rotated) == "renewed"
+    assert client.post.call_count == 3
+    assert original.client_secret not in cache._cache_identity(original)
+
+
+@pytest.mark.asyncio
 async def test_token_cached_across_calls():
     """Second resolve_mcp_auth call reuses the cached token — only 1 HTTP POST."""
     cache = MCPOAuth2TokenCache()

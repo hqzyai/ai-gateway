@@ -142,6 +142,16 @@ async def handle_update_object_permission_common(
 
     verbose_proxy_logger.debug(f"created_object_permission_row: {created_object_permission_row}")
 
+    from litellm.proxy._types import LiteLLM_ObjectPermissionTable
+    from litellm.proxy.auth.auth_checks import get_management_object_ttl
+    from litellm.proxy.proxy_server import user_api_key_cache
+
+    await user_api_key_cache.async_set_cache(
+        key=f"object_permission_id:{created_object_permission_row.object_permission_id}",
+        value=LiteLLM_ObjectPermissionTable(**created_object_permission_row.model_dump()),
+        model_type=LiteLLM_ObjectPermissionTable,
+        ttl=get_management_object_ttl(user_api_key_cache),
+    )
     return created_object_permission_row.object_permission_id
 
 

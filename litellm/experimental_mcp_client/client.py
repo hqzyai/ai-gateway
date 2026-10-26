@@ -475,6 +475,12 @@ class MCPClient:
             # SigV4 aws_auth. Both are None for the common case — no behavior change.
             fallback_auth = self._resolved_auth if self._resolved_auth is not None else self._aws_auth
             effective_auth = auth if auth is not None else fallback_auth
+            from litellm.experimental_mcp_client import egress
+
+            if egress.enabled():
+                return egress.client(
+                    self.server_url, headers=headers, timeout=timeout, auth=effective_auth, verify=ssl_config
+                )
             return httpx.AsyncClient(
                 headers=headers,
                 timeout=timeout,

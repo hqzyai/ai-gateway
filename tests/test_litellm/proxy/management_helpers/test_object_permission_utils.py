@@ -29,6 +29,27 @@ from litellm.proxy.management_helpers.object_permission_utils import (
 
 
 @pytest.mark.asyncio
+async def test_saved_object_permission_replaces_cached_permissions():
+    from litellm.caching.caching import DualCache
+    from litellm.proxy.management_helpers.object_permission_utils import handle_update_object_permission_common
+
+    cache = DualCache()
+    old = LiteLLM_ObjectPermissionTable(object_permission_id="permission-1", mcp_servers=["old"])
+    saved = LiteLLM_ObjectPermissionTable(object_permission_id="permission-1", mcp_servers=["new"])
+    await cache.async_set_cache("object_permission_id:permission-1", old)
+    prisma = MagicMock()
+    prisma.db.litellm_objectpermissiontable.find_unique = AsyncMock(return_value=old)
+    prisma.db.litellm_objectpermissiontable.upsert = AsyncMock(return_value=saved)
+    with patch("litellm.proxy.proxy_server.user_api_key_cache", cache):
+        result = await handle_update_object_permission_common(
+            {"object_permission": {"mcp_servers": ["new"]}}, "permission-1", prisma,
+        )
+    assert result == "permission-1"
+    cached = await cache.async_get_cache("object_permission_id:permission-1")
+    assert cached.mcp_servers == ["new"]
+
+
+@pytest.mark.asyncio
 async def test_set_object_permission():
     """
     Test that _set_object_permission correctly:

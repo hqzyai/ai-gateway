@@ -6,6 +6,8 @@ with ``client_id``, ``client_secret``, and ``token_url``.
 """
 
 import asyncio
+import hashlib
+import json
 from typing import TYPE_CHECKING, Dict, Optional, Tuple, Union
 
 import httpx
@@ -73,7 +75,7 @@ class MCPOAuth2TokenCache(InMemoryCache):
         if not self._has_client_credentials_config(server):
             return None
 
-        server_id = server.server_id
+        server_id = self._cache_identity(server)
 
         # Fast path — cached token is still valid
         cached = self.get_cache(server_id)
@@ -81,7 +83,7 @@ class MCPOAuth2TokenCache(InMemoryCache):
             return cached
 
         # Slow path — acquire per-server lock then double-check
-        async with self._get_lock(server_id):
+        async with self._get_lock(server.server_id):
             cached = self.get_cache(server_id)
             if cached is not None:
                 return cached
@@ -125,7 +127,13 @@ class MCPOAuth2TokenCache(InMemoryCache):
 
         post_kwargs = {"data": data, **({"headers": client_auth.headers} if client_auth.headers else {})}
         try:
-            response = await client.post(server.token_url, **post_kwargs)
+            from litellm.experimental_mcp_client import egress
+
+            if egress.enabled():
+                async with egress.client(server.token_url) as pinned_client:
+                    response = await pinned_client.post(server.token_url, **post_kwargs)
+            else:
+                response = await client.post(server.token_url, **post_kwargs)
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             raise ValueError(
@@ -167,6 +175,21 @@ class MCPOAuth2TokenCache(InMemoryCache):
     def invalidate(self, server_id: str) -> None:
         """Remove a cached token (e.g. after a 401)."""
         self.delete_cache(server_id)
+        for key in tuple(self.cache_dict):
+            if isinstance(key, str) and key.startswith(f"{server_id}:"):
+                self.delete_cache(key)
+
+    @staticmethod
+    def _cache_identity(server: "MCPServer") -> str:
+        material = (
+            server.client_id,
+            server.client_secret,
+            server.token_url,
+            server.scopes,
+            server.token_endpoint_auth_method,
+        )
+        fingerprint = hashlib.sha256(json.dumps(material, sort_keys=True).encode()).hexdigest()
+        return f"{server.server_id}:{fingerprint}"
 
 
 mcp_oauth2_token_cache = MCPOAuth2TokenCache()
