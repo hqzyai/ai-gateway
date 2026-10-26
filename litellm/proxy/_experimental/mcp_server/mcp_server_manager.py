@@ -5577,9 +5577,9 @@ class MCPServerManager:
             tool_name_to_display_name=server.tool_name_to_display_name,
             tool_name_to_description=server.tool_name_to_description,
             extra_headers=server.extra_headers or [],
-            mcp_info=dict(
+            mcp_info=dict(  # mutable-ok: Native MCP DTO requires copied metadata, including the resolved prefix.
                 server.mcp_info or (), tool_prefix=normalize_server_name(get_server_prefix(server))
-            ),  # mutable-ok: Native MCP DTO requires a copied metadata dictionary; preserve persisted fields while adding the resolved prefix.
+            ),
             static_headers=server.static_headers,
             env_vars=self._env_vars_to_models(server.env_vars),
             status=None,  # No health check performed

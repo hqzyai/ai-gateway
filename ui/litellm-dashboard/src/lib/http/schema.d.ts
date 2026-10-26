@@ -436,6 +436,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/agentos/routing-decisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Routing Decisions */
+        get: operations["routing_decisions_agentos_routing_decisions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agentos/usage/daily": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Query Daily Usage
+         * @description Use native daily metrics once for the complete BFF-authorized user scope.
+         */
+        post: operations["query_daily_usage_agentos_usage_daily_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agentos/usage/query": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Query Usage */
+        post: operations["query_usage_agentos_usage_query_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/alerting/settings": {
         parameters: {
             query?: never;
@@ -7434,6 +7488,23 @@ export interface paths {
         get: operations["list_model_cost_map_overrides_model_cost_map_overrides_get"];
         /** Upsert Model Cost Map Override */
         put: operations["upsert_model_cost_map_override_model_cost_map_overrides_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/model/cost_map/overrides/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Import Pricing Rules */
+        put: operations["import_pricing_rules_model_cost_map_overrides_import_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -21841,6 +21912,34 @@ export interface components {
              */
             status: "cancelled";
         };
+        /** Candidate */
+        Candidate: {
+            /** Deployment Id */
+            deployment_id: string;
+            /** Eligible */
+            eligible: boolean;
+            /** Excluded Reason */
+            excluded_reason?: string | null;
+            /** Metric Mode */
+            metric_mode?: string | null;
+            /** Metric Value */
+            metric_value: number;
+            /**
+             * Preferred
+             * @default false
+             */
+            preferred: boolean;
+            /** Rpm Limit */
+            rpm_limit?: number | null;
+            /** Rpm Value */
+            rpm_value?: number | null;
+            /** Sample Count */
+            sample_count?: number | null;
+            /** Selected */
+            selected: boolean;
+            /** Tpm Limit */
+            tpm_limit?: number | null;
+        };
         /** ChatCompletionAnnotation */
         ChatCompletionAnnotation: {
             /**
@@ -23376,6 +23475,50 @@ export interface components {
              * @default 0
              */
             total_tokens: number;
+        };
+        /** DailyUsageQuery */
+        DailyUsageQuery: {
+            /** Api Key */
+            api_key?: string | null;
+            /** End Date */
+            end_date?: string | null;
+            /**
+             * Include Unowned
+             * @default false
+             */
+            include_unowned: boolean;
+            /** Model */
+            model?: string | null;
+            /** Start Date */
+            start_date?: string | null;
+            /**
+             * Timezone
+             * @default 0
+             */
+            timezone: number;
+            /** User Ids */
+            user_ids?: string[];
+        };
+        /** Decision */
+        Decision: {
+            /** Candidates */
+            candidates: components["schemas"]["Candidate"][];
+            /** Config Version */
+            config_version: number | null;
+            /**
+             * Decided At
+             * Format: date-time
+             */
+            decided_at?: string;
+            /** Model Group */
+            model_group: string;
+            /** Selected Deployment Id */
+            selected_deployment_id: string;
+            /**
+             * Strategy
+             * @enum {string}
+             */
+            strategy: "latency-based-routing" | "least-busy" | "usage-based-routing-v2";
         };
         /**
          * DefaultInternalUserParams
@@ -29736,6 +29879,15 @@ export interface components {
              */
             version_status: string;
         };
+        /** PricingImport */
+        PricingImport: {
+            /** Data */
+            data: {
+                [key: string]: {
+                    [key: string]: components["schemas"]["JsonValue"];
+                };
+            };
+        };
         /** Prompt */
         Prompt: {
             litellm_params: components["schemas"]["PromptLiteLLMParams"];
@@ -30507,6 +30659,16 @@ export interface components {
             routing_strategy_descriptions: {
                 [key: string]: string;
             };
+        };
+        /** RoutingDecisionsResponse */
+        RoutingDecisionsResponse: {
+            /** Available */
+            available: boolean;
+            /**
+             * Decisions
+             * @default []
+             */
+            decisions: components["schemas"]["Decision"][];
         };
         /**
          * RoutingGroup
@@ -33109,6 +33271,54 @@ export interface components {
             /** Type */
             type: string;
         };
+        /** UsageQuery */
+        UsageQuery: {
+            /** Deployment Models */
+            deployment_models?: {
+                [key: string]: string;
+            };
+            /**
+             * End
+             * Format: date-time
+             */
+            end: string;
+            /** Filters */
+            filters?: {
+                [key: string]: string;
+            };
+            /**
+             * Include Records
+             * @default false
+             */
+            include_records: boolean;
+            /**
+             * Include Unowned
+             * @default false
+             */
+            include_unowned: boolean;
+            /**
+             * Page
+             * @default 1
+             */
+            page: number;
+            /**
+             * Page Size
+             * @default 10
+             */
+            page_size: number;
+            /**
+             * Start
+             * Format: date-time
+             */
+            start: string;
+            /**
+             * Timezone
+             * @default 0
+             */
+            timezone: number;
+            /** User Ids */
+            user_ids?: string[];
+        };
         /**
          * UserAPIKeyAuth
          * @description Return the row in the db
@@ -34533,6 +34743,106 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SpendAnalyticsPaginatedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    routing_decisions_agentos_routing_decisions_get: {
+        parameters: {
+            query: {
+                model_group: string;
+                config_version?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutingDecisionsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    query_daily_usage_agentos_usage_daily_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DailyUsageQuery"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    query_usage_agentos_usage_query_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UsageQuery"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -43892,6 +44202,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ModelCostMapOverrideMutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_pricing_rules_model_cost_map_overrides_import_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PricingImport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -58050,9 +58395,9 @@ export interface operations {
                 organization_id?: string | null;
                 /** @description Only return teams which this 'team_id' belongs to */
                 team_id?: string | null;
-                /** @description Only return teams which this 'team_alias' belongs to. Supports partial matching. */
+                /** @description Filter teams by alias or metadata display name. Supports partial matching. */
                 team_alias?: string | null;
-                /** @description Combined search: matches teams whose 'team_id' equals the value OR whose 'team_alias' contains it (case-insensitive). */
+                /** @description Combined search: matches team ID, alias or metadata display name (case-insensitive). */
                 search?: string | null;
                 /** @description Page number for pagination */
                 page?: number;

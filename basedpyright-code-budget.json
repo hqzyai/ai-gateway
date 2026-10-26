@@ -141,6 +141,6 @@
     "limit": 1004
   },
   "reportUnusedVariable": {
-    "limit": 1297
+    "limit": 1296
   }
 }

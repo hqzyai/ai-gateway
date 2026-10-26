@@ -132,7 +132,7 @@ def client(
         transport=PinnedTransport(allowed, context),
         trust_env=False,
         follow_redirects=False,
-        event_hooks={
-            "request": [check_request]
-        },  # mutable-ok: HTTPX copies and exposes hook lists through its public mutable event_hooks API.
+        event_hooks={  # mutable-ok: HTTPX exposes mutable event hook lists.
+            "request": [check_request],  # mutable-ok: HTTPX exposes mutable event hook lists.
+        },
     )
