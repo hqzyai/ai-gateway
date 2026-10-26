@@ -7505,6 +7505,21 @@ async def async_data_generator(
         if not stream_completed:
             client_disconnected = True
         raise
+    except ModifyResponseException as e:
+        await proxy_logging_obj.post_call_failure_hook(
+            user_api_key_dict=user_api_key_dict,
+            original_exception=e,
+            request_data=request_data,
+        )
+        blocked_chunk = ModelResponseStream(model=e.model)
+        blocked_chunk.choices[0].delta.role = "assistant"
+        blocked_chunk.choices[0].delta.content = e.message
+        blocked_chunk.choices[0].finish_reason = (
+            "stop" if os.getenv("AGENTOS_GUARDRAIL_MODE", "false").lower() == "true" else "content_filter"
+        )
+        stream_completed = True
+        yield _format_streaming_sse_chunk(_serialize_streaming_chunk(blocked_chunk))
+        yield "data: [DONE]\n\n"
     except Exception as e:
         verbose_proxy_logger.exception(
             "litellm.proxy.proxy_server.async_data_generator(): Exception occured - {}".format(str(e))
@@ -8981,7 +8996,9 @@ async def chat_completion(
         _chat_response = litellm.ModelResponse()
         _chat_response.model = e.model  # type: ignore
         _chat_response.choices[0].message.content = e.message  # type: ignore
-        _chat_response.choices[0].finish_reason = "content_filter"  # type: ignore
+        _chat_response.choices[0].finish_reason = (
+            "stop" if os.getenv("AGENTOS_GUARDRAIL_MODE", "false").lower() == "true" else "content_filter"
+        )
         # Report the blocked LLM response's real usage (set before the stream
         # branch so both paths carry it); zero for pre-call blocks.
         _chat_response.usage = _blocked_response_usage(e.original_response)  # type: ignore
