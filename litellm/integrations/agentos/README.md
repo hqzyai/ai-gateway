@@ -95,6 +95,30 @@ published rules may not match, and quotation or negation is not generally
 understood. Assess false positives and missed matches with business examples
 before applying a category to production traffic
 
+### Deferred tool permissions
+
+In managed mode, post-call tool permission checks evaluate both the outer
+`tool_call` dispatch and its targets using the same ordered rules. Both the
+legacy `name`/`arguments` envelope and the `calls` array are supported. Every
+batch entry is checked; one denied or malformed entry rejects the whole dispatch.
+Empty batches and mixed legacy/batch envelopes are rejected. Allowing the bridge
+does not allow every target; allowing a target does
+not override a denial of the bridge. Inner argument patterns use paths relative
+to the actual tool arguments, not the dispatch envelope. Object arguments and
+JSON-encoded objects are supported; malformed envelopes and recursive bridge
+dispatch are denied. Ordinary tools are not unwrapped just because their
+arguments include a `name` field
+
+Both normal and buffered streaming responses are checked before releasing a
+tool call. Rewrites preserve correlation with the original dispatch call ID.
+Managed rewrites use Chinese explanations and identify the denied target while
+preserving the original diagnostic reason internally.
+Pre-call checks still inspect only the model-facing tool catalog; configure
+post-call enforcement to protect deferred targets proposed by the model.
+Patterns still match the full tool name (for example
+`mcp__guardrail_mock__drop_database`), with no implicit MCP prefix removal.
+Non-managed deployments retain the original behavior
+
 ## Regression checks
 
 The tests under `tests/test_litellm/integrations/agentos/` cover attribution,

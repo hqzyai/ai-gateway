@@ -33,6 +33,339 @@ from litellm.types.utils import (
 )
 
 
+@pytest.mark.parametrize(
+    "message,expected",
+    (
+        ("Deferred tool_call rejected: invalid target tool name", "目标工具名称"),
+        ("Deferred tool_call rejected: invalid dispatch arguments", "调度参数格式无效"),
+        ("Deferred tool 'read_file' rejected: invalid JSON arguments", "不是有效的 JSON"),
+        ("Deferred tool 'read_file' rejected: arguments must be an object", "参数必须是对象"),
+        ("Tool denied by rule", "不符合权限规则"),
+    ),
+)
+def test_managed_permission_rewrite_uses_chinese_without_changing_diagnostics(message, expected, monkeypatch):
+    monkeypatch.setenv("AGENTOS_GUARDRAIL_MODE", "true")
+    guardrail = ToolPermissionGuardrail(guardrail_name="只读工具", default_action="deny")
+    call = ChatCompletionMessageToolCall(id="denied-call", function={"name": "tool_call", "arguments": "{}"})
+    error = PermissionError(tool_name="tool_call", rule_id="read-only", message=message)
+    response = ModelResponse(choices=[Choices(message={"tool_calls": [call], "content": ""})])
+    guardrail._modify_response_with_permission_errors(response, [(call, error)])
+    content = response.choices[0].message.content
+    assert "触发护栏「只读工具」" in content
+    assert expected in content
+    assert "Permission denied" not in content
+    assert "Deferred tool" not in content
+    assert not response.choices[0].message.tool_calls
+    assert error.message == message
+
+
+@pytest.mark.parametrize("managed", [False, True])
+@pytest.mark.parametrize("encoded", [False, True])
+def test_deferred_tool_checks_real_name(managed, encoded, monkeypatch):
+    monkeypatch.setenv("AGENTOS_GUARDRAIL_MODE", str(managed).lower())
+    guardrail = ToolPermissionGuardrail(
+        rules=[{"id": "destructive", "tool_name": r"mcp__.*__drop_database", "decision": "deny"}],
+        default_action="allow",
+    )
+    inner = {"database_name": "guardrail_test_db", "dry_run": True}
+    call = ChatCompletionMessageToolCall(
+        id="dispatch-1",
+        type="function",
+        function={
+            "name": "tool_call",
+            "arguments": json.dumps(
+                {
+                    "name": " mcp__guardrail_mock__drop_database ",
+                    "arguments": json.dumps(inner) if encoded else inner,
+                }
+            ),
+        },
+    )
+    allowed, rule, message = guardrail._get_permission_for_tool_call(call)
+    assert allowed is not managed
+    if managed:
+        assert rule == "destructive"
+        assert "mcp__guardrail_mock__drop_database" in message
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        "not-json",
+        "[]",
+        "{}",
+        '{"name": ""}',
+        '{"name": 123}',
+        '{"name":"tool_call"}',
+        '{"name":"tool_search"}',
+        '{"name":"tool_describe"}',
+        '{"name":"read_file","arguments":[]}',
+        '{"name":"read_file","arguments":"bad-json"}',
+    ],
+)
+def test_deferred_tool_rejects_invalid_dispatch(payload, monkeypatch):
+    monkeypatch.setenv("AGENTOS_GUARDRAIL_MODE", "true")
+    guardrail = ToolPermissionGuardrail(default_action="allow")
+    call = ChatCompletionMessageToolCall(function={"name": "tool_call", "arguments": payload})
+    assert guardrail._get_permission_for_tool_call(call)[0] is False
+
+
+@pytest.mark.parametrize(
+    "name,path,allowed",
+    [
+        ("read_file", "/safe/report.txt", True),
+        ("read_file", "/etc/passwd", False),
+        ("read_file", None, False),
+        ("write_file", "/safe/report.txt", False),
+    ],
+)
+def test_deferred_tool_whitelist_and_inner_parameters(name, path, allowed, monkeypatch):
+    monkeypatch.setenv("AGENTOS_GUARDRAIL_MODE", "true")
+    guardrail = ToolPermissionGuardrail(
+        rules=[
+            {"id": "bridge", "tool_name": "tool_call", "decision": "allow"},
+            {
+                "id": "read",
+                "tool_name": "read_file",
+                "decision": "allow",
+                "allowed_param_patterns": {"path": r"/safe/[^/]+"},
+            },
+        ],
+        default_action="deny",
+    )
+    call = ChatCompletionMessageToolCall(
+        function={
+            "name": "tool_call",
+            "arguments": json.dumps(
+                {
+                    "name": name,
+                    "arguments": {"path": path},
+                }
+            ),
+        }
+    )
+    assert guardrail._get_permission_for_tool_call(call)[0] is allowed
+
+
+@pytest.mark.parametrize(
+    "entries,allowed",
+    [
+        ([{"name": "read_file", "arguments": {}}], True),
+        ([{"name": "read_file", "arguments": {}}, {"name": "list_files", "arguments": "{}"}], True),
+        ([{"name": "read_file"}, {"name": "drop_database"}], False),
+        ([{"name": "drop_database"}, {"name": "read_file"}], False),
+        ([{"name": "read_file"}, {"name": "tool_call"}], False),
+        ([{"name": "read_file"}, {"name": "list_files", "arguments": "[]"}], False),
+        ([{"name": "read_file"}, None], False),
+        ([], False),
+        ({"name": "read_file"}, False),
+    ],
+)
+def test_deferred_batch_checks_every_entry(entries, allowed, monkeypatch):
+    monkeypatch.setenv("AGENTOS_GUARDRAIL_MODE", "true")
+    guardrail = ToolPermissionGuardrail(
+        rules=[{"id": "deny", "tool_name": "drop_database", "decision": "deny"}], default_action="allow"
+    )
+    call = ChatCompletionMessageToolCall(
+        id="batch", function={"name": "tool_call", "arguments": json.dumps({"calls": entries})}
+    )
+    assert guardrail._get_permission_for_tool_call(call)[0] is allowed
+    ambiguous = ChatCompletionMessageToolCall(
+        id="mixed", function={"name": "tool_call", "arguments": json.dumps({"name": "read_file", "calls": entries})}
+    )
+    assert not guardrail._get_permission_for_tool_call(ambiguous)[0]
+
+
+def test_deferred_tool_cannot_override_outer_denial_or_unwrap_other_functions(monkeypatch):
+    monkeypatch.setenv("AGENTOS_GUARDRAIL_MODE", "true")
+    guardrail = ToolPermissionGuardrail(
+        rules=[
+            {"id": "deny_bridge", "tool_name": "tool_call", "decision": "deny"},
+            {"id": "deny_inner", "tool_name": "drop_database", "decision": "deny"},
+        ],
+        default_action="allow",
+    )
+    call = ChatCompletionMessageToolCall(
+        function={
+            "name": "tool_call",
+            "arguments": json.dumps(
+                {
+                    "name": "read_file",
+                    "arguments": {},
+                }
+            ),
+        }
+    )
+    assert guardrail._get_permission_for_tool_call(call)[:2] == (False, "deny_bridge")
+    ordinary = ChatCompletionMessageToolCall(
+        function={
+            "name": "save_record",
+            "arguments": json.dumps(
+                {
+                    "name": "drop_database",
+                    "arguments": {},
+                }
+            ),
+        }
+    )
+    assert guardrail._get_permission_for_tool_call(ordinary)[0] is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("streaming", [False, True])
+@pytest.mark.parametrize("action", ["block", "rewrite"])
+@pytest.mark.parametrize("batch", [False, True])
+async def test_deferred_tool_response_paths(streaming, action, batch, monkeypatch):
+    from litellm.integrations.custom_guardrail import ModifyResponseException
+    from litellm.llms.base_llm.base_model_iterator import MockResponseIterator
+    from litellm.main import stream_chunk_builder
+    from litellm.proxy.guardrails.guardrail_registry import IN_MEMORY_GUARDRAIL_HANDLER
+
+    monkeypatch.setenv("AGENTOS_GUARDRAIL_MODE", "true")
+    monkeypatch.setitem(
+        IN_MEMORY_GUARDRAIL_HANDLER.IN_MEMORY_GUARDRAILS,
+        "deferred-test",
+        {"guardrail_name": "工具黑名单", "guardrail_info": {"agentos_enabled": True}},
+    )
+    request_data = {"metadata": {"_agentos_policy_guardrails": ["工具黑名单"]}}
+    guardrail = ToolPermissionGuardrail(
+        guardrail_name="工具黑名单",
+        rules=[{"id": "deny", "tool_name": "mcp__guardrail_mock__drop_database", "decision": "deny"}],
+        default_action="allow",
+        on_disallowed_action=action,
+        default_on=True,
+        event_hook=GuardrailEventHooks.post_call,
+    )
+    response = ModelResponse(
+        model="test",
+        choices=[
+            {
+                "index": 0,
+                "finish_reason": "tool_calls",
+                "message": {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": "original-id",
+                            "type": "function",
+                            "function": {
+                                "name": "tool_call",
+                                "arguments": json.dumps(
+                                    {
+                                        "calls": [
+                                            {"name": "read_file", "arguments": {}},
+                                            {"name": "mcp__guardrail_mock__drop_database", "arguments": {}},
+                                        ]
+                                    }
+                                    if batch
+                                    else {"name": "mcp__guardrail_mock__drop_database", "arguments": {}}
+                                ),
+                            },
+                        }
+                    ],
+                },
+            }
+        ],
+    )
+
+    async def check():
+        if streaming:
+            chunks = [
+                chunk
+                async for chunk in guardrail.async_post_call_streaming_iterator_hook(
+                    user_api_key_dict=UserAPIKeyAuth(),
+                    response=MockResponseIterator(model_response=response),
+                    request_data=request_data,
+                )
+            ]
+            return stream_chunk_builder(chunks)
+        return await guardrail.async_post_call_success_hook(
+            data=request_data, user_api_key_dict=UserAPIKeyAuth(), response=response
+        )
+
+    if action == "block":
+        with pytest.raises(ModifyResponseException):
+            await check()
+    else:
+        result = await check()
+        assert not result.choices[0].message.tool_calls
+        assert "mcp__guardrail_mock__drop_database" in result.choices[0].message.content
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("target,allowed", [("read_file", True), ("drop_database", False)])
+async def test_deferred_fragmented_stream_never_releases_denied_call(target, allowed, monkeypatch):
+    from litellm.integrations.custom_guardrail import ModifyResponseException
+    from litellm.main import stream_chunk_builder
+
+    monkeypatch.setenv("AGENTOS_GUARDRAIL_MODE", "true")
+    guardrail = ToolPermissionGuardrail(
+        rules=[{"id": "deny", "tool_name": r"mcp__.*__drop_database", "decision": "deny"}],
+        default_action="allow",
+        default_on=True,
+        event_hook=GuardrailEventHooks.post_call,
+    )
+    arguments = json.dumps({"name": f"mcp__guardrail_mock__{target}", "arguments": {"path": "/safe/test"}})
+
+    async def fragments():
+        yield ModelResponseStream(
+            id="response-1",
+            model="test",
+            choices=[
+                {
+                    "index": 0,
+                    "delta": {
+                        "role": "assistant",
+                        "tool_calls": [
+                            {
+                                "index": 0,
+                                "id": "original-id",
+                                "type": "function",
+                                "function": {"name": "tool_call", "arguments": ""},
+                            }
+                        ],
+                    },
+                }
+            ],
+        )
+        for character in arguments:
+            yield ModelResponseStream(
+                id="response-1",
+                model="test",
+                choices=[
+                    {
+                        "index": 0,
+                        "delta": {
+                            "tool_calls": [{"index": 0, "function": {"arguments": character}}],
+                        },
+                    }
+                ],
+            )
+        yield ModelResponseStream(
+            id="response-1",
+            model="test",
+            choices=[
+                {
+                    "index": 0,
+                    "delta": {},
+                    "finish_reason": "tool_calls",
+                }
+            ],
+        )
+
+    output = guardrail.async_post_call_streaming_iterator_hook(UserAPIKeyAuth(), fragments(), {})
+    if not allowed:
+        with pytest.raises(ModifyResponseException):
+            await anext(output)
+        return
+    result = stream_chunk_builder([chunk async for chunk in output])
+    call = result.choices[0].message.tool_calls[0]
+    assert call.id == "original-id"
+    assert call.function.name == "tool_call"
+    assert json.loads(call.function.arguments) == json.loads(arguments)
+
+
 class TestToolPermissionGuardrail:
     """Test class for Tool Permission Guardrail functionality"""
 

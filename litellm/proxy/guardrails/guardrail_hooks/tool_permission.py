@@ -35,6 +35,18 @@ from litellm.types.utils import (
 GUARDRAIL_NAME = "tool_permission"
 
 
+def _permission_error_reason(message: str) -> str:
+    if message == "Deferred tool_call rejected: invalid target tool name":
+        return "延迟工具调用缺少有效的目标工具名称，或目标为不允许转发的工具"
+    if message == "Deferred tool_call rejected: invalid dispatch arguments":
+        return "延迟工具调用的调度参数格式无效"
+    if message.startswith("Deferred tool '") and message.endswith("invalid JSON arguments"):
+        return "延迟工具调用的参数不是有效的 JSON"
+    if message.startswith("Deferred tool '") and message.endswith("arguments must be an object"):
+        return "延迟工具调用的参数必须是对象"
+    return "工具或调用参数不符合权限规则"
+
+
 class ToolPermissionGuardrail(CustomGuardrail):
     def __init__(
         self,
@@ -357,6 +369,63 @@ class ToolPermissionGuardrail(CustomGuardrail):
     def _get_permission_for_tool_call(
         self, tool_call: ChatCompletionMessageToolCall
     ) -> tuple[bool, Optional[str], Optional[str]]:
+        permission = self._get_direct_tool_permission(tool_call)
+        if (
+            not permission[0]
+            or os.getenv("AGENTOS_GUARDRAIL_MODE", "false").lower() != "true"
+            or not tool_call.function
+            or tool_call.function.name != "tool_call"
+        ):
+            return permission
+
+        arguments, error = self._parse_tool_call_arguments(tool_call)
+        if error or arguments is None:
+            return False, None, "Deferred tool_call rejected: invalid dispatch arguments"
+        if "calls" not in arguments:
+            return self._get_deferred_entry_permission(tool_call.id, arguments)
+        calls = arguments["calls"]
+        if not isinstance(calls, list) or not calls or "name" in arguments or "arguments" in arguments:
+            return False, None, "Deferred tool_call rejected: invalid dispatch arguments"
+        for entry in calls:
+            if not isinstance(entry, dict):
+                return False, None, "Deferred tool_call rejected: invalid dispatch arguments"
+            result = self._get_deferred_entry_permission(tool_call.id, entry)
+            if not result[0]:
+                return result
+        return True, None, None
+
+    def _get_deferred_entry_permission(
+        self, call_id: str, arguments: dict[str, object]
+    ) -> tuple[bool, Optional[str], Optional[str]]:
+        name = arguments.get("name")
+        if (
+            not isinstance(name, str)
+            or not name.strip()
+            or name.strip() in {"tool_call", "tool_search", "tool_describe"}
+        ):
+            return False, None, "Deferred tool_call rejected: invalid target tool name"
+        target_name = name.strip()
+        raw_inner_arguments = arguments.get("arguments")
+        try:
+            parsed_inner_arguments = (
+                json.loads(raw_inner_arguments) if isinstance(raw_inner_arguments, str) else raw_inner_arguments
+            )
+        except (json.JSONDecodeError, TypeError):
+            return False, None, f"Deferred tool '{target_name}' rejected: invalid JSON arguments"
+        inner_arguments = {} if parsed_inner_arguments is None else parsed_inner_arguments
+        if not isinstance(inner_arguments, dict):
+            return False, None, f"Deferred tool '{target_name}' rejected: arguments must be an object"
+        return self._get_direct_tool_permission(
+            ChatCompletionMessageToolCall(
+                id=call_id,
+                type="function",
+                function={"name": target_name, "arguments": json.dumps(inner_arguments)},
+            )
+        )
+
+    def _get_direct_tool_permission(
+        self, tool_call: ChatCompletionMessageToolCall
+    ) -> tuple[bool, Optional[str], Optional[str]]:
         tool_name = tool_call.function.name if tool_call.function else None
         tool_type = getattr(tool_call, "type", None)
         if not tool_name and not tool_type:
@@ -585,6 +654,32 @@ class ToolPermissionGuardrail(CustomGuardrail):
         Returns:
             A tool_result block with the error message
         """
+        if os.getenv("AGENTOS_GUARDRAIL_MODE", "false").lower() == "true":
+            reason = _permission_error_reason(error.message)
+            arguments, _ = self._parse_tool_call_arguments(tool_call)
+            target = (
+                arguments.get("name")
+                if tool_call.function and tool_call.function.name == "tool_call" and arguments
+                else None
+            )
+            tool_name = target.strip() if isinstance(target, str) and target.strip() else error.tool_name
+            if (
+                tool_call.function
+                and tool_call.function.name == "tool_call"
+                and arguments
+                and isinstance(arguments.get("calls"), list)
+            ):
+                for entry in arguments["calls"]:
+                    if isinstance(entry, dict) and not self._get_deferred_entry_permission(tool_call.id, entry)[0]:
+                        candidate = entry.get("name")
+                        if isinstance(candidate, str) and candidate.strip():
+                            tool_name = candidate.strip()
+                        break
+            error_message = f"触发护栏「{self.guardrail_name or '工具权限'}」，工具「{tool_name}」调用已拦截：{reason}"
+            if error.rule_id:
+                error_message += f"（规则：{error.rule_id}）"
+            return ToolResult(tool_use_id=tool_call.id, content=error_message, is_error=True)
+
         error_message = f"Permission denied: {error.message}"
         if error.rule_id:
             error_message += f" (Rule: {error.rule_id})"
