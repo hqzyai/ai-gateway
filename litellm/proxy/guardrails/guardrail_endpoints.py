@@ -1358,6 +1358,14 @@ async def get_category_yaml(category_name: str):
     Returns:
         The raw YAML or JSON content of the category file with file type indicator
     """
+    if os.getenv("AGENTOS_GUARDRAIL_MODE", "false").lower() == "true" and category_name.startswith("lexicon_"):
+        from litellm.proxy.guardrails.guardrail_hooks.litellm_content_filter.keyword_lexicons import lexicon_preview
+
+        try:
+            return {"category_name": category_name, "yaml_content": lexicon_preview(category_name), "file_type": "yaml"}
+        except ValueError:
+            raise HTTPException(status_code=404, detail="Keyword lexicon not found")
+
     # Get the categories directory path
     categories_dir = os.path.join(
         os.path.dirname(__file__),

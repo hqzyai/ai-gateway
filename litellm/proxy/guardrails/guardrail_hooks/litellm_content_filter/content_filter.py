@@ -199,6 +199,19 @@ class ContentFilterGuardrail(CustomGuardrail):
             self.pattern_redaction_format = "****"
             self.keyword_redaction_tag = "****"
         self.severity_threshold = severity_threshold
+        self.lexicon_categories = tuple(
+            (str(config["category"]), ContentFilterAction(config.get("action") or "BLOCK"))
+            for config in categories or ()
+            if self.managed_mode
+            and str(config.get("category", "")).startswith("lexicon_")
+            and config.get("enabled", True)
+            and not config.get("category_file")
+        )
+        if self.lexicon_categories:
+            from .keyword_lexicons import lexicon_pattern
+
+            for name, _ in self.lexicon_categories:
+                lexicon_pattern(name)
         self.llm_router = llm_router
         self.image_model = image_model
         # Store loaded categories
@@ -428,6 +441,9 @@ class ContentFilterGuardrail(CustomGuardrail):
 
             if not enabled:
                 verbose_proxy_logger.debug(f"Category {category_name} is disabled, skipping")
+                continue
+
+            if self.managed_mode and not custom_file and category_name.startswith("lexicon_"):
                 continue
 
             # Load category file (custom or default)
@@ -1370,6 +1386,26 @@ class ContentFilterGuardrail(CustomGuardrail):
                 text = self._handle_pattern_match("generic_api_key", entry["action"], text, spans, detections)
         return text
 
+    def _filter_keyword_lexicons(self, text: str, detections: Optional[List[ContentFilterDetection]]) -> str:
+        from .keyword_lexicons import lexicon_matches
+
+        matches = tuple(
+            (name, action, match) for name, action in self.lexicon_categories for match in lexicon_matches(name, text)
+        )
+        for name, action, match in matches:
+            if action == ContentFilterAction.BLOCK:
+                self._handle_category_keyword_match(match.keyword, name, "high", action, text, detections)
+        if detections is not None:
+            detections.extend(
+                CategoryKeywordDetection(
+                    type="category_keyword", category=name, keyword=match.keyword, severity="high", action=action.value
+                )
+                for name, action, match in matches
+            )
+        return self._mask_spans(
+            text, self._merge_spans([(match.start, match.end) for _, _, match in matches]), self.keyword_redaction_tag
+        )
+
     def _filter_single_text(
         self,
         text: str,
@@ -1396,6 +1432,8 @@ class ContentFilterGuardrail(CustomGuardrail):
         """
         if self.managed_mode and request_data is not None:
             text = self._filter_known_credentials(text, request_data, detections)
+        if self.lexicon_categories:
+            text = self._filter_keyword_lexicons(text, detections)
 
         # Collect all exceptions from loaded categories
         all_exceptions = []
@@ -2003,7 +2041,8 @@ class ContentFilterGuardrail(CustomGuardrail):
         sources = sensitive_sources(self, request_data) if self.managed_mode else ()
         pending_tools: tuple[tuple[int, tuple[ChatCompletionDeltaToolCall, ...]], ...] = ()
         requires_complete_response = self.managed_mode and (
-            any(
+            bool(self.lexicon_categories)
+            or any(
                 pattern["action"] == ContentFilterAction.BLOCK or pattern.get("pattern_name") == "generic_api_key"
                 for pattern in self.compiled_patterns
             )

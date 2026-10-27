@@ -137,6 +137,11 @@ def get_available_content_categories() -> List[Dict[str, str]]:
     """
     import yaml
 
+    if os.getenv("AGENTOS_GUARDRAIL_MODE", "false").lower() == "true":
+        from .keyword_lexicons import available_lexicons
+
+        return available_lexicons()
+
     categories_dir = os.path.join(os.path.dirname(__file__), "categories")
     available_categories = []
 

@@ -82,18 +82,46 @@ are buffered until completion to avoid releasing a prefix of a long credential;
 this trades first-content latency for safe redaction. Unlabeled arbitrary strings
 without credential context are not automatically classified as API keys
 
-Managed built-in topic dictionaries use Chinese keywords and same-sentence
-identifier/action combinations from `chinese_categories.py`. The preview endpoint
-uses the same definitions as runtime detection. English keyword, conditional,
-inheritance, exception and phrase-pattern rules are not silently retained.
-Category identifiers, configured actions, severity thresholds and enabled flags
-are preserved; explicit custom category files are not localized. Non-managed
-deployments retain their original topic dictionaries
+Managed-mode topic dictionaries originate from the 17 Vocabulary files from
+[Sensitive-lexicon](https://github.com/konsheng/Sensitive-lexicon), pinned to
+`d967c30b053fa40b06c5a0dddf0be493f2dfae46`. The unmodified text files and MIT
+license are bundled under `litellm_content_filter/lexicons`; no network is used
+during loading or filtering. Blank lines and duplicates within a file are
+removed. Reviewed neutral standalone entries are excluded across all dictionaries
+using `lexicons/excluded_terms.txt`; internal spaces and punctuation are retained.
+Empty curated dictionaries are omitted from new selections but their IDs remain
+readable. Upstream originals are preserved; preview includes a curation revision
 
-Topic matching is lexical, not semantic moderation. Paraphrases outside the
-published rules may not match, and quotation or negation is not generally
-understood. Assess false positives and missed matches with business examples
-before applying a category to production traffic
+Curation revision `2026-10-27-r2` also removes standalone numbers, formatted
+contact numbers and legacy regex/template or replacement-rule fragments across
+all 17 dictionaries. `exclusion_reason()` provides a reason for each omission.
+These checks operate on whole entries: numeric risk phrases and domains remain.
+Concrete historical phone numbers do not replace personal-information format
+rules. This structural pass does not certify the meaning of every retained term
+
+Each `lexicon_*` category is a literal, case-insensitive keyword list. There are
+no subject/action combinations, regex interpretation, exceptions or user-facing
+severity levels. Preview YAML and runtime use the same curated terms. A selected
+dictionary applies all its words; enablement and BLOCK/MASK remain configurable.
+The high severity in native detection records is an API compatibility value,
+not an upstream risk assessment. All matches are masked, overlapping spans merge,
+and BLOCK wins over MASK across selected dictionaries. Streams buffer content
+and reasoning until detection completes to prevent partial-keyword leakage;
+this delays first-content delivery. Keyword patterns are cached by dictionary
+and indexed by initial character rather than recompiled per request
+
+The initial curation removes common places, civic terms and everyday vocabulary,
+not entire messages containing those words. Longer explicit risk phrases remain.
+Remaining terms still require business review; selection is opt-in and never
+automatically enables all dictionaries. Quotation, negation and paraphrases are
+not interpreted semantically. Review the actual terms against business samples
+
+Existing non-lexicon categories retain their Chinese rules from
+`chinese_categories.py` and remain readable/editable, but no longer appear in
+the managed new-category catalog. There is no automatic semantic mapping or
+migration between old categories and upstream files. Users can explicitly
+remove an old category and choose a new dictionary. Custom files and non-managed
+deployments keep their existing behavior
 
 ### Deferred tool permissions
 
