@@ -1990,7 +1990,17 @@ async def ui_view_spend_logs(
                 request_id, call_type, api_key, spend, total_tokens,
                 prompt_tokens, completion_tokens, "startTime", "endTime",
                 "completionStartTime", model, model_id, model_group,
-                custom_llm_provider, api_base, "user", metadata,
+                custom_llm_provider, api_base, "user",
+                COALESCE(metadata, '{{}}'::jsonb) || jsonb_build_object(
+                    'session_title', LEFT(COALESCE(
+                        NULLIF(metadata->>'session_title', ''),
+                        NULLIF(metadata->>'agentos_session_title', ''),
+                        NULLIF(proxy_server_request #>> '{{metadata,agentos_session_title}}', ''),
+                        NULLIF(proxy_server_request #>> '{{metadata,session_title}}', ''),
+                        NULLIF(proxy_server_request #>> '{{metadata,requester_metadata,agentos_session_title}}', ''),
+                        NULLIF(proxy_server_request #>> '{{body,metadata,agentos_session_title}}', '')
+                    ), 200)
+                ) AS metadata,
                 cache_hit, cache_key, request_tags, team_id,
                 organization_id, end_user, requester_ip_address,
                 session_id, status, mcp_namespaced_tool_name, agent_id,

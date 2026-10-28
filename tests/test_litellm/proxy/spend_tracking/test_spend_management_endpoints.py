@@ -4013,6 +4013,7 @@ async def test_ui_view_spend_logs_rehydrates_metadata_jsonb_text(client, monkeyp
     """
     failure_metadata = {
         "status": "failure",
+        "session_title": "享受晴朗天气",
         "error_information": {
             "error_code": "403",
             "error_message": "Forbidden by upstream",
@@ -4056,6 +4057,9 @@ async def test_ui_view_spend_logs_rehydrates_metadata_jsonb_text(client, monkeyp
         return 1
 
     async def mock_query_raw(sql_query, *params):
+        if 'AS metadata' in sql_query:
+            assert "proxy_server_request #>> '{metadata,agentos_session_title}'" in sql_query
+            assert "'session_title', LEFT(COALESCE(" in sql_query
         return [{**raw_row, "total_count": 1}]
 
     class MockPrismaClient:
@@ -4093,6 +4097,7 @@ async def test_ui_view_spend_logs_rehydrates_metadata_jsonb_text(client, monkeyp
         # accessors work.
         assert isinstance(md, dict), f"metadata should be dict, got {type(md)}"
         assert md["status"] == "failure"
+        assert md["session_title"] == "享受晴朗天气"
         assert md["error_information"]["error_code"] == "403"
     finally:
         app.dependency_overrides.pop(ps.user_api_key_auth, None)

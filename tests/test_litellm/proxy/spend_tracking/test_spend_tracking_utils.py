@@ -1259,6 +1259,20 @@ def test_get_spend_logs_metadata_guardrail_info_fallback_from_metadata():
     assert result["guardrail_information"] is None
 
 
+@pytest.mark.parametrize("metadata, expected", [
+    ({"agentos_session_title": "  晴朗\n天气  "}, "晴朗 天气"),
+    ({"requester_metadata": {"agentos_session_title": "会话标题"}}, "会话标题"),
+    ({"spend_logs_metadata": {"session_title": "历史会话"}}, "历史会话"),
+    ({"agentos_session_title": "运行时标题", "session_title": "旧标题"}, "运行时标题"),
+    ({"session_title": 123}, None),
+    ({"session_title": "   "}, None),
+    ({"session_title": "字" * 300}, "字" * 200),
+])
+def test_get_spend_logs_metadata_retains_session_title(metadata, expected):
+    result = _get_spend_logs_metadata(metadata)
+    assert result["session_title"] == expected
+
+
 def test_get_spend_logs_metadata_persists_hermes_session_analytics_fields():
     result = _get_spend_logs_metadata(
         metadata={

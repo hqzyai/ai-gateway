@@ -140,6 +140,18 @@ def _get_spend_logs_metadata(
             filtered_metadata | {"hermes_session_id": _get_hermes_session_id(metadata)}
         )
     )
+    title_sources = (metadata, metadata.get("requester_metadata"), metadata.get("spend_logs_metadata"))
+    session_title = next(
+        (
+            " ".join(value.split())[:200]
+            for source in title_sources
+            if isinstance(source, Mapping)
+            for field in ("agentos_session_title", "session_title")
+            if isinstance(value := source.get(field), str) and value.strip()
+        ),
+        None,
+    )
+    clean_metadata["session_title"] = session_title
     raw_user_api_key = clean_metadata.get("user_api_key")
     if raw_user_api_key is not None and isinstance(raw_user_api_key, str):
         clean_metadata["user_api_key"] = _hash_api_key_for_spend_log(raw_user_api_key)

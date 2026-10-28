@@ -14,7 +14,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from typing_extensions import Required, TypedDict
+from typing_extensions import NotRequired, Required, TypedDict
 
 from litellm._uuid import uuid
 from litellm.constants import MCP_STDIO_ALLOWED_COMMANDS
@@ -3274,6 +3274,7 @@ class SpendLogsMetadata(TypedDict):
     cost_breakdown: Optional[CostBreakdown]  # Detailed cost breakdown (input_cost, output_cost, margin, discount, etc.)
     compression_savings: CompressionSavingsMetadata | None
     hermes_session_id: str | None
+    session_title: NotRequired[str | None]
     compression_saved_tokens: int | None
     compression_gross_saved_tokens: int | None
     compression_extra_input_tokens: int | None
