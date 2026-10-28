@@ -90,13 +90,14 @@ async def process_spend_logs_guardrail_usage(
     """
     if not logs_to_process:
         return
-    # Aggregate daily metrics by (guardrail_id, date). Latency/score metrics dropped.
     daily_guardrail: Dict[tuple, Dict[str, Any]] = defaultdict(
         lambda: {
             "requests_evaluated": 0,
             "passed_count": 0,
             "blocked_count": 0,
             "flagged_count": 0,
+            "latency_sum_ms": 0.0,
+            "latency_samples": 0,
         }
     )
     index_rows: List[Dict[str, Any]] = []
@@ -126,6 +127,15 @@ async def process_spend_logs_guardrail_usage(
                 daily_guardrail[key]["blocked_count"] += 1
             else:
                 daily_guardrail[key]["flagged_count"] += 1
+            duration = entry.get("duration")
+            if duration is not None:
+                try:
+                    latency_ms = float(duration) * 1000
+                except (TypeError, ValueError):
+                    latency_ms = -1
+                if latency_ms >= 0:
+                    daily_guardrail[key]["latency_sum_ms"] += latency_ms
+                    daily_guardrail[key]["latency_samples"] += 1
             policy_id = entry.get("policy_id")
             index_rows.append(
                 {
@@ -166,18 +176,32 @@ async def process_spend_logs_guardrail_usage(
             except Exception as e:
                 verbose_proxy_logger.debug("Guardrail usage tracking: index create_many skipped: %s", e)
 
-        # Upsert daily guardrail metrics (counts only; latency/score dropped)
+        metrics_table = DailyGuardrailMetricsRepository(prisma_client).table
         for (guardrail_id, date_key), agg in daily_guardrail.items():
             n = int(agg["requests_evaluated"])
             if n == 0:
                 continue
-            await DailyGuardrailMetricsRepository(prisma_client).table.upsert(
-                where={
-                    "guardrail_id_date": {
-                        "guardrail_id": guardrail_id,
-                        "date": date_key,
-                    }
-                },
+            where = {
+                "guardrail_id_date": {
+                    "guardrail_id": guardrail_id,
+                    "date": date_key,
+                }
+            }
+            latency_samples = int(agg["latency_samples"])
+            batch_avg_latency = float(agg["latency_sum_ms"]) / latency_samples if latency_samples > 0 else None
+            existing = await metrics_table.find_unique(where=where)
+            existing_avg = getattr(existing, "avg_latency_ms", None) if existing else None
+            existing_count = int(getattr(existing, "requests_evaluated", 0) or 0) if existing else 0
+            if batch_avg_latency is None:
+                combined_avg_latency = existing_avg
+            elif existing_avg is None or existing_count == 0:
+                combined_avg_latency = batch_avg_latency
+            else:
+                combined_avg_latency = (float(existing_avg) * existing_count + batch_avg_latency * latency_samples) / (
+                    existing_count + latency_samples
+                )
+            await metrics_table.upsert(
+                where=where,
                 data={
                     "create": {
                         "guardrail_id": guardrail_id,
@@ -186,12 +210,14 @@ async def process_spend_logs_guardrail_usage(
                         "passed_count": int(agg["passed_count"]),
                         "blocked_count": int(agg["blocked_count"]),
                         "flagged_count": int(agg["flagged_count"]),
+                        "avg_latency_ms": combined_avg_latency,
                     },
                     "update": {
                         "requests_evaluated": {"increment": n},
                         "passed_count": {"increment": int(agg["passed_count"])},
                         "blocked_count": {"increment": int(agg["blocked_count"])},
                         "flagged_count": {"increment": int(agg["flagged_count"])},
+                        "avg_latency_ms": combined_avg_latency,
                     },
                 },
             )

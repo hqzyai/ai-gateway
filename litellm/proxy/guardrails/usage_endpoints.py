@@ -35,6 +35,7 @@ class UsageOverviewRow(BaseModel):
     type: str
     provider: str
     requestsEvaluated: int
+    blockedCount: int
     failRate: float
     avgScore: Optional[float]
     avgLatency: Optional[float]
@@ -108,11 +109,22 @@ def _aggregate_daily_metrics(metrics: Any, id_attr: str) -> Dict[str, Dict[str, 
     for m in metrics:
         gid = getattr(m, id_attr)
         if gid not in agg:
-            agg[gid] = {"requests": 0, "passed": 0, "blocked": 0, "flagged": 0}
-        agg[gid]["requests"] += int(m.requests_evaluated or 0)
+            agg[gid] = {
+                "requests": 0,
+                "passed": 0,
+                "blocked": 0,
+                "flagged": 0,
+                "latency_weighted_ms": 0.0,
+                "latency_samples": 0,
+            }
+        requests = int(m.requests_evaluated or 0)
+        agg[gid]["requests"] += requests
         agg[gid]["passed"] += int(m.passed_count or 0)
         agg[gid]["blocked"] += int(m.blocked_count or 0)
         agg[gid]["flagged"] += int(m.flagged_count or 0)
+        if m.avg_latency_ms is not None and requests > 0:
+            agg[gid]["latency_weighted_ms"] += float(m.avg_latency_ms) * requests
+            agg[gid]["latency_samples"] += requests
     return agg
 
 
@@ -126,6 +138,13 @@ def _prev_fail_rates(metrics_prev: Any, id_attr: str) -> Dict[str, float]:
         prev_agg_raw[gid]["req"] += r
         prev_agg_raw[gid]["blocked"] += b
     return {gid: (100.0 * v["blocked"] / v["req"]) if v["req"] else 0.0 for gid, v in prev_agg_raw.items()}
+
+
+def _average_latency(aggregate: Dict[str, Any]) -> Optional[float]:
+    samples = int(aggregate.get("latency_samples", 0) or 0)
+    if samples == 0:
+        return None
+    return round(float(aggregate.get("latency_weighted_ms", 0.0)) / samples, 1)
 
 
 def _chart_from_metrics(metrics: Any) -> List[Dict[str, Any]]:
@@ -181,6 +200,7 @@ def _guardrail_overview_rows(
                 break
         req, blocked = a["requests"], a["blocked"]
         fail_rate = (100.0 * blocked / req) if req else 0.0
+        avg_latency = _average_latency(a)
         litellm_params = _to_dict(_get_guardrail_field(g, "litellm_params"))
         provider = str(litellm_params.get("guardrail", "Unknown"))
         guardrail_info = _to_dict(_get_guardrail_field(g, "guardrail_info"))
@@ -198,9 +218,10 @@ def _guardrail_overview_rows(
                 type=gtype,
                 provider=provider,
                 requestsEvaluated=req,
+                blockedCount=blocked,
                 failRate=round(fail_rate, 1),
                 avgScore=None,
-                avgLatency=None,
+                avgLatency=avg_latency,
                 status=_status_from_fail_rate(fail_rate),
                 trend=trend,
             )
@@ -211,6 +232,7 @@ def _guardrail_overview_rows(
             continue
         req, blocked = a["requests"], a["blocked"]
         fail_rate = (100.0 * blocked / req) if req else 0.0
+        avg_latency = _average_latency(a)
         prev_fail = float(prev_agg.get(agg_key, 0.0) or 0.0)
         trend = _trend_from_comparison(fail_rate, prev_fail)
         rows.append(
@@ -220,9 +242,10 @@ def _guardrail_overview_rows(
                 type="Guardrail",
                 provider="Custom",
                 requestsEvaluated=req,
+                blockedCount=blocked,
                 failRate=round(fail_rate, 1),
                 avgScore=None,
-                avgLatency=None,
+                avgLatency=avg_latency,
                 status=_status_from_fail_rate(fail_rate),
                 trend=trend,
             )
@@ -249,6 +272,7 @@ def _policy_overview_rows(
                 type="Policy",
                 provider="LiteLLM",
                 requestsEvaluated=req,
+                blockedCount=blocked,
                 failRate=round(fail_rate, 1),
                 avgScore=None,
                 avgLatency=None,
@@ -375,6 +399,13 @@ async def guardrails_usage_detail(
     requests = sum(int(m.requests_evaluated or 0) for m in metrics)
     blocked = sum(int(m.blocked_count or 0) for m in metrics)
     fail_rate = (100.0 * blocked / requests) if requests else 0.0
+    latency_samples = sum(int(m.requests_evaluated or 0) for m in metrics if m.avg_latency_ms is not None)
+    avg_latency = (
+        sum(float(m.avg_latency_ms) * int(m.requests_evaluated or 0) for m in metrics if m.avg_latency_ms is not None)
+        / latency_samples
+        if latency_samples > 0
+        else None
+    )
 
     prev_blocked = sum(int(m.blocked_count or 0) for m in metrics_prev)
     prev_req = sum(int(m.requests_evaluated or 0) for m in metrics_prev)
@@ -405,7 +436,7 @@ async def guardrails_usage_detail(
         requestsEvaluated=requests,
         failRate=round(fail_rate, 1),
         avgScore=None,
-        avgLatency=None,
+        avgLatency=round(avg_latency, 1) if avg_latency is not None else None,
         status=_status_from_fail_rate(fail_rate),
         trend=trend,
         description=guardrail_info.get("description"),

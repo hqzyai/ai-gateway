@@ -47,6 +47,47 @@ def test_native_guardrail_action_preserves_masking(entry, expected):
 
 
 @pytest.mark.asyncio
+async def test_usage_tracking_persists_measured_guardrail_latency():
+    from litellm.proxy.guardrails.usage_tracking import process_spend_logs_guardrail_usage
+
+    metrics_table = MagicMock()
+    metrics_table.find_unique = AsyncMock(return_value=None)
+    metrics_table.upsert = AsyncMock()
+    index_table = MagicMock()
+    index_table.create_many = AsyncMock()
+
+    with (
+        patch(
+            "litellm.proxy.guardrails.usage_tracking.DailyGuardrailMetricsRepository",
+            return_value=MagicMock(table=metrics_table),
+        ),
+        patch(
+            "litellm.proxy.guardrails.usage_tracking.SpendLogGuardrailIndexRepository",
+            return_value=MagicMock(table=index_table),
+        ),
+    ):
+        await process_spend_logs_guardrail_usage(
+            MagicMock(),
+            [
+                {
+                    "request_id": "request-1",
+                    "startTime": datetime(2026, 4, 25),
+                    "metadata": {
+                        "guardrail_information": [
+                            {"guardrail_id": "guardrail-1", "guardrail_status": "success", "duration": 0.002},
+                            {"guardrail_id": "guardrail-1", "guardrail_status": "success", "duration": 0.006},
+                        ]
+                    },
+                }
+            ],
+        )
+
+    data = metrics_table.upsert.await_args.kwargs["data"]
+    assert data["create"]["avg_latency_ms"] == 4.0
+    assert data["update"]["avg_latency_ms"] == 4.0
+
+
+@pytest.mark.asyncio
 async def test_usage_action_filter_scans_before_pagination():
     from types import SimpleNamespace
     from litellm.proxy.guardrails.usage_endpoints import _collect_usage_log_page
@@ -69,6 +110,8 @@ async def test_usage_action_filter_scans_before_pagination():
     assert [entry.reason for entry in entries] == ["phone", "phone"]
     assert total == 2
     assert [call.kwargs["skip"] for call in prisma.db.litellm_spendlogguardrailindex.find_many.await_args_list] == [0, 200]
+
+
 # Query() defaults don't resolve to None when the handler is called directly.
 START, END = "2026-04-20", "2026-04-27"
 
@@ -107,7 +150,14 @@ def _db_row(guardrail_id: str = "db-1", name: str = "db-guard", provider: str = 
     return row
 
 
-def _metric(guardrail_id: str, date: str = "2026-04-25", requests: int = 10, passed: int = 8, blocked: int = 2) -> Any:
+def _metric(
+    guardrail_id: str,
+    date: str = "2026-04-25",
+    requests: int = 10,
+    passed: int = 8,
+    blocked: int = 2,
+    avg_latency_ms: Optional[float] = None,
+) -> Any:
     m = MagicMock()
     m.guardrail_id = guardrail_id
     m.date = date
@@ -115,6 +165,7 @@ def _metric(guardrail_id: str, date: str = "2026-04-25", requests: int = 10, pas
     m.passed_count = passed
     m.blocked_count = blocked
     m.flagged_count = 0
+    m.avg_latency_ms = avg_latency_ms
     return m
 
 
@@ -232,9 +283,30 @@ async def test_overview_yaml_metrics_matched_by_logical_name():
     rows = [r for r in resp.rows if r.id == "yaml-uuid"]
     assert len(rows) == 1
     assert rows[0].requestsEvaluated == 10
+    assert rows[0].blockedCount == 2
     assert rows[0].failRate == 20.0
     # must not also emit an orphan row keyed by the logical name
     assert [r for r in resp.rows if r.id == "yaml-pii"] == []
+
+
+@pytest.mark.asyncio
+async def test_overview_and_detail_return_weighted_guardrail_latency():
+    metrics = [
+        _metric("yaml-pii", date="2026-04-25", requests=10, avg_latency_ms=2.0),
+        _metric("yaml-pii", date="2026-04-26", requests=30, avg_latency_ms=6.0),
+    ]
+    prisma = _prisma(find_unique=None, metrics=metrics)
+    handler = _config_handler(_yaml_guardrail(guardrail_id="yaml-uuid", name="yaml-pii"))
+    p1, p2 = _patches(prisma, handler)
+    with p1, p2:
+        overview = await guardrails_usage_overview(start_date=START, end_date=END, user_api_key_dict=ADMIN)
+        detail = await guardrails_usage_detail(
+            guardrail_id="yaml-uuid", start_date=START, end_date=END, user_api_key_dict=ADMIN
+        )
+
+    row = next(row for row in overview.rows if row.id == "yaml-uuid")
+    assert row.avgLatency == 5.0
+    assert detail.avgLatency == 5.0
 
 
 @pytest.mark.asyncio
