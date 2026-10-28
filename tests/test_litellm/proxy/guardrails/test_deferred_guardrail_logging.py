@@ -225,7 +225,7 @@ async def test_deferred_flag_stores_and_executes_closure():
     mock_logging_obj._enqueue_deferred_logging = None
 
     await litellm.acompletion(
-        model="gpt-3.5-turbo",
+        model="openai/gpt-3.5-turbo",
         messages=[{"role": "user", "content": "hi"}],
         mock_response="Hello!",
         litellm_logging_obj=mock_logging_obj,
@@ -279,7 +279,7 @@ async def test_no_flag_fires_create_task_normally():
 
     with patch("asyncio.create_task", side_effect=tracking_create_task):
         await litellm.acompletion(
-            model="gpt-3.5-turbo",
+            model="openai/gpt-3.5-turbo",
             messages=[{"role": "user", "content": "hi"}],
             mock_response="Hello!",
         )
@@ -435,6 +435,65 @@ def test_flush_deferred_async_logging_swallows_closure_errors():
 
 class TestDeferredStreamingClosure:
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("wrapped", [False, True])
+    @pytest.mark.parametrize("action", ["BLOCK", "MASK"])
+    async def test_managed_filter_logs_delivered_response_after_detection(self, monkeypatch, wrapped, action):
+        from litellm.proxy.guardrails.guardrail_hooks.litellm_content_filter.content_filter import ContentFilterGuardrail
+        from litellm.proxy.guardrails.guardrail_registry import IN_MEMORY_GUARDRAIL_HANDLER
+        from litellm.litellm_core_utils.chat_completion_agentic_streaming import AgenticChatCompletionStreamingIterator
+        from litellm.router_utils.add_retry_fallback_headers import HiddenParamsAsyncIteratorWrapper
+
+        monkeypatch.setenv("AGENTOS_GUARDRAIL_MODE", "true")
+        guard = ContentFilterGuardrail(
+            guardrail_name="audit-test", event_hook="post_call", default_on=True,
+            patterns=[{"pattern_type": "regex", "name": "cn_mobile", "pattern": r"1[3-9]\d{9}", "action": action}],
+        )
+        monkeypatch.setattr(litellm, "callbacks", [guard])
+        monkeypatch.setitem(IN_MEMORY_GUARDRAIL_HANDLER.IN_MEMORY_GUARDRAILS, "audit-test", {
+            "guardrail_name": "audit-test", "litellm_params": {"guardrail": "litellm_content_filter"},
+            "guardrail_info": {"agentos_enabled": True},
+        })
+        metadata = {"guardrails": ["audit-test"], "_agentos_policy_guardrails": ["audit-test"]}
+        messages = [{"role": "user", "content": "test"}]
+        stream = await litellm.acompletion(
+            model="openai/gpt-4o-mini", messages=messages, mock_response="13800138000",
+            stream=True, metadata=metadata,
+        )
+        log = stream.logging_obj
+        response = HiddenParamsAsyncIteratorWrapper(AgenticChatCompletionStreamingIterator(
+            stream, model="openai/gpt-4o-mini", messages=messages, optional_params={}, kwargs={},
+            logging_obj=log, custom_llm_provider="openai",
+        )) if wrapped else stream
+        source = ProxyBaseLLMRequestProcessing._guardrail_logging_stream(response)
+        assert source is stream
+        data = {"metadata": metadata, "litellm_logging_obj": log}
+        done = asyncio.Event()
+
+        async def complete(assembled, cache_hit):
+            await log.dispatch_success_handlers(assembled, cache_hit=cache_hit, prefer_async_handlers=True)
+            done.set()
+
+        log._guardrail_stream_source = source
+        log._on_deferred_stream_complete = complete
+        output = []
+        async for chunk in ProxyLogging(DualCache()).async_post_call_streaming_iterator_hook(
+            response, UserAPIKeyAuth(), data
+        ):
+            output.extend(choice.delta.content or "" for choice in chunk.choices)
+            await asyncio.sleep(0)
+            assert not done.is_set()
+        await asyncio.wait_for(done.wait(), timeout=5)
+        payload = log.model_call_details["standard_logging_object"]
+        info = payload["guardrail_information"]
+        assert info and info[0]["guardrail_name"] == "audit-test"
+        if action == "BLOCK":
+            assert info[0]["guardrail_status"] == "guardrail_intervened"
+            assert "触发护栏" in "".join(output)
+        assert "13800138000" not in "".join(output)
+        logged = log.model_call_details["async_complete_streaming_response"]
+        assert logged.choices[0].message.content == "".join(output)
+
+    @pytest.mark.asyncio
     async def test_streaming_stores_deferred_args(self):
         """When _on_deferred_stream_complete is set, CSW stores the assembled
         response args on logging_obj instead of calling the closure directly."""
@@ -442,7 +501,7 @@ class TestDeferredStreamingClosure:
         mock_logging_obj._on_deferred_stream_complete = MagicMock()
 
         resp = await litellm.acompletion(
-            model="gpt-3.5-turbo",
+            model="openai/gpt-3.5-turbo",
             messages=[{"role": "user", "content": "hi"}],
             mock_response="Hello!",
             stream=True,
@@ -470,7 +529,7 @@ class TestDeferredStreamingClosure:
             return task
 
         resp = await litellm.acompletion(
-            model="gpt-3.5-turbo",
+            model="openai/gpt-3.5-turbo",
             messages=[{"role": "user", "content": "hi"}],
             mock_response="Hello!",
             stream=True,
@@ -547,7 +606,7 @@ class TestDeferredStreamingClosure:
 
         with patch("litellm.callbacks", [tracking_guardrail, tracking_logger]):
             resp = await litellm.acompletion(
-                model="gpt-3.5-turbo",
+                model="openai/gpt-3.5-turbo",
                 messages=[{"role": "user", "content": "hi"}],
                 mock_response="Hello!",
                 stream=True,
@@ -759,7 +818,7 @@ class TestDeferredStreamingClosure:
 
         with patch("litellm.callbacks", [guardrail]):
             resp = await litellm.acompletion(
-                model="gpt-3.5-turbo",
+                model="openai/gpt-3.5-turbo",
                 messages=[{"role": "user", "content": "hi"}],
                 mock_response="Hello!",
                 stream=True,

@@ -2555,9 +2555,34 @@ class ProxyLogging:
                     ),
                 )
 
+        logging_obj = request_data.get("litellm_logging_obj")
+        defer_logging = getattr(logging_obj, "_on_deferred_stream_complete", None) is not None
+        delivered_chunks = []
         # Actually iterate through the chained async generator and yield chunks
         async for chunk in current_response:
+            if defer_logging:
+                delivered_chunks.append(chunk)
             yield chunk
+
+        if defer_logging and delivered_chunks:
+            from litellm.integrations.custom_guardrail import _sync_guardrail_info_to_logging_obj
+
+            _sync_guardrail_info_to_logging_obj(request_data, logging_obj)
+            delivered = litellm.stream_chunk_builder(chunks=delivered_chunks)
+            deferred_args = getattr(logging_obj, "_deferred_stream_complete_args", None)
+            if deferred_args is None:
+                source = getattr(logging_obj, "_guardrail_stream_source", None)
+                source_chunks = getattr(source, "chunks", None)
+                original = litellm.stream_chunk_builder(chunks=source_chunks) if source_chunks else delivered
+                cache_hit = None
+            else:
+                original, cache_hit = deferred_args
+            if original is not None and delivered is not None:
+                logging_obj._deferred_stream_complete_args = (
+                    original.model_copy(update={"choices": delivered.choices}),
+                    cache_hit,
+                )
+            logging_obj._guardrail_stream_source = None
 
         # Fire deferred logging AFTER all guardrail end-of-stream blocks
         # completed.  unified_guardrail writes guardrail_information during

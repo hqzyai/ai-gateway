@@ -1741,11 +1741,8 @@ class ProxyBaseLLMRequestProcessing:
                 # assembled response, then fires success logging.
                 # Only for CustomStreamWrapper — raw async generators from
                 # passthrough routes bypass CSW and would orphan the closure.
-                from litellm.litellm_core_utils.streaming_handler import (
-                    CustomStreamWrapper,
-                )
-
-                if _post_call_guardrails_active and isinstance(response, CustomStreamWrapper):
+                guardrail_stream = self._guardrail_logging_stream(response)
+                if _post_call_guardrails_active and guardrail_stream is not None:
                     # Intentionally a live reference (not a copy) — mirrors
                     # ProxyLogging.post_call_success_hook which also mutates
                     # data["guardrail_to_apply"] during iteration.
@@ -1763,6 +1760,7 @@ class ProxyBaseLLMRequestProcessing:
                         )
 
                     logging_obj._on_deferred_stream_complete = _on_deferred_stream_complete  # type: ignore[union-attr]
+                    logging_obj._guardrail_stream_source = guardrail_stream
 
                 if route_type == "allm_passthrough_route":
                     # Check if response is an async generator
@@ -2187,6 +2185,16 @@ class ProxyBaseLLMRequestProcessing:
         if "stream" in data and data["stream"] is True:
             return True
         return False
+
+    @staticmethod
+    def _guardrail_logging_stream(response: object) -> Optional[litellm.CustomStreamWrapper]:
+        from litellm.litellm_core_utils.chat_completion_agentic_streaming import AgenticChatCompletionStreamingIterator
+        from litellm.litellm_core_utils.streaming_handler import CustomStreamWrapper
+        from litellm.router_utils.add_retry_fallback_headers import HiddenParamsAsyncIteratorWrapper
+
+        if isinstance(response, (AgenticChatCompletionStreamingIterator, HiddenParamsAsyncIteratorWrapper)):
+            return ProxyBaseLLMRequestProcessing._guardrail_logging_stream(response._inner)
+        return response if isinstance(response, CustomStreamWrapper) else None
 
     @staticmethod
     def _has_post_call_guardrails() -> bool:
