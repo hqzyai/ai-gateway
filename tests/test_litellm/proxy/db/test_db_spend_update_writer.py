@@ -1995,6 +1995,28 @@ async def test_daily_transaction_compression_saved_tokens_zero_when_absent():
 
 
 @pytest.mark.asyncio
+async def test_daily_transaction_uses_recorded_savings_snapshot():
+    writer = DBSpendUpdateWriter()
+    prisma = MagicMock()
+    prisma.get_request_status = MagicMock(return_value="success")
+    payload = {
+        "request_id": "snapshot", "user": "user", "startTime": "2026-10-29T00:00:00",
+        "api_key": "key", "model": "unknown", "custom_llm_provider": "openai", "model_group": "unknown",
+        "prompt_tokens": 100, "completion_tokens": 10, "spend": 1,
+        "metadata": json.dumps({"optimization_savings": {
+            "compression_savings_spend": -0.2, "compression_gross_savings_spend": 0,
+            "compression_extra_input_spend": 0.2, "prompt_caching_savings_spend": 0.05,
+        }}),
+    }
+    transaction = await writer._common_add_spend_log_transaction_to_daily_transaction(
+        payload=payload, prisma_client=prisma, type="user",
+    )
+    assert transaction["compression_savings_spend"] == -0.2
+    assert transaction["compression_extra_input_spend"] == 0.2
+    assert transaction["prompt_caching_savings_spend"] == 0.05
+
+
+@pytest.mark.asyncio
 async def test_daily_transaction_preserves_headroom_net_loss_and_keeps_cached_tokens():
     writer = DBSpendUpdateWriter()
     mock_prisma = MagicMock()

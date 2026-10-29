@@ -62,7 +62,7 @@ from litellm.proxy.route_llm_request import ROUTE_ENDPOINT_MAPPING
 from litellm.proxy.spend_tracking.compression_savings import (
     extract_compression_token_savings,
 )
-from litellm.proxy.spend_tracking.savings import compute_savings_spend
+from litellm.proxy.spend_tracking.savings import SavingsSpend, compute_savings_spend
 from litellm.proxy.spend_tracking.spend_log_error_logger import spend_log_error
 
 if TYPE_CHECKING:
@@ -1894,13 +1894,23 @@ class DBSpendUpdateWriter:
 
             cache_read_input_tokens = _extract_cache_read_tokens(usage_obj)
             compression_token_savings = extract_compression_token_savings(_metadata)
-            savings_spend = compute_savings_spend(
-                model=payload.get("model", None),
-                custom_llm_provider=payload.get("custom_llm_provider", None),
-                compression_saved_tokens=compression_token_savings.net_saved,
-                compression_gross_saved_tokens=compression_token_savings.gross_saved,
-                compression_extra_input_tokens=compression_token_savings.extra_input,
-                cache_read_input_tokens=cache_read_input_tokens,
+            saved_amounts = _metadata.get("optimization_savings")
+            savings_spend = (
+                SavingsSpend(
+                    compression=saved_amounts.get("compression_savings_spend") or 0.0,
+                    compression_gross=saved_amounts.get("compression_gross_savings_spend") or 0.0,
+                    compression_extra_input=saved_amounts.get("compression_extra_input_spend") or 0.0,
+                    prompt_caching=saved_amounts.get("prompt_caching_savings_spend") or 0.0,
+                )
+                if isinstance(saved_amounts, dict)
+                else compute_savings_spend(
+                    model=payload.get("model", None),
+                    custom_llm_provider=payload.get("custom_llm_provider", None),
+                    compression_saved_tokens=compression_token_savings.net_saved,
+                    compression_gross_saved_tokens=compression_token_savings.gross_saved,
+                    compression_extra_input_tokens=compression_token_savings.extra_input,
+                    cache_read_input_tokens=cache_read_input_tokens,
+                )
             )
 
             daily_transaction = BaseDailySpendTransaction(

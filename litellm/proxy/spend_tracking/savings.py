@@ -8,10 +8,85 @@ are known) and summed into the daily tables; tokens cannot be priced after they
 have been aggregated across models.
 """
 
+import math
+from collections.abc import Mapping
 from typing import NamedTuple
+
+from typing_extensions import TypedDict
 
 import litellm
 from litellm._logging import verbose_proxy_logger
+
+from .compression_savings import extract_compression_token_savings
+
+
+class RecordedSavings(TypedDict, total=False):
+    compression_savings_spend: float | None
+    compression_gross_savings_spend: float | None
+    compression_extra_input_spend: float | None
+    prompt_caching_savings_spend: float | None
+
+
+def _mapping(value: object) -> Mapping[str, object]:
+    return value if isinstance(value, Mapping) else RecordedSavings()
+
+
+def _amount(value: object) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        return None
+    try:
+        parsed = float(value)
+    except ValueError:
+        return None
+    return parsed if math.isfinite(parsed) else None
+
+
+def _price(info: Mapping[str, object], name: str, tokens: float) -> float | None:
+    names = (*(f"{name}_above_{limit}k_tokens" for limit in (512, 272, 200, 128) if tokens > limit * 1000), name)
+    return next((value for key in names if (value := _amount(info.get(key))) is not None and value >= 0), None)
+
+
+def _token_amount(count: int, price: float | None) -> float | None:
+    return 0.0 if count == 0 else count * price if price is not None else None
+
+
+def _recorded_amount(existing: Mapping[str, object], name: str, calculated: float | None) -> float | None:
+    return _amount(existing[name]) if name in existing else calculated
+
+
+def recorded_savings(metadata: Mapping[str, object]) -> RecordedSavings:
+    usage = _mapping(metadata.get("usage_object"))
+    details = _mapping(usage.get("prompt_tokens_details"))
+    info = _mapping(_mapping(metadata.get("model_map_information")).get("model_map_value"))
+    costs = _mapping(metadata.get("cost_breakdown"))
+    existing = _mapping(metadata.get("optimization_savings"))
+    tokens = _amount(usage.get("prompt_tokens")) or _amount(usage.get("input_tokens")) or 0
+    input_price = _price(info, "input_cost_per_token", tokens)
+    cache_price = _price(info, "cache_read_input_token_cost", tokens)
+    cached = max(_amount(usage.get("cache_read_input_tokens")) or _amount(details.get("cached_tokens")) or 0, 0)
+    cache_cost = _amount(costs.get("cache_read_cost"))
+    compression = extract_compression_token_savings(metadata)
+    cache_amount = (
+        0.0
+        if cached == 0
+        else max(0.0, cached * input_price - cache_cost)
+        if input_price is not None and cache_cost is not None and cache_cost >= 0
+        else cached * max(0.0, input_price - cache_price)
+        if input_price is not None and cache_price is not None
+        else None
+    )
+    return RecordedSavings(
+        compression_savings_spend=_recorded_amount(
+            existing, "compression_savings_spend", _token_amount(compression.net_saved, input_price)
+        ),
+        compression_gross_savings_spend=_recorded_amount(
+            existing, "compression_gross_savings_spend", _token_amount(compression.gross_saved, input_price)
+        ),
+        compression_extra_input_spend=_recorded_amount(
+            existing, "compression_extra_input_spend", _token_amount(compression.extra_input, input_price)
+        ),
+        prompt_caching_savings_spend=_recorded_amount(existing, "prompt_caching_savings_spend", cache_amount),
+    )
 
 
 class SavingsSpend(NamedTuple):

@@ -107,6 +107,29 @@ def _number(expr: str) -> str:
     )
 
 
+def _optional_number(expr: str) -> str:
+    return _number(expr).removesuffix(" ELSE 0 END") + " END"
+
+
+def _price_expression(name: str) -> str:
+    tiers = tuple(
+        f"CASE WHEN prompt_tokens > {limit * 1000} THEN saved_prices->>'{name}_above_{limit}k_tokens' END"
+        for limit in (512, 272, 200, 128)
+    )
+    candidates = (*tiers, f"saved_prices->>'{name}'")
+    return (
+        "COALESCE("
+        + ", ".join(f"CASE WHEN ({value}) >= 0 THEN ({value}) END" for value in map(_optional_number, candidates))
+        + ")"
+    )
+
+
+def _savings_expression(name: str, calculated: str) -> str:
+    recorded = _optional_number(f"recorded_savings->>'{name}'")
+    legacy = _optional_number(f"COALESCE(extra->>'{name}', md->>'{name}', usage->>'{name}')")
+    return f"COALESCE(({recorded}), ({legacy}), ({calculated}))"
+
+
 def build_query(query: UsageQuery) -> tuple[str, tuple[object, ...]]:
     """Only trusted identifiers enter SQL; all caller values are bound parameters."""
     values: tuple[object, ...] = ()
@@ -171,6 +194,41 @@ def build_query(query: UsageQuery) -> tuple[str, tuple[object, ...]]:
     metrics += tuple(
         (name, _number(f"COALESCE(extra->>'{name}', md->>'{name}', usage->>'{name}')")) for name in EXTRA_METRICS
     )
+    cache_tokens = next(value for name, value in metrics if name == "cache_read_input_tokens")
+    compression_names = (
+        ("compression_savings_spend", "compression_saved_tokens"),
+        ("compression_gross_savings_spend", "compression_gross_saved_tokens"),
+        ("compression_extra_input_spend", "compression_extra_input_tokens"),
+    )
+    compression_amounts = tuple(
+        (name, _savings_expression(name, f"CASE WHEN ({value}) = 0 THEN 0 ELSE ({value}) * input_price END"))
+        for name, tokens in compression_names
+        for key, value in metrics
+        if key == tokens
+    )
+    amounts = (
+        *compression_amounts,
+        (
+            "prompt_caching_savings_spend",
+            _savings_expression(
+                "prompt_caching_savings_spend",
+                f"CASE WHEN ({cache_tokens}) = 0 THEN 0 "
+                f"WHEN input_price IS NULL THEN NULL "
+                f"WHEN actual_cache_cost >= 0 THEN GREATEST(0, ({cache_tokens}) * input_price - actual_cache_cost) "
+                f"WHEN cache_price IS NOT NULL THEN ({cache_tokens}) * GREATEST(0, input_price - cache_price) END",
+            ),
+        ),
+    )
+    amount_columns = ", ".join(f"({value}) AS saved_{name}" for name, value in amounts)
+    compression_unknown = " OR ".join(f"saved_{name} IS NULL" for name, _ in compression_names)
+    cache_unknown = "saved_prompt_caching_savings_spend IS NULL"
+    amount_names = frozenset(name for name, _ in amounts)
+    metrics = tuple((name, f"COALESCE(saved_{name}, 0)" if name in amount_names else value) for name, value in metrics)
+    metrics += (
+        ("compression_unpriced_requests", f"({compression_unknown})::int"),
+        ("cache_unpriced_requests", f"({cache_unknown})::int"),
+        ("savings_unpriced_requests", f"({compression_unknown} OR {cache_unknown})::int"),
+    )
     metric_columns = ", ".join(f"{expr} AS m_{name}" for name, expr in metrics)
     metric_sums = ", ".join(f"'{name}', SUM(m_{name})" for name, _ in metrics)
     shift = bind(query.timezone)
@@ -202,6 +260,9 @@ def build_query(query: UsageQuery) -> tuple[str, tuple[object, ...]]:
         "usage_object",
         "user_api_key_hash",
         "cache_read_input_tokens",
+        "model_map_information",
+        "cost_breakdown",
+        "optimization_savings",
         *EXTRA_METRICS,
     )
     metadata_columns = ", ".join(f"{key} jsonb" for key in metadata_keys)
@@ -241,13 +302,22 @@ def build_query(query: UsageQuery) -> tuple[str, tuple[object, ...]]:
             FROM scoped
         ), with_details AS MATERIALIZED (
             SELECT *, COALESCE(NULLIF({_object("usage->'prompt_tokens_details'")}, '{{}}'::jsonb),
-                               {_object("extra->'prompt_tokens_details'")}) AS token_details
+                               {_object("extra->'prompt_tokens_details'")}) AS token_details,
+                {_object("md #> '{model_map_information,model_map_value}'")} AS saved_prices,
+                {_object("md->'optimization_savings'")} AS recorded_savings
             FROM normalized WHERE {" AND ".join(predicates) or "TRUE"}
+        ), with_prices AS MATERIALIZED (
+            SELECT *, {_price_expression("input_cost_per_token")} AS input_price,
+                {_price_expression("cache_read_input_token_cost")} AS cache_price,
+                {_optional_number("md #>> '{cost_breakdown,cache_read_cost}'")} AS actual_cache_cost
+            FROM with_details
+        ), with_amounts AS MATERIALIZED (
+            SELECT *, {amount_columns} FROM with_prices
         ), filtered AS MATERIALIZED (
             SELECT *, {metric_columns},
                    ("startTime" - ({shift}::int * interval '1 minute'))::date::text AS day,
                    "user" AS user_id, md->>'user_api_key_hash' AS key_hash
-            FROM with_details
+            FROM with_amounts
         ), buckets AS (
             SELECT {dimensions}, jsonb_build_object({metric_sums}) AS metrics
             FROM filtered GROUP BY {dimensions}
@@ -259,7 +329,8 @@ def build_query(query: UsageQuery) -> tuple[str, tuple[object, ...]]:
         SELECT COALESCE((SELECT jsonb_agg(to_jsonb(buckets)) FROM buckets), '[]'::jsonb) AS buckets,
                COALESCE((SELECT jsonb_agg(to_jsonb(records) ORDER BY "startTime" DESC, request_id DESC)
                          FROM records), '[]'::jsonb) AS records,
-               (SELECT COUNT(*) FROM filtered) AS records_total
+               (SELECT COUNT(*) FROM filtered) AS records_total,
+               1 AS savings_schema_version
     """
     return sql, values
 

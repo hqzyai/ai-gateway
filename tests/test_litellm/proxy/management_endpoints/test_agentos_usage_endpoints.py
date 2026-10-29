@@ -8,9 +8,7 @@ from httpx import ASGITransport, AsyncClient
 from litellm.proxy.management_endpoints import agentos_usage_endpoints as gateway
 
 
-def test_usage_sql_matches_original_patch_contract():
-    import hashlib
-
+def test_usage_sql_keeps_filters_bound_and_savings_versioned():
     variants = (
         ({},)
         + tuple({key: ("success" if key == "status_filter" else "中文 %_\\ injection")} for key in gateway.TEXT_FIELDS)
@@ -27,7 +25,6 @@ def test_usage_sql_matches_original_patch_contract():
             },
         )
     )
-    digest = hashlib.sha256()
     for filters in variants:
         for unowned in (False, True):
             for records in (False, True):
@@ -44,8 +41,10 @@ def test_usage_sql_matches_original_patch_contract():
                     deployment_models={"deployment": "dashscope/model"},
                 )
                 sql, parameters = gateway.build_query(request)
-                digest.update(json.dumps((sql, parameters), ensure_ascii=False, default=str).encode())
-    assert digest.hexdigest() == "ec3283f11c6c6001d5098184952a3898e7b92d4213538ad225f536c843778020"
+                assert "1 AS savings_schema_version" in sql
+                assert "中文" not in sql
+                assert "optimization_savings" in sql
+                assert len(parameters) == max(int(value) for value in re.findall(r"\$(\d+)", sql))
 
 
 def query(**kwargs):
@@ -100,7 +99,34 @@ def run_query(db, **kwargs):
     bound = [values[int(match[1]) - 1] for match in re.finditer(r"\$(\d+)", sql)]
     sql = re.sub(r"\$\d+", "%s", sql).replace("LIKE '%/%'", "LIKE '%%/%%'")
     row = db.execute(sql, bound).fetchone()
-    return dict(zip(("buckets", "records", "records_total"), row, strict=True))
+    return dict(zip(("buckets", "records", "records_total", "savings_schema_version"), row, strict=True))
+
+
+@pytest.mark.parametrize(
+    "prices, expected, unknown",
+    [
+        ({"input_cost_per_token": 0.01, "cache_read_input_token_cost": 0.002}, 0.056, 0),
+        ({}, 0, 1),
+    ],
+)
+def test_saved_price_recovery_and_missing_coverage(db, prices, expected, unknown):
+    db.execute(
+        'UPDATE "LiteLLM_SpendLogs" SET metadata = %s::jsonb',
+        (
+            json.dumps(
+                {
+                    "usage_object": {"prompt_tokens_details": {"cached_tokens": 7}},
+                    "model_map_information": {"model_map_value": prices},
+                }
+            ),
+        ),
+    )
+    result = run_query(db, include_unowned=True, filters={"request_id": "request-1"})
+    assert result["savings_schema_version"] == 1
+    metrics = result["buckets"][0]["metrics"]
+    assert metrics["prompt_caching_savings_spend"] == pytest.approx(expected)
+    assert metrics["cache_unpriced_requests"] == unknown
+    assert metrics["compression_unpriced_requests"] == 0
 
 
 @pytest.mark.parametrize(

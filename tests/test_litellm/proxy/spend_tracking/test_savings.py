@@ -6,7 +6,58 @@ sys.path.insert(0, os.path.abspath("../../../.."))
 import pytest
 
 import litellm
-from litellm.proxy.spend_tracking.savings import compute_savings_spend
+from litellm.proxy.spend_tracking.savings import compute_savings_spend, recorded_savings
+
+
+@pytest.mark.parametrize("actual_cost, expected", [(None, 0.008), (0.003, 0.007)])
+def test_recorded_cache_savings_use_saved_prices(actual_cost, expected):
+    metadata = {
+        "usage_object": {"prompt_tokens": 2000, "prompt_tokens_details": {"cached_tokens": 1000}},
+        "model_map_information": {
+            "model_map_value": {
+                "input_cost_per_token": 0.00001,
+                "cache_read_input_token_cost": 0.000002,
+            }
+        },
+        "cost_breakdown": {} if actual_cost is None else {"cache_read_cost": actual_cost},
+    }
+    assert recorded_savings(metadata)["prompt_caching_savings_spend"] == pytest.approx(expected)
+
+
+def test_recorded_unknown_prices_are_not_zero_and_empty_usage_is_zero():
+    assert recorded_savings({"usage_object": {"cache_read_input_tokens": 100}})["prompt_caching_savings_spend"] is None
+    assert all(value == 0 for value in recorded_savings({}).values())
+
+
+def test_recorded_snapshot_wins_over_changed_prices():
+    assert (
+        recorded_savings(
+            {
+                "optimization_savings": {"prompt_caching_savings_spend": 0.25},
+                "usage_object": {"cache_read_input_tokens": 100},
+            }
+        )["prompt_caching_savings_spend"]
+        == 0.25
+    )
+
+
+def test_recorded_signed_compression_and_long_context_prices():
+    amounts = recorded_savings(
+        {
+            "compression_savings": {"tokens_saved": -10},
+            "usage_object": {"prompt_tokens": 200000, "cache_read_input_tokens": 100},
+            "model_map_information": {
+                "model_map_value": {
+                    "input_cost_per_token": 0.01,
+                    "input_cost_per_token_above_128k_tokens": 0.02,
+                    "cache_read_input_token_cost": 0.001,
+                }
+            },
+        }
+    )
+    assert amounts["compression_savings_spend"] == pytest.approx(-0.2)
+    assert amounts["compression_extra_input_spend"] == pytest.approx(0.2)
+    assert amounts["prompt_caching_savings_spend"] == pytest.approx(1.9)
 
 
 def _anthropic_costs(model: str) -> tuple[float, float]:

@@ -1291,6 +1291,8 @@ def test_get_spend_logs_metadata_persists_hermes_session_analytics_fields():
     assert result["compression_gross_saved_tokens"] == 300
     assert result["compression_extra_input_tokens"] == 0
     assert result["compression_requests"] == 1
+    assert result["optimization_savings"]["compression_savings_spend"] is None
+    assert result["optimization_savings"]["prompt_caching_savings_spend"] == 0
 
 
 def test_get_spend_logs_metadata_promotes_nested_hermes_session_id():

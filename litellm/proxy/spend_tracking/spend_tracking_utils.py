@@ -28,6 +28,7 @@ from litellm.proxy._types import SpendLogsMetadata, SpendLogsPayload
 from litellm.proxy.spend_tracking.compression_savings import (
     extract_compression_token_savings,
 )
+from litellm.proxy.spend_tracking.savings import recorded_savings
 from litellm.proxy.spend_tracking.spend_log_error_logger import spend_log_error
 from litellm.proxy.utils import PrismaClient, hash_token
 from litellm.types.utils import (
@@ -174,6 +175,7 @@ def _get_spend_logs_metadata(
     clean_metadata["compression_gross_saved_tokens"] = compression.gross_saved
     clean_metadata["compression_extra_input_tokens"] = compression.extra_input
     clean_metadata["compression_requests"] = 1 if compression.gross_saved > 0 else 0
+    clean_metadata["optimization_savings"] = recorded_savings(clean_metadata)
 
     return clean_metadata
 

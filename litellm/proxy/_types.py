@@ -1,6 +1,7 @@
 import enum
 import json
 import os
+from collections.abc import Mapping
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, Union
 
@@ -3279,6 +3280,7 @@ class SpendLogsMetadata(TypedDict):
     compression_gross_saved_tokens: int | None
     compression_extra_input_tokens: int | None
     compression_requests: int | None
+    optimization_savings: NotRequired[Mapping[str, float | None]]
 
 
 class SpendLogsPayload(TypedDict):
