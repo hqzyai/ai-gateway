@@ -3255,6 +3255,7 @@ class SpendLogsMetadata(TypedDict):
     user_api_key_user_id: Optional[str]
     user_api_key_team_alias: Optional[str]
     spend_logs_metadata: Optional[dict]  # special param to log k,v pairs to spendlogs for a call
+    user_api_key_request_route: NotRequired[str | None]
     requester_ip_address: Optional[str]
     litellm_call_id: Optional[str]
     applied_guardrails: Optional[List[str]]

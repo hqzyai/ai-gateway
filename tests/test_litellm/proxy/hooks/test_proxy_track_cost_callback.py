@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 
@@ -17,6 +18,43 @@ from litellm.proxy.hooks.proxy_track_cost_callback import (
     _should_track_cost_callback,
     _update_database_and_spend_counters,
 )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("route,call_type,expected", [
+    ("/v1/chat/completions", None, "acompletion"),
+    ("/chat/completions", "", "acompletion"),
+    ("/v1/completions", None, "atext_completion"),
+    ("/v1/responses", None, "aresponses"),
+    ("/v1/embeddings", None, "aembedding"),
+    ("/mcp/call_tool", None, "call_mcp_tool"),
+    ("/v1/chat/completions", "pass_through", "pass_through"),
+    (None, None, None),
+])
+async def test_failure_log_persists_call_type_from_actual_route(route, call_type, expected):
+    from litellm.proxy.spend_tracking.spend_tracking_utils import get_logging_payload
+
+    logger = _ProxyDBLogger()
+    request_data = {"model": "requested-model", "call_type": call_type}
+    with patch(
+        "litellm.proxy.db.db_spend_update_writer.DBSpendUpdateWriter.update_database",
+        new_callable=AsyncMock,
+    ) as write:
+        await logger.async_post_call_failure_hook(
+            request_data=request_data,
+            original_exception=Exception("model access denied"),
+            user_api_key_dict=UserAPIKeyAuth(request_route=route),
+        )
+    write.assert_awaited_once()
+    recorded = write.call_args.kwargs["kwargs"]
+    assert recorded.get("call_type") == expected
+    assert recorded["litellm_params"]["metadata"]["status"] == "failure"
+    assert write.call_args.kwargs["response_cost"] == 0
+    payload = get_logging_payload(recorded, {}, datetime.now(), datetime.now())
+    assert payload["call_type"] == (expected or "")
+    metadata = json.loads(payload["metadata"])
+    assert metadata.get("user_api_key_request_route") == route
+    assert metadata["status"] == "failure"
 
 
 @pytest.mark.asyncio

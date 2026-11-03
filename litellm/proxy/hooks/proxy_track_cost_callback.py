@@ -6,6 +6,7 @@ from typing import Any, List, Optional, Union, cast
 import litellm
 from litellm._logging import verbose_proxy_logger
 from litellm.integrations.custom_logger import CustomLogger
+from litellm.litellm_core_utils.api_route_to_call_types import get_call_types_for_route
 from litellm.litellm_core_utils.core_helpers import (
     _get_parent_otel_span_from_kwargs,
     get_litellm_metadata_from_kwargs,
@@ -145,6 +146,13 @@ class _ProxyDBLogger(CustomLogger):
                 )
             if request_data.get("litellm_trace_id") is None:
                 request_data["litellm_trace_id"] = getattr(_litellm_logging_obj, "litellm_trace_id", None)
+
+        if not request_data.get("call_type"):
+            route_call_types = get_call_types_for_route(request_route) if request_route else None
+            if route_call_types:
+                request_data["call_type"] = route_call_types[0].value
+        if request_route:
+            existing_metadata["user_api_key_request_route"] = request_route
 
         # Use the actual request start time from the logging object so that
         # failed requests record the real duration instead of 0.
