@@ -22,7 +22,7 @@ def test_latency_observation_matches_cold_start_and_exclusion(recorder):
     observations.capture_latency_decision(
         "group", candidates,
         {"cold": {"latency": [0]}, "fast": {"latency": [0.1], "minute": {"rpm": 1}}, "slow": {"latency": [0.3, 0.5]}},
-        candidates[0], stream=False, lowest_latency_buffer=0.1, input_tokens=0, precise_minute="minute",
+        candidates[0], lowest_latency_buffer=0.1, input_tokens=0, precise_minute="minute",
     )
     event = recorder.enqueue.call_args.args[0]
     assert event.config_version == 7
@@ -32,18 +32,18 @@ def test_latency_observation_matches_cold_start_and_exclusion(recorder):
     assert slow.metric_value == 0.4 and not slow.preferred
 
 
-def test_latency_ttft_mode_uses_same_float_samples(recorder):
+def test_latency_uses_total_duration_samples_instead_of_ttft(recorder):
     candidates = [deployment("a"), deployment("b")]
     observations.capture_latency_decision(
         "group", candidates,
         {"a": {"latency": [9.0], "time_to_first_token": [0, 0.1, 0.3]}, "b": {"latency": [0.22]}},
-        candidates[0], stream=True, lowest_latency_buffer=0.2, input_tokens=0, precise_minute="minute",
+        candidates[1], lowest_latency_buffer=0.2, input_tokens=0, precise_minute="minute",
     )
     first, second = recorder.enqueue.call_args.args[0].candidates
-    assert first.metric_value == pytest.approx(0.2) and first.sample_count == 2
-    assert first.metric_mode == "ttft_per_output_token"
+    assert first.metric_value == 9.0 and first.sample_count == 1
+    assert first.metric_mode == "latency_per_output_token"
     assert second.metric_mode == "latency_per_output_token"
-    assert first.preferred and second.preferred
+    assert not first.preferred and second.preferred
 
 
 def test_usage_observation_excludes_limits_and_preserves_zero(recorder):

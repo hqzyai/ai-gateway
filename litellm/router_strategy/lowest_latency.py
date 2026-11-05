@@ -428,20 +428,10 @@ class LowestLatencyLoggingHandler(CustomLogger):
                 or float("inf")
             )
             item_latency = item_map.get("latency", [])
-            item_ttft_latency = item_map.get("time_to_first_token", [])
             item_rpm = item_map.get(precise_minute, {}).get("rpm", 0)
             item_tpm = item_map.get(precise_minute, {}).get("tpm", 0)
 
-            # get average latency or average ttft (depending on streaming/non-streaming)
-            use_ttft = (
-                request_kwargs is not None
-                and request_kwargs.get("stream", None) is not None
-                and request_kwargs["stream"] is True
-                and len(item_ttft_latency) > 0
-            )
-            samples = tuple(
-                value for value in (item_ttft_latency if use_ttft else item_latency) if isinstance(value, float)
-            )
+            samples = tuple(value for value in item_latency if isinstance(value, float))
             item_latency = sum(samples) / len(samples) if samples else 0.0
 
             # -------------- #
@@ -490,7 +480,6 @@ class LowestLatencyLoggingHandler(CustomLogger):
             healthy_deployments,
             request_count_dict,
             deployment,
-            stream=bool(request_kwargs and request_kwargs.get("stream")),
             lowest_latency_buffer=self.routing_args.lowest_latency_buffer,
             input_tokens=input_tokens,
             precise_minute=precise_minute,

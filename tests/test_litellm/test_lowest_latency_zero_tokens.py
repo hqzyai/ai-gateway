@@ -29,6 +29,25 @@ def test_cold_or_partial_latency_samples_remain_routable(samples, stream):
     assert result["model_info"]["id"] == "cold"
 
 
+@pytest.mark.parametrize("stream", (False, True))
+def test_latency_routing_uses_total_duration_instead_of_ttft(stream):
+    handler = LowestLatencyLoggingHandler(router_cache=DualCache())
+    deployments = [
+        {"model_info": {"id": identifier}, "litellm_params": {"model": "openai/test"}}
+        for identifier in ("slow", "fast")
+    ]
+    result = handler._get_available_deployments(
+        model_group="test", healthy_deployments=deployments, input="hello",
+        request_kwargs={"stream": stream},
+        request_count_dict={
+            "slow": {"latency": [0.02, 0.04], "time_to_first_token": [0.001]},
+            "fast": {"latency": [0.01], "time_to_first_token": [0.005]},
+        },
+    )
+    assert result is not None
+    assert result["model_info"]["id"] == "fast"
+
+
 def test_zero_completion_tokens_no_division_error():
     """
     Test that log_success_event handles zero completion tokens without ZeroDivisionError

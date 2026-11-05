@@ -200,13 +200,10 @@ def latency_candidate(
     deployment: Deployment,
     item: Mapping[str, JsonValue],
     selected_id: str,
-    stream: bool,
     input_tokens: int,
     minute: str,
 ) -> Candidate:
-    ttft = item.get("time_to_first_token")
-    use_ttft = stream and isinstance(ttft, list) and bool(ttft)
-    raw = ttft if use_ttft else item.get("latency")
+    raw = item.get("latency")
     samples = tuple(value for value in raw if isinstance(value, float)) if isinstance(raw, list) else ()
     usage = mapping(item.get(minute))
     tpm_limit = deployment.limit("tpm", truthy=True)
@@ -224,7 +221,7 @@ def latency_candidate(
         excluded_reason=reason,
         metric_value=sum(samples) / len(samples) if samples else 0.0,
         sample_count=len(samples),
-        metric_mode="ttft_per_output_token" if use_ttft else "latency_per_output_token",
+        metric_mode="latency_per_output_token",
         selected=deployment.model_info.id == selected_id,
     )
 
@@ -236,7 +233,6 @@ def capture_latency_decision(
     request_count_dict: object,
     selected: object,
     *,
-    stream: bool,
     lowest_latency_buffer: float,
     input_tokens: int,
     precise_minute: str,
@@ -245,9 +241,7 @@ def capture_latency_decision(
     choice = Deployment.model_validate(selected)
     counts = TypeAdapter(dict[str, JsonValue]).validate_python(request_count_dict)
     rows = tuple(
-        latency_candidate(
-            d, mapping(counts.get(d.model_info.id)), choice.model_info.id, stream, input_tokens, precise_minute
-        )
+        latency_candidate(d, mapping(counts.get(d.model_info.id)), choice.model_info.id, input_tokens, precise_minute)
         for d in deployments
     )
     record(model_group, "latency-based-routing", deployments, choice, preferred(rows, lowest_latency_buffer))

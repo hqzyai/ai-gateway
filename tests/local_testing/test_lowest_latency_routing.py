@@ -821,15 +821,6 @@ async def test_lowest_latency_routing_buffer(buffer):
 @pytest.mark.parametrize("sync_mode", [True, False])
 @pytest.mark.asyncio
 async def test_lowest_latency_routing_time_to_first_token(sync_mode):
-    """
-    If a deployment has
-    - a fast time to first token
-    - slow latency/output token
-
-    test if:
-    - for streaming, the deployment with fastest time to first token is picked
-    - for non-streaming, fastest overall deployment is picked
-    """
     model_list = [
         {
             "model_name": "azure-model",
@@ -926,12 +917,6 @@ async def test_lowest_latency_routing_time_to_first_token(sync_mode):
             end_time=end_time,
         )
 
-    """
-    TESTING
-
-    - expect deployment 1 to be picked for streaming
-    - expect deployment 2 to be picked for non-streaming
-    """
     # print(router.lowesttpm_logger.get_available_deployments(model_group="azure-model"))
     selected_deployments = {}
     for _ in range(3):
@@ -955,7 +940,7 @@ async def test_lowest_latency_routing_time_to_first_token(sync_mode):
         ] = 1
 
     assert len(selected_deployments.keys()) == 1
-    assert "1" in list(selected_deployments.keys())
+    assert "2" in list(selected_deployments.keys())
 
 
 def test_latency_list_trimming_discards_oldest_entry():
