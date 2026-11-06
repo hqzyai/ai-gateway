@@ -259,6 +259,9 @@ def build_query(query: UsageQuery) -> tuple[str, tuple[object, ...]]:
         "additional_usage_values",
         "usage_object",
         "user_api_key_hash",
+        "user_api_key_user_id",
+        "user_api_key_team_id",
+        "user_api_key_org_id",
         "cache_read_input_tokens",
         "model_map_information",
         "cost_breakdown",
@@ -270,7 +273,8 @@ def build_query(query: UsageQuery) -> tuple[str, tuple[object, ...]]:
     sql = f"""
         WITH scoped AS MATERIALIZED (
             SELECT logs.request_id, logs."startTime", logs."endTime", logs.model, logs.model_group, logs.model_id,
-                   logs.api_key, logs."user", logs.session_id, logs.end_user, logs.call_type, logs.status,
+                   logs.api_key, logs."user", logs.team_id, logs.organization_id,
+                   logs.session_id, logs.end_user, logs.call_type, logs.status,
                    logs.custom_llm_provider, logs.spend, logs.total_tokens, logs.prompt_tokens,
                    logs.completion_tokens, logs.request_duration_ms,
                    jsonb_build_object({metadata_object}) AS md
@@ -291,7 +295,19 @@ def build_query(query: UsageQuery) -> tuple[str, tuple[object, ...]]:
                               THEN lower(split_part(md #>> '{{model_info,agentos_upstream_model}}', '/', 1)) END,
                          NULLIF(custom_llm_provider, ''), 'unknown') AS provider,
                 COALESCE(NULLIF(md->>'agentos_key_alias', ''), md->>'user_api_key_alias', '') AS key_alias,
-                COALESCE(NULLIF(status, ''), NULLIF(md->>'status', ''), 'success') AS status_filter,
+                CASE WHEN api_key IN (
+                    '9df37f5e7cbc3c391d872742b5f286c242e733a09add9eeaa4d26a599bd90b20',
+                    '75c57961c79bdf4f909caac56e266816d2bdb76af5c68dcf78c71ac4c74d0db1'
+                ) AND COALESCE(model, '') = '' AND COALESCE(call_type, '') = ''
+                    AND COALESCE(spend, 0) = 0 AND COALESCE("user", '') IN ('', 'default_user_id')
+                    AND COALESCE(team_id, '') = '' AND COALESCE(organization_id, '') = ''
+                    AND COALESCE(md->>'user_api_key_user_id', '') = ''
+                    AND COALESCE(md->>'user_api_key_team_id', '') = ''
+                    AND COALESCE(md->>'user_api_key_org_id', '') = ''
+                THEN CASE WHEN md #>> '{{error_information,error_code}}' = '401'
+                    AND md #>> '{{error_information,error_class}}' = 'KeyNotFoundError'
+                    THEN 'success' ELSE 'failure' END
+                ELSE COALESCE(NULLIF(status, ''), NULLIF(md->>'status', ''), 'success') END AS status_filter,
                 ({_object("md->'error_information'")})->>'error_code' AS error_code,
                 COALESCE(({_object("md->'error_information'")})->>'error_message',
                          CASE WHEN jsonb_typeof(md->'error_information') = 'string'

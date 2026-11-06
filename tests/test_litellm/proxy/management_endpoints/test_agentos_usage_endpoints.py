@@ -87,6 +87,7 @@ def db():
                 ),
             ),
         )
+        conn.execute('ALTER TABLE "LiteLLM_SpendLogs" ADD COLUMN team_id text, ADD COLUMN organization_id text')
         try:
             yield conn
         finally:
@@ -100,6 +101,40 @@ def run_query(db, **kwargs):
     sql = re.sub(r"\$\d+", "%s", sql).replace("LIKE '%/%'", "LIKE '%%/%%'")
     row = db.execute(sql, bound).fetchone()
     return dict(zip(("buckets", "records", "records_total", "savings_schema_version"), row, strict=True))
+
+
+@pytest.mark.parametrize("key", (
+    "9df37f5e7cbc3c391d872742b5f286c242e733a09add9eeaa4d26a599bd90b20",
+    "75c57961c79bdf4f909caac56e266816d2bdb76af5c68dcf78c71ac4c74d0db1",
+))
+@pytest.mark.parametrize("mismatch", (None, "key", "code", "class", "model", "call_type", "spend", "user", "team_id", "organization_id", "metadata_owner"))
+def test_system_check_status_matches_logs_before_filtering_and_aggregation(db, key, mismatch):
+    db.execute('DELETE FROM "LiteLLM_SpendLogs" WHERE request_id <> %s', ('request-1',))
+    error = {"error_code": "500" if mismatch == "code" else "401", "error_class": "Exception" if mismatch == "class" else "KeyNotFoundError"}
+    metadata = {"error_information": error}
+    if mismatch == "metadata_owner":
+        metadata["user_api_key_user_id"] = "alice"
+    db.execute('''UPDATE "LiteLLM_SpendLogs" SET api_key=%s, model=%s, call_type=%s, spend=%s,
+        "user"=%s, team_id=%s, organization_id=%s, metadata=%s::jsonb''', (
+        "other-key" if mismatch == "key" else key,
+        "model-a" if mismatch == "model" else "",
+        "acompletion" if mismatch == "call_type" else "",
+        0.25 if mismatch == "spend" else 0,
+        "alice" if mismatch == "user" else "default_user_id",
+        "team" if mismatch == "team_id" else None,
+        "org" if mismatch == "organization_id" else None,
+        json.dumps(metadata),
+    ))
+    result = run_query(db, include_unowned=True)
+    metrics = result["buckets"][0]["metrics"]
+    assert metrics["api_requests"] == 1
+    assert metrics["successful_requests"] == (1 if mismatch is None else 0)
+    assert metrics["failed_requests"] == (0 if mismatch is None else 1)
+    assert metrics["total_tokens"] == 30
+    assert metrics["spend"] == (0.25 if mismatch == "spend" else 0)
+    for status in ("success", "failure"):
+        filtered = run_query(db, include_unowned=True, filters={"status_filter": status}, include_records=True)
+        assert filtered["records_total"] == int(status == ("success" if mismatch is None else "failure"))
 
 
 @pytest.mark.parametrize(
