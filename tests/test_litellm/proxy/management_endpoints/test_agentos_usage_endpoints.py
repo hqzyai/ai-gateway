@@ -1,4 +1,5 @@
 import json
+import asyncio
 import os
 import re
 import sys
@@ -271,15 +272,121 @@ def test_query_parameters_never_become_sql():
     assert "MATERIALIZED" in sql
 
 
+@pytest.fixture
+def usage_database():
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, Mock
+
+    execute = AsyncMock(return_value=[{"buckets": [], "records": [], "records_total": 0}])
+    transaction = SimpleNamespace(query_raw=execute, execute_raw=AsyncMock())
+    context = AsyncMock()
+    context.__aenter__.return_value = transaction
+    return SimpleNamespace(tx=Mock(return_value=context)), transaction
+
+
+@pytest.mark.asyncio
+async def test_usage_singleflight_survives_one_waiter_cancellation(usage_database):
+    db, transaction = usage_database
+    started, release = asyncio.Event(), asyncio.Event()
+
+    async def execute(*args):
+        started.set()
+        await release.wait()
+        return [{"buckets": [], "records": [], "records_total": 0}]
+
+    transaction.query_raw.side_effect = execute
+    runner = gateway.UsageQueryRunner()
+    first = asyncio.create_task(runner.run(query(user_ids=["alice"]), db))
+    await started.wait()
+    second = asyncio.create_task(runner.run(query(user_ids=["alice"]), db))
+    await asyncio.sleep(0)
+    first.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await first
+    release.set()
+    assert (await second)["records_total"] == 0
+    transaction.query_raw.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_usage_capacity_rejects_other_scope_without_starting_another_query(usage_database):
+    db, transaction = usage_database
+    started, release = asyncio.Event(), asyncio.Event()
+
+    async def execute(*args):
+        started.set()
+        await release.wait()
+        return [{"buckets": [], "records": [], "records_total": 0}]
+
+    transaction.query_raw.side_effect = execute
+    runner = gateway.UsageQueryRunner(slots=asyncio.Semaphore(1))
+    first = asyncio.create_task(runner.run(query(user_ids=["alice"]), db))
+    await started.wait()
+    try:
+        with pytest.raises(gateway.HTTPException) as error:
+            await runner.run(query(user_ids=["bob"]), db)
+        assert error.value.status_code == 503
+        assert error.value.detail == "usage_query_busy"
+        transaction.query_raw.assert_awaited_once()
+    finally:
+        release.set()
+        await first
+    assert (await runner.run(query(user_ids=["bob"]), db))["records_total"] == 0
+    assert transaction.query_raw.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_database_timeout_releases_capacity_and_is_not_cached(usage_database):
+    from prisma.errors import RawQueryError
+
+    db, transaction = usage_database
+    transaction.query_raw.side_effect = RawQueryError({"user_facing_error": {"meta": {"message": "canceling statement due to statement timeout"}}})
+    runner = gateway.UsageQueryRunner(slots=asyncio.Semaphore(1))
+    with pytest.raises(gateway.HTTPException) as error:
+        await runner.run(query(), db)
+    assert error.value.status_code == 504
+    transaction.query_raw.side_effect = None
+    assert (await runner.run(query(), db))["records_total"] == 0
+    assert transaction.query_raw.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_real_database_deadline_stops_query_and_rolls_back(monkeypatch):
+    from prisma import Prisma
+
+    dsn = os.environ.get("AGENTOS_USAGE_TEST_DATABASE_URL")
+    if not dsn:
+        pytest.skip("Set AGENTOS_USAGE_TEST_DATABASE_URL to verify the real database deadline")
+    db = Prisma(datasource={"url": dsn})
+    await db.connect()
+    runner = gateway.UsageQueryRunner(slots=asyncio.Semaphore(1))
+    monkeypatch.setattr(gateway, "build_query", lambda _: ("SELECT pg_sleep(30)", ()))
+    started = asyncio.get_running_loop().time()
+    try:
+        with pytest.raises(gateway.HTTPException) as error:
+            await runner.run(query(), db)
+        assert error.value.status_code == 504
+        assert asyncio.get_running_loop().time() - started < 18
+        rows = await db.query_raw("SELECT count(*)::int AS active FROM pg_stat_activity WHERE state='active' AND query='SELECT pg_sleep(30)'")
+        assert rows[0]["active"] == 0
+        assert not runner.slots.locked()
+    finally:
+        await db.disconnect()
+
+
 @pytest.mark.asyncio
 async def test_internal_route_requires_master_key_and_uses_one_statement(monkeypatch):
     from types import ModuleType, SimpleNamespace
-    from unittest.mock import AsyncMock
+    from unittest.mock import AsyncMock, Mock
 
     proxy = ModuleType("litellm.proxy.proxy_server")
     proxy.__dict__["master_key"] = "test-master"
     execute = AsyncMock(return_value=[{"buckets": "[]", "records": "[]", "records_total": 0}])
-    proxy.__dict__["prisma_client"] = SimpleNamespace(db=SimpleNamespace(query_raw=execute))
+    transaction = SimpleNamespace(query_raw=execute, execute_raw=AsyncMock())
+    context = AsyncMock()
+    context.__aenter__.return_value = transaction
+    db = SimpleNamespace(tx=Mock(return_value=context))
+    proxy.__dict__["prisma_client"] = SimpleNamespace(db=db)
     monkeypatch.setitem(sys.modules, "litellm.proxy.proxy_server", proxy)
     app = FastAPI()
     app.include_router(gateway.router)
@@ -300,6 +407,8 @@ async def test_internal_route_requires_master_key_and_uses_one_statement(monkeyp
         assert response.status_code == 200
         assert response.json() == {"buckets": [], "records": [], "records_total": 0}
         execute.assert_awaited_once()
+        assert transaction.execute_raw.await_args_list[1].args == ("SET LOCAL statement_timeout = '12s'",)
+        assert transaction.execute_raw.await_args_list[0].args == ("SET TRANSACTION READ ONLY",)
 
 
 @pytest.mark.asyncio

@@ -2,14 +2,21 @@
 
 from __future__ import annotations
 
+import asyncio
+import hashlib
 import hmac
 import json
 import math
+from collections import UserDict
 from collections.abc import Mapping
+from contextlib import AbstractAsyncContextManager
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
+from typing import Protocol, runtime_checkable
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field, JsonValue, TypeAdapter, model_validator
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
+from prisma.errors import RawQueryError
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, TypeAdapter, model_validator
 
 TEXT_FIELDS = (
     "model",
@@ -126,7 +133,7 @@ def _price_expression(name: str) -> str:
 
 def _savings_expression(name: str, calculated: str) -> str:
     recorded = _optional_number(f"recorded_savings->>'{name}'")
-    legacy = _optional_number(f"COALESCE(extra->>'{name}', md->>'{name}', usage->>'{name}')")
+    legacy = _optional_number(f"COALESCE(extra->>'{name}', billing_{name} #>> '{{}}', usage->>'{name}')")
     return f"COALESCE(({recorded}), ({legacy}), ({calculated}))"
 
 
@@ -186,44 +193,47 @@ def build_query(query: UsageQuery) -> tuple[str, tuple[object, ...]]:
         (
             "cache_read_input_tokens",
             _number(
-                "COALESCE(extra->>'cache_read_input_tokens', md->>'cache_read_input_tokens', "
+                "COALESCE(extra->>'cache_read_input_tokens', billing_cache_read_input_tokens #>> '{}', "
                 "usage->>'cache_read_input_tokens', token_details->>'cached_tokens')"
             ),
         ),
     )
     metrics += tuple(
-        (name, _number(f"COALESCE(extra->>'{name}', md->>'{name}', usage->>'{name}')")) for name in EXTRA_METRICS
+        (name, _number(f"COALESCE(extra->>'{name}', billing_{name} #>> '{{}}', usage->>'{name}')"))
+        for name in EXTRA_METRICS
     )
-    cache_tokens = next(value for name, value in metrics if name == "cache_read_input_tokens")
+    raw_metric_columns = ", ".join(f"{expr} AS m_{name}" for name, expr in metrics)
+    raw_metric_names = ", ".join(f"m_{name}" for name, _ in metrics)
+    cache_tokens = "m_cache_read_input_tokens"
     compression_names = (
         ("compression_savings_spend", "compression_saved_tokens"),
         ("compression_gross_savings_spend", "compression_gross_saved_tokens"),
         ("compression_extra_input_spend", "compression_extra_input_tokens"),
     )
     compression_amounts = tuple(
-        (name, _savings_expression(name, f"CASE WHEN ({value}) = 0 THEN 0 ELSE ({value}) * input_price END"))
+        (name, f"COALESCE(known_{name}, CASE WHEN m_{tokens} = 0 THEN 0 ELSE m_{tokens} * input_price END)")
         for name, tokens in compression_names
-        for key, value in metrics
-        if key == tokens
     )
     amounts = (
         *compression_amounts,
         (
             "prompt_caching_savings_spend",
-            _savings_expression(
-                "prompt_caching_savings_spend",
-                f"CASE WHEN ({cache_tokens}) = 0 THEN 0 "
-                f"WHEN input_price IS NULL THEN NULL "
-                f"WHEN actual_cache_cost >= 0 THEN GREATEST(0, ({cache_tokens}) * input_price - actual_cache_cost) "
-                f"WHEN cache_price IS NOT NULL THEN ({cache_tokens}) * GREATEST(0, input_price - cache_price) END",
-            ),
+            "COALESCE(known_prompt_caching_savings_spend, "
+            f"CASE WHEN ({cache_tokens}) = 0 THEN 0 "
+            f"WHEN input_price IS NULL THEN NULL "
+            f"WHEN actual_cache_cost >= 0 THEN GREATEST(0, ({cache_tokens}) * input_price - actual_cache_cost) "
+            f"WHEN cache_price IS NOT NULL THEN ({cache_tokens}) * GREATEST(0, input_price - cache_price) END)",
         ),
     )
     amount_columns = ", ".join(f"({value}) AS saved_{name}" for name, value in amounts)
+    known_amount_columns = ", ".join(f"{_savings_expression(name, 'NULL')} AS known_{name}" for name, _ in amounts)
+    known_amount_names = ", ".join(f"known_{name}" for name, _ in amounts)
     compression_unknown = " OR ".join(f"saved_{name} IS NULL" for name, _ in compression_names)
     cache_unknown = "saved_prompt_caching_savings_spend IS NULL"
     amount_names = frozenset(name for name, _ in amounts)
-    metrics = tuple((name, f"COALESCE(saved_{name}, 0)" if name in amount_names else value) for name, value in metrics)
+    metrics = tuple(
+        (name, f"COALESCE(saved_{name}, 0)" if name in amount_names else f"m_{name}") for name, _ in metrics
+    )
     metrics += (
         ("compression_unpriced_requests", f"({compression_unknown})::int"),
         ("cache_unpriced_requests", f"({cache_unknown})::int"),
@@ -235,7 +245,7 @@ def build_query(query: UsageQuery) -> tuple[str, tuple[object, ...]]:
     limit = bind(query.page_size if query.include_records else 0)
     offset = bind((query.page - 1) * query.page_size)
     identities = bind(json.dumps(query.deployment_models))
-    historical_upstream = "md #>> '{spend_logs_metadata,agentos_routing_hops,-1,upstream}'"
+    historical_upstream = "billing_spend_logs_metadata #>> '{agentos_routing_hops,-1,upstream}'"
     mapped_upstream = f"({identities}::jsonb)->>model_id"
     # A saved hop wins if the deployment has since changed its upstream. When
     # the names still agree, the catalog mapping only supplies the vendor namespace.
@@ -245,6 +255,7 @@ def build_query(query: UsageQuery) -> tuple[str, tuple[object, ...]]:
         f"ELSE {historical_upstream} END"
     )
     dimensions = "day, model, model_group, model_id, actual_model, provider, api_key, key_alias, user_id, key_hash"
+    identity_columns = 'request_id, "startTime", model, model_group, model_id, actual_model, provider, api_key, key_alias, user_id, key_hash, status_filter'
     # SpendLogs metadata can contain large request context. Extract its small
     # billing subset once, rather than repeatedly decompressing the TOAST value.
     metadata_keys = (
@@ -269,70 +280,75 @@ def build_query(query: UsageQuery) -> tuple[str, tuple[object, ...]]:
         *EXTRA_METRICS,
     )
     metadata_columns = ", ".join(f"{key} jsonb" for key in metadata_keys)
-    metadata_object = ", ".join(f"'{key}', billing.{key}" for key in metadata_keys)
+    metadata_object = ", ".join(f"billing.{key} AS billing_{key}" for key in metadata_keys)
     sql = f"""
-        WITH scoped AS MATERIALIZED (
+        WITH scoped AS NOT MATERIALIZED (
             SELECT logs.request_id, logs."startTime", logs."endTime", logs.model, logs.model_group, logs.model_id,
                    logs.api_key, logs."user", logs.team_id, logs.organization_id,
                    logs.session_id, logs.end_user, logs.call_type, logs.status,
                    logs.custom_llm_provider, logs.spend, logs.total_tokens, logs.prompt_tokens,
                    logs.completion_tokens, logs.request_duration_ms,
-                   jsonb_build_object({metadata_object}) AS md
+                   {metadata_object}
             FROM "LiteLLM_SpendLogs" AS logs
             CROSS JOIN LATERAL jsonb_to_record({_object("logs.metadata::jsonb")}) AS billing({metadata_columns})
             WHERE {" AND ".join(scope)}
-        ), normalized AS MATERIALIZED (
+        ), normalized AS NOT MATERIALIZED (
             SELECT *,
-                COALESCE(NULLIF(md->>'agentos_upstream_model', ''),
-                         NULLIF(md #>> '{{model_info,agentos_upstream_model}}', ''),
-                         NULLIF(md #>> '{{spend_logs_metadata,agentos_upstream_model}}', ''),
+                COALESCE(NULLIF(billing_agentos_upstream_model #>> '{{}}', ''),
+                         NULLIF(billing_model_info #>> '{{agentos_upstream_model}}', ''),
+                         NULLIF(billing_spend_logs_metadata #>> '{{agentos_upstream_model}}', ''),
                          NULLIF({historical_identity}, ''),
                          NULLIF(({identities}::jsonb)->>model_id, ''),
                          '__unattributed__') AS actual_model,
-                COALESCE(NULLIF(lower(btrim(md->>'agentos_provider')), ''),
-                         NULLIF(lower(btrim(md #>> '{{model_info,litellm_provider}}')), ''),
-                         CASE WHEN md #>> '{{model_info,agentos_upstream_model}}' LIKE '%/%'
-                              THEN lower(split_part(md #>> '{{model_info,agentos_upstream_model}}', '/', 1)) END,
+                COALESCE(NULLIF(lower(btrim(billing_agentos_provider #>> '{{}}')), ''),
+                         NULLIF(lower(btrim(billing_model_info #>> '{{litellm_provider}}')), ''),
+                         CASE WHEN billing_model_info #>> '{{agentos_upstream_model}}' LIKE '%/%'
+                              THEN lower(split_part(billing_model_info #>> '{{agentos_upstream_model}}', '/', 1)) END,
                          NULLIF(custom_llm_provider, ''), 'unknown') AS provider,
-                COALESCE(NULLIF(md->>'agentos_key_alias', ''), md->>'user_api_key_alias', '') AS key_alias,
+                COALESCE(NULLIF(billing_agentos_key_alias #>> '{{}}', ''), billing_user_api_key_alias #>> '{{}}', '') AS key_alias,
                 CASE WHEN api_key IN (
                     '9df37f5e7cbc3c391d872742b5f286c242e733a09add9eeaa4d26a599bd90b20',
                     '75c57961c79bdf4f909caac56e266816d2bdb76af5c68dcf78c71ac4c74d0db1'
                 ) AND COALESCE(model, '') = '' AND COALESCE(call_type, '') = ''
                     AND COALESCE(spend, 0) = 0 AND COALESCE("user", '') IN ('', 'default_user_id')
                     AND COALESCE(team_id, '') = '' AND COALESCE(organization_id, '') = ''
-                    AND COALESCE(md->>'user_api_key_user_id', '') = ''
-                    AND COALESCE(md->>'user_api_key_team_id', '') = ''
-                    AND COALESCE(md->>'user_api_key_org_id', '') = ''
-                THEN CASE WHEN md #>> '{{error_information,error_code}}' = '401'
-                    AND md #>> '{{error_information,error_class}}' = 'KeyNotFoundError'
+                    AND COALESCE(billing_user_api_key_user_id #>> '{{}}', '') = ''
+                    AND COALESCE(billing_user_api_key_team_id #>> '{{}}', '') = ''
+                    AND COALESCE(billing_user_api_key_org_id #>> '{{}}', '') = ''
+                THEN CASE WHEN billing_error_information #>> '{{error_code}}' = '401'
+                    AND billing_error_information #>> '{{error_class}}' = 'KeyNotFoundError'
                     THEN 'success' ELSE 'failure' END
-                ELSE COALESCE(NULLIF(status, ''), NULLIF(md->>'status', ''), 'success') END AS status_filter,
-                ({_object("md->'error_information'")})->>'error_code' AS error_code,
-                COALESCE(({_object("md->'error_information'")})->>'error_message',
-                         CASE WHEN jsonb_typeof(md->'error_information') = 'string'
-                              THEN md->>'error_information' END, '') AS error_message,
+                ELSE COALESCE(NULLIF(status, ''), NULLIF(billing_status #>> '{{}}', ''), 'success') END AS status_filter,
+                ({_object("billing_error_information")})->>'error_code' AS error_code,
+                COALESCE(({_object("billing_error_information")})->>'error_message',
+                         CASE WHEN jsonb_typeof(billing_error_information) = 'string'
+                              THEN billing_error_information #>> '{{}}' END, '') AS error_message,
                 COALESCE(request_duration_ms, EXTRACT(EPOCH FROM ("endTime" - "startTime")) * 1000) AS duration_ms,
-                {_object("md->'additional_usage_values'")} AS extra,
-                {_object("md->'usage_object'")} AS usage
+                {_object("billing_additional_usage_values")} AS extra,
+                {_object("billing_usage_object")} AS usage
             FROM scoped
-        ), with_details AS MATERIALIZED (
+        ), with_details AS NOT MATERIALIZED (
             SELECT *, COALESCE(NULLIF({_object("usage->'prompt_tokens_details'")}, '{{}}'::jsonb),
                                {_object("extra->'prompt_tokens_details'")}) AS token_details,
-                {_object("md #> '{model_map_information,model_map_value}'")} AS saved_prices,
-                {_object("md->'optimization_savings'")} AS recorded_savings
+                {_object("billing_model_map_information #> '{model_map_value}'")} AS saved_prices,
+                {_object("billing_optimization_savings")} AS recorded_savings
             FROM normalized WHERE {" AND ".join(predicates) or "TRUE"}
-        ), with_prices AS MATERIALIZED (
-            SELECT *, {_price_expression("input_cost_per_token")} AS input_price,
-                {_price_expression("cache_read_input_token_cost")} AS cache_price,
-                {_optional_number("md #>> '{cost_breakdown,cache_read_cost}'")} AS actual_cache_cost
+        ), with_metrics AS MATERIALIZED (
+            SELECT request_id, "startTime", model, model_group, model_id, actual_model, provider, api_key, key_alias,
+                "user" AS user_id, billing_user_api_key_hash #>> '{{}}' AS key_hash, status_filter, prompt_tokens,
+                {raw_metric_columns}, {known_amount_columns}, saved_prices,
+                {_optional_number("billing_cost_breakdown #>> '{cache_read_cost}'")} AS actual_cache_cost
             FROM with_details
+        ), with_prices AS MATERIALIZED (
+            SELECT {identity_columns}, {raw_metric_names}, {known_amount_names}, actual_cache_cost,
+                {_price_expression("input_cost_per_token")} AS input_price,
+                {_price_expression("cache_read_input_token_cost")} AS cache_price
+            FROM with_metrics
         ), with_amounts AS MATERIALIZED (
-            SELECT *, {amount_columns} FROM with_prices
+            SELECT {identity_columns}, {raw_metric_names}, {amount_columns} FROM with_prices
         ), filtered AS MATERIALIZED (
-            SELECT *, {metric_columns},
-                   ("startTime" - ({shift}::int * interval '1 minute'))::date::text AS day,
-                   "user" AS user_id, md->>'user_api_key_hash' AS key_hash
+            SELECT {identity_columns}, {metric_columns},
+                   ("startTime" - ({shift}::int * interval '1 minute'))::date::text AS day
             FROM with_amounts
         ), buckets AS (
             SELECT {dimensions}, jsonb_build_object({metric_sums}) AS metrics
@@ -406,14 +422,43 @@ async def query_daily_usage(query: DailyUsageQuery) -> object:
     )
 
 
-@router.post("/agentos/usage/query", dependencies=(Depends(require_master_key),))
-async def query_usage(query: UsageQuery) -> Mapping[str, object]:
-    from litellm.proxy.proxy_server import prisma_client
+class UsageTransaction(Protocol):
+    async def execute_raw(self, query: str) -> object: ...
+    async def query_raw(self, query: str, *values: object) -> object: ...
 
-    if prisma_client is None:
-        raise HTTPException(503, "Usage storage unavailable")
+
+class UsageDatabase(Protocol):
+    def tx(self, *, timeout: timedelta, max_wait: timedelta) -> AbstractAsyncContextManager[UsageTransaction]: ...
+
+
+@runtime_checkable
+class UsageTransactionFactory(Protocol):
+    def __call__(self, *, timeout: timedelta, max_wait: timedelta) -> AbstractAsyncContextManager[UsageTransaction]: ...
+
+
+@dataclass(frozen=True)
+class UsageDatabaseAdapter:
+    tx: UsageTransactionFactory
+
+
+async def _execute_usage_query(query: UsageQuery, db: UsageDatabase, slots: asyncio.Semaphore) -> Mapping[str, object]:
+    try:
+        await asyncio.wait_for(slots.acquire(), timeout=0.25)
+    except TimeoutError as exc:
+        raise HTTPException(503, "usage_query_busy") from exc
     sql, values = build_query(query)
-    rows = TypeAdapter(tuple[Mapping[str, object], ...]).validate_python(await prisma_client.db.query_raw(sql, *values))  # pyright: ignore[reportAny]  # Validate the native Prisma raw-query response at its boundary.
+    try:
+        async with db.tx(timeout=timedelta(seconds=20), max_wait=timedelta(seconds=1)) as tx:
+            await tx.execute_raw("SET TRANSACTION READ ONLY")
+            await tx.execute_raw("SET LOCAL statement_timeout = '12s'")
+            await tx.execute_raw("SET LOCAL jit = off")
+            rows = TypeAdapter(tuple[Mapping[str, object], ...]).validate_python(await tx.query_raw(sql, *values))
+    except RawQueryError as exc:
+        if "statement timeout" in str(exc):
+            raise HTTPException(504, "usage_query_timeout") from exc
+        raise
+    finally:
+        slots.release()
     result = dict(  # mutable-ok: Decode legacy JSON-string fields in the native response dictionary.
         rows[0]
     )
@@ -422,6 +467,48 @@ async def query_usage(query: UsageQuery) -> Mapping[str, object]:
         if isinstance(value, str):
             result[key] = TypeAdapter[JsonValue](JsonValue).validate_json(value)
     return result
+
+
+@dataclass(frozen=True)
+class UsageQueryRunner:
+    slots: asyncio.Semaphore = field(default_factory=lambda: asyncio.Semaphore(2))
+    pending: UserDict[str, asyncio.Task[Mapping[str, object]]] = field(default_factory=UserDict)
+
+    async def run(self, query: UsageQuery, db: UsageDatabase) -> Mapping[str, object]:
+        key = hashlib.sha256(json.dumps(query.model_dump(mode="json"), sort_keys=True).encode()).hexdigest()
+        cached = self.pending.get(key)
+        if cached is not None:
+            return await asyncio.shield(cached)
+        if len(self.pending) >= 32:
+            raise HTTPException(503, "usage_query_busy")
+        task = asyncio.create_task(_execute_usage_query(query, db, self.slots))
+        self.pending.update(((key, task),))
+
+        def finished(completed: asyncio.Task[Mapping[str, object]]) -> None:
+            self.pending.pop(key, None)
+            if not completed.cancelled():
+                completed.exception()
+
+        task.add_done_callback(finished)
+        return await asyncio.shield(task)
+
+
+@router.post("/agentos/usage/query", dependencies=(Depends(require_master_key),))
+async def query_usage(query: UsageQuery, request: Request) -> Mapping[str, object]:
+    from litellm.proxy.proxy_server import prisma_client
+
+    if prisma_client is None:
+        raise HTTPException(503, "Usage storage unavailable")
+    app = request.scope.get("app")
+    assert isinstance(app, FastAPI)
+    runner = getattr(app.state, "agentos_usage_runner", None)
+    if not isinstance(runner, UsageQueryRunner):
+        runner = UsageQueryRunner()
+        app.state.agentos_usage_runner = runner
+    transaction_factory = TypeAdapter(
+        UsageTransactionFactory, config=ConfigDict(arbitrary_types_allowed=True)
+    ).validate_python(getattr(prisma_client.db, "tx"))
+    return await runner.run(query, UsageDatabaseAdapter(transaction_factory))
 
 
 class PricingImport(BaseModel):
