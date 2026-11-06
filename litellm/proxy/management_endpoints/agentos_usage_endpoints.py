@@ -339,12 +339,12 @@ def build_query(query: UsageQuery) -> tuple[str, tuple[object, ...]]:
                 {raw_metric_columns}, {known_amount_columns}, saved_prices,
                 {_optional_number("billing_cost_breakdown #>> '{cache_read_cost}'")} AS actual_cache_cost
             FROM with_details
-        ), with_prices AS MATERIALIZED (
+        ), with_prices AS NOT MATERIALIZED (
             SELECT {identity_columns}, {raw_metric_names}, {known_amount_names}, actual_cache_cost,
                 {_price_expression("input_cost_per_token")} AS input_price,
                 {_price_expression("cache_read_input_token_cost")} AS cache_price
             FROM with_metrics
-        ), with_amounts AS MATERIALIZED (
+        ), with_amounts AS NOT MATERIALIZED (
             SELECT {identity_columns}, {raw_metric_names}, {amount_columns} FROM with_prices
         ), filtered AS MATERIALIZED (
             SELECT {identity_columns}, {metric_columns},
@@ -448,10 +448,11 @@ async def _execute_usage_query(query: UsageQuery, db: UsageDatabase, slots: asyn
         raise HTTPException(503, "usage_query_busy") from exc
     sql, values = build_query(query)
     try:
-        async with db.tx(timeout=timedelta(seconds=20), max_wait=timedelta(seconds=1)) as tx:
+        async with db.tx(timeout=timedelta(seconds=25), max_wait=timedelta(seconds=1)) as tx:
             await tx.execute_raw("SET TRANSACTION READ ONLY")
-            await tx.execute_raw("SET LOCAL statement_timeout = '12s'")
+            await tx.execute_raw("SET LOCAL statement_timeout = '20s'")
             await tx.execute_raw("SET LOCAL jit = off")
+            await tx.execute_raw("SET LOCAL work_mem = '64MB'")
             rows = TypeAdapter(tuple[Mapping[str, object], ...]).validate_python(await tx.query_raw(sql, *values))
     except RawQueryError as exc:
         if "statement timeout" in str(exc):

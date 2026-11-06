@@ -285,6 +285,23 @@ def usage_database():
 
 
 @pytest.mark.asyncio
+async def test_usage_resource_budget_is_local_and_finishes_before_bff_deadline(usage_database):
+    from datetime import timedelta
+
+    db, transaction = usage_database
+    await gateway.UsageQueryRunner().run(query(), db)
+    db.tx.assert_called_once_with(timeout=timedelta(seconds=25), max_wait=timedelta(seconds=1))
+    settings = [call.args[0] for call in transaction.execute_raw.await_args_list]
+    assert settings == [
+        "SET TRANSACTION READ ONLY",
+        "SET LOCAL statement_timeout = '20s'",
+        "SET LOCAL jit = off",
+        "SET LOCAL work_mem = '64MB'",
+    ]
+    transaction.query_raw.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_usage_singleflight_survives_one_waiter_cancellation(usage_database):
     db, transaction = usage_database
     started, release = asyncio.Event(), asyncio.Event()
@@ -366,7 +383,7 @@ async def test_real_database_deadline_stops_query_and_rolls_back(monkeypatch):
         with pytest.raises(gateway.HTTPException) as error:
             await runner.run(query(), db)
         assert error.value.status_code == 504
-        assert asyncio.get_running_loop().time() - started < 18
+        assert asyncio.get_running_loop().time() - started < 26
         rows = await db.query_raw("SELECT count(*)::int AS active FROM pg_stat_activity WHERE state='active' AND query='SELECT pg_sleep(30)'")
         assert rows[0]["active"] == 0
         assert not runner.slots.locked()
@@ -407,7 +424,7 @@ async def test_internal_route_requires_master_key_and_uses_one_statement(monkeyp
         assert response.status_code == 200
         assert response.json() == {"buckets": [], "records": [], "records_total": 0}
         execute.assert_awaited_once()
-        assert transaction.execute_raw.await_args_list[1].args == ("SET LOCAL statement_timeout = '12s'",)
+        assert transaction.execute_raw.await_args_list[1].args == ("SET LOCAL statement_timeout = '20s'",)
         assert transaction.execute_raw.await_args_list[0].args == ("SET TRANSACTION READ ONLY",)
 
 
