@@ -18,6 +18,28 @@ from litellm import Router
 from litellm.types.router import RoutingGroup, RoutingStrategy
 
 
+@pytest.mark.asyncio
+async def test_refresh_retires_previous_group_and_default_sync_tasks():
+    import asyncio
+
+    router = Router(model_list=[], routing_strategy="usage-based-routing-v2")
+    old_tasks = []
+    groups = [{"group_name": "usage", "models": ["model"], "routing_strategy": "usage-based-routing-v2"}]
+    for _ in range(20):
+        old_tasks.append(router.lowesttpm_logger_v2._sync_task)
+        old_tasks.extend(selector._sync_task for selectors in router._group_selectors.values() for selector in selectors.values())
+        router.routing_strategy_init("usage-based-routing-v2", {})
+        router._init_routing_groups(groups)
+    try:
+        await asyncio.wait_for(asyncio.gather(*old_tasks), 1)
+        assert all(task.done() for task in old_tasks)
+        assert not router.lowesttpm_logger_v2._sync_task.done()
+        assert not router._group_selectors["usage"]["usage-based-routing-v2"]._sync_task.done()
+    finally:
+        await router.lowesttpm_logger_v2.cleanup()
+        await router._group_selectors["usage"]["usage-based-routing-v2"].cleanup()
+
+
 def _model_list():
     return [
         {

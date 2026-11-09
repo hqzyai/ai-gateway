@@ -22,6 +22,8 @@ class BaseRoutingStrategy(ABC):
         self.dual_cache = dual_cache
         self.redis_increment_operation_queue: List[RedisPipelineIncrementOperation] = []
         self._sync_task: Optional[asyncio.Task[None]] = None
+        self._retired = False
+        self._default_sync_interval = default_sync_interval
         if should_batch_redis_writes:
             self.setup_sync_task(default_sync_interval)
 
@@ -29,6 +31,8 @@ class BaseRoutingStrategy(ABC):
 
     def setup_sync_task(self, default_sync_interval: Optional[Union[int, float]]):
         """Setup the sync task in a way that's compatible with FastAPI"""
+        if self._sync_task is not None and not self._sync_task.done():
+            return
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
@@ -38,6 +42,9 @@ class BaseRoutingStrategy(ABC):
         self._sync_task = loop.create_task(
             self.periodic_sync_in_memory_spend_with_redis(default_sync_interval=default_sync_interval)
         )
+
+    def retire(self) -> None:
+        self._retired = True
 
     async def cleanup(self):
         """Cleanup method to be called when shutting down"""
@@ -82,6 +89,8 @@ class BaseRoutingStrategy(ABC):
 
         self.redis_increment_operation_queue.append(increment_op)
         self.add_to_in_memory_keys_to_update(key=key)
+        if self._retired and self.dual_cache.redis_cache is not None:
+            self.setup_sync_task(self._default_sync_interval)
         return result
 
     async def periodic_sync_in_memory_spend_with_redis(self, default_sync_interval: Optional[Union[int, float]]):
@@ -91,7 +100,9 @@ class BaseRoutingStrategy(ABC):
         Required for multi-instance environment usage of provider budgets
         """
         default_sync_interval = default_sync_interval or DEFAULT_REDIS_SYNC_INTERVAL
-        while True:
+        while not self._retired or (
+            self.dual_cache.redis_cache is not None and self.redis_increment_operation_queue
+        ):
             try:
                 await self._sync_in_memory_spend_with_redis()
                 await asyncio.sleep(

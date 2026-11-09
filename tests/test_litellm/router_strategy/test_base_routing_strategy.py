@@ -19,6 +19,59 @@ from litellm.caching.redis_cache import RedisPipelineIncrementOperation
 from litellm.router_strategy.base_routing_strategy import BaseRoutingStrategy
 
 
+@pytest.mark.asyncio
+async def test_retired_strategy_drains_pending_and_late_increments():
+    from unittest.mock import AsyncMock
+
+    cache = DualCache()
+    redis = MagicMock()
+    redis.async_increment_pipeline = AsyncMock(return_value=[5])
+    cache.redis_cache = redis
+    strategy = BaseRoutingStrategy(cache, False, 0.01)
+    await strategy._increment_value_in_current_window("usage", 5, 60)
+    strategy.retire()
+    strategy.setup_sync_task(0.01)
+    await asyncio.wait_for(strategy._sync_task, 1)
+    assert strategy.redis_increment_operation_queue == []
+    assert redis.async_increment_pipeline.await_count == 1
+    await strategy._increment_value_in_current_window("usage", 2, 60)
+    await asyncio.wait_for(strategy._sync_task, 1)
+    assert strategy.redis_increment_operation_queue == []
+    assert redis.async_increment_pipeline.await_count == 2
+    assert redis.async_increment_pipeline.await_args.kwargs["increment_list"][0]["increment_value"] == 2
+
+
+@pytest.mark.asyncio
+async def test_retire_during_redis_write_keeps_later_increment():
+    from unittest.mock import AsyncMock
+
+    started, release = asyncio.Event(), asyncio.Event()
+    writes = []
+
+    async def write(increment_list):
+        writes.append(sum(item["increment_value"] for item in increment_list))
+        started.set()
+        await release.wait()
+        return [sum(writes)]
+
+    cache = DualCache()
+    cache.redis_cache = MagicMock()
+    cache.redis_cache.async_increment_pipeline = AsyncMock(side_effect=write)
+    strategy = BaseRoutingStrategy(cache, True, 0.01)
+    try:
+        await strategy._increment_value_in_current_window("usage", 5, 60)
+        await asyncio.wait_for(started.wait(), 1)
+        strategy.retire()
+        await strategy._increment_value_in_current_window("usage", 2, 60)
+        release.set()
+        await asyncio.wait_for(strategy._sync_task, 1)
+        assert writes == [5, 2]
+        assert strategy.redis_increment_operation_queue == []
+    finally:
+        release.set()
+        await strategy.cleanup()
+
+
 @pytest.fixture
 async def mock_dual_cache():
     dual_cache = MagicMock(spec=DualCache)

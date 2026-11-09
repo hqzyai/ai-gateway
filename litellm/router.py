@@ -902,6 +902,11 @@ class Router:
         `_init_routing_groups`) so repeated `update_settings` calls don't
         accumulate dead selectors that keep receiving callback events.
         """
+        from litellm.router_strategy.base_routing_strategy import BaseRoutingStrategy
+
+        for selector in selectors:
+            if isinstance(selector, BaseRoutingStrategy):
+                selector.retire()
         selector_ids = {id(s) for s in selectors if s is not None}
         if not selector_ids:
             return
