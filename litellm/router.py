@@ -606,7 +606,6 @@ class Router:
         self.total_calls: defaultdict = defaultdict(int)  # dict to store total calls made to each model
         self.fail_calls: defaultdict = defaultdict(int)  # dict to store fail_calls made to each model
         self.success_calls: defaultdict = defaultdict(int)  # dict to store success_calls  made to each model
-        self.previous_models: List = []  # list to store failed calls (passed in as metadata to next call)
 
         # make Router.chat.completions.create compatible for openai.chat.completions.create
         default_litellm_params = default_litellm_params or {}
@@ -7151,12 +7150,10 @@ class Router:
                         if metadata_k != "previous_models":
                             previous_model[k][metadata_k] = metadata_v  # type: ignore
 
-            # check current size of self.previous_models, if it's larger than 3, remove the first element
-            if len(self.previous_models) > 3:
-                self.previous_models.pop(0)
-
-            self.previous_models.append(previous_model)
-            kwargs[_metadata_var]["previous_models"] = self.previous_models
+            kwargs[_metadata_var]["previous_models"] = [
+                *kwargs[_metadata_var].get("previous_models", ())[-3:],
+                previous_model,
+            ]
             return kwargs
         except Exception as e:
             raise e

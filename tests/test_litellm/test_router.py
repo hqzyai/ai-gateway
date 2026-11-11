@@ -16,6 +16,28 @@ import litellm
 from litellm.exceptions import MidStreamFallbackError
 
 
+@pytest.mark.parametrize("metadata_key", ["metadata", "litellm_metadata"])
+def test_retry_history_is_request_local_and_keeps_stable_snapshots(metadata_key):
+    router = litellm.Router(model_list=[])
+    first = {"model": "embedding-group", metadata_key: {}}
+    second = {"model": "chat-group", metadata_key: {}}
+    router.log_retry(first, TimeoutError("embedding timeout"))
+    first_snapshot = first[metadata_key]["previous_models"]
+    router.log_retry(second, TimeoutError("chat timeout"))
+    assert [entry["model"] for entry in second[metadata_key]["previous_models"]] == ["chat-group"]
+    assert [entry["model"] for entry in first_snapshot] == ["embedding-group"]
+    for index in range(5):
+        second["model"] = f"chat-fallback-{index}"
+        router.log_retry(second, TimeoutError(f"retry {index}"))
+    history = second[metadata_key]["previous_models"]
+    assert [entry["model"] for entry in history] == [f"chat-fallback-{index}" for index in range(1, 5)]
+    assert [entry["model"] for entry in first_snapshot] == ["embedding-group"]
+    router.log_retry(first, TimeoutError("embedding retry"))
+    assert len(first_snapshot) == 1
+    assert len(first[metadata_key]["previous_models"]) == 2
+    assert all("previous_models" not in entry[metadata_key] for entry in history)
+
+
 def test_update_kwargs_does_not_mutate_defaults_and_merges_metadata():
     # initialize a real Router (env‑vars can be empty)
     router = litellm.Router(
