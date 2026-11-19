@@ -699,9 +699,13 @@ async def test_employee_budget_route_rejects_non_master_keys_and_validates_scope
 
     proxy = ModuleType("litellm.proxy.proxy_server")
     execute = AsyncMock(return_value=[{"total_spend": 10, "total_api_requests": 2, "total_tokens": 30}])
-    proxy.__dict__.update(
-        master_key="test-master", prisma_client=SimpleNamespace(db=SimpleNamespace(query_raw=execute))
-    )
+    class DatabaseProxy:
+        def __getattr__(self, name):
+            if name == "query_raw":
+                return execute
+            raise AttributeError(name)
+
+    proxy.__dict__.update(master_key="test-master", prisma_client=SimpleNamespace(db=DatabaseProxy()))
     monkeypatch.setitem(sys.modules, "litellm.proxy.proxy_server", proxy)
     app = FastAPI()
     app.include_router(gateway.router)

@@ -12,6 +12,7 @@ from collections.abc import Mapping
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
+from operator import attrgetter
 from typing import Literal, Protocol, runtime_checkable
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
@@ -587,8 +588,8 @@ def employee_budget_query(query: EmployeeBudgetQuery) -> tuple[str, tuple[object
 
 
 @runtime_checkable
-class EmployeeBudgetDatabase(Protocol):
-    async def query_raw(self, query: str, *values: object) -> object: ...
+class EmployeeBudgetQueryExecutor(Protocol):
+    async def __call__(self, query: str, *values: object) -> object: ...
 
 
 @router.post("/agentos/usage/employee-budget", dependencies=(Depends(require_master_key),))
@@ -598,10 +599,10 @@ async def query_employee_budget(query: EmployeeBudgetQuery) -> Mapping[str, Json
     if prisma_client is None:
         raise HTTPException(503, "Usage storage unavailable")
     sql, values = employee_budget_query(query)
-    db = TypeAdapter(EmployeeBudgetDatabase, config=ConfigDict(arbitrary_types_allowed=True)).validate_python(
-        prisma_client.db
+    execute = TypeAdapter(EmployeeBudgetQueryExecutor, config=ConfigDict(arbitrary_types_allowed=True)).validate_python(
+        attrgetter("query_raw")(prisma_client.db)
     )
     rows = TypeAdapter[tuple[dict[str, JsonValue], ...]](tuple[dict[str, JsonValue], ...]).validate_python(
-        await db.query_raw(sql, *values)
+        await execute(sql, *values)
     )
     return rows[0]
