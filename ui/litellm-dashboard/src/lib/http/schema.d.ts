@@ -473,6 +473,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/agentos/usage/employee-budget": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Query Employee Budget */
+        post: operations["query_employee_budget_agentos_usage_employee_budget_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/agentos/usage/query": {
         parameters: {
             query?: never;
@@ -23866,6 +23883,33 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** EmployeeBudgetQuery */
+        EmployeeBudgetQuery: {
+            /**
+             * End Date
+             * Format: date
+             */
+            end_date: string;
+            /**
+             * Instance Ids
+             * @default []
+             */
+            instance_ids: string[];
+            /** Publication Type */
+            publication_type?: ("agent_api" | "chat_share") | null;
+            /**
+             * Reset At
+             * Format: date-time
+             */
+            reset_at: string;
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+            /** User Ids */
+            user_ids: string[];
+        };
         /** EndpointProvider */
         EndpointProvider: {
             /** Display Name */
@@ -34808,6 +34852,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    query_employee_budget_agentos_usage_employee_budget_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmployeeBudgetQuery"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: components["schemas"]["JsonValue"];
+                    };
                 };
             };
             /** @description Validation Error */

@@ -12,7 +12,7 @@ from collections.abc import Mapping
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
-from typing import Protocol, runtime_checkable
+from typing import Literal, Protocol, runtime_checkable
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from prisma.errors import RawQueryError
@@ -528,3 +528,80 @@ async def import_pricing_rules(body: PricingImport) -> Mapping[str, object]:
         "status": "success",
         "imported": imported,
     }
+
+
+class EmployeeBudgetQuery(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    publication_type: Literal["agent_api", "chat_share"] | None = None
+    user_ids: tuple[str, ...] = Field(min_length=1)
+    instance_ids: tuple[str, ...] = ()
+    start_date: date
+    end_date: date
+    reset_at: datetime
+
+    @model_validator(mode="after")
+    def validate_window(self) -> EmployeeBudgetQuery:
+        if not timedelta(0) < self.end_date - self.start_date <= timedelta(days=32):
+            raise ValueError("Invalid employee budget window")
+        return self
+
+
+def employee_budget_query(query: EmployeeBudgetQuery) -> tuple[str, tuple[object, ...]]:
+    metadata = _object("metadata::jsonb")
+    sql = f"""
+    WITH owned_keys AS (
+      SELECT token FROM "LiteLLM_VerificationToken"
+      WHERE ($6::text IS NULL AND user_id IN (SELECT jsonb_array_elements_text($1::jsonb)))
+         OR ({metadata}->>'key_type' = ANY(CASE WHEN $6::text IS NULL THEN ARRAY['agent_api', 'chat_share'] ELSE ARRAY[$6::text] END)
+             AND {metadata}->>'agent_instance_id' IN (SELECT jsonb_array_elements_text($2::jsonb)))
+      UNION
+      SELECT token FROM "LiteLLM_DeletedVerificationToken"
+      WHERE ($6::text IS NULL AND user_id IN (SELECT jsonb_array_elements_text($1::jsonb)))
+         OR ({metadata}->>'key_type' = ANY(CASE WHEN $6::text IS NULL THEN ARRAY['agent_api', 'chat_share'] ELSE ARRAY[$6::text] END)
+             AND {metadata}->>'agent_instance_id' IN (SELECT jsonb_array_elements_text($2::jsonb)))
+    ), historical AS (
+      SELECT COALESCE(SUM(spend), 0) AS spend,
+             COALESCE(SUM(api_requests), 0) AS requests,
+             COALESCE(SUM(prompt_tokens + completion_tokens), 0) AS tokens
+      FROM "LiteLLM_DailyUserSpend"
+      WHERE date >= $3 AND date < $4
+        AND (($6::text IS NULL AND user_id IN (SELECT jsonb_array_elements_text($1::jsonb))) OR api_key IN (SELECT token FROM owned_keys))
+    ), current_counter AS (
+      SELECT COALESCE(MAX(spend), 0) AS spend FROM "LiteLLM_UserTable"
+      WHERE $6::text IS NULL AND user_id IN (SELECT jsonb_array_elements_text($1::jsonb)) AND budget_duration = '1mo'
+        AND budget_reset_at = ($5::timestamptz AT TIME ZONE 'UTC')
+    )
+    SELECT GREATEST(historical.spend, current_counter.spend) AS total_spend,
+           historical.requests AS total_api_requests, historical.tokens AS total_tokens
+    FROM historical CROSS JOIN current_counter
+    """
+    return sql, (
+        json.dumps(query.user_ids),
+        json.dumps(query.instance_ids),
+        query.start_date.isoformat(),
+        query.end_date.isoformat(),
+        query.reset_at,
+        query.publication_type,
+    )
+
+
+@runtime_checkable
+class EmployeeBudgetDatabase(Protocol):
+    async def query_raw(self, query: str, *values: object) -> object: ...
+
+
+@router.post("/agentos/usage/employee-budget", dependencies=(Depends(require_master_key),))
+async def query_employee_budget(query: EmployeeBudgetQuery) -> Mapping[str, JsonValue]:
+    from litellm.proxy.proxy_server import prisma_client
+
+    if prisma_client is None:
+        raise HTTPException(503, "Usage storage unavailable")
+    sql, values = employee_budget_query(query)
+    db = TypeAdapter(EmployeeBudgetDatabase, config=ConfigDict(arbitrary_types_allowed=True)).validate_python(
+        prisma_client.db
+    )
+    rows = TypeAdapter[tuple[dict[str, JsonValue], ...]](tuple[dict[str, JsonValue], ...]).validate_python(
+        await db.query_raw(sql, *values)
+    )
+    return rows[0]

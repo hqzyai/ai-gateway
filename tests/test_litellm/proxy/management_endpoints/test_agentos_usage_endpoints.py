@@ -634,3 +634,103 @@ def test_alias_union_retains_raw_models_and_intersects_provider_in_postgres(db):
         )["records_total"]
         == 0
     )
+
+def test_employee_budget_sql_retains_deleted_publication_costs(db):
+    db.execute('CREATE TEMP TABLE "LiteLLM_VerificationToken" (token text, user_id text, metadata jsonb)')
+    db.execute('CREATE TEMP TABLE "LiteLLM_DeletedVerificationToken" (token text, user_id text, metadata jsonb)')
+    db.execute(
+        'CREATE TEMP TABLE "LiteLLM_UserTable" (user_id text, spend double precision, budget_duration text, budget_reset_at timestamp)'
+    )
+    db.execute(
+        'CREATE TEMP TABLE "LiteLLM_DailyUserSpend" (user_id text, api_key text, date text, spend double precision, api_requests bigint, prompt_tokens bigint, completion_tokens bigint)'
+    )
+    db.execute('INSERT INTO "LiteLLM_VerificationToken" VALUES (%s,%s,%s)', ("live", "employee", "{}"))
+    metadata = json.dumps({"key_type": "chat_share", "agent_instance_id": "instance"})
+    for _ in range(2):
+        db.execute('INSERT INTO "LiteLLM_DeletedVerificationToken" VALUES (%s,NULL,%s)', ("deleted", metadata))
+    for owner, key, day, cost in [
+        ("employee", "live", "2026-11-19", 4),
+        ("", "deleted", "2026-11-19", 6),
+        ("foreign", "foreign", "2026-11-19", 999),
+        ("", "deleted", "2026-10-19", 999),
+    ]:
+        db.execute('INSERT INTO "LiteLLM_DailyUserSpend" VALUES (%s,%s,%s,%s,1,10,5)', (owner, key, day, cost))
+    query = gateway.EmployeeBudgetQuery(
+        user_ids=["employee"],
+        instance_ids=["instance"],
+        start_date="2026-11-01",
+        end_date="2026-12-01",
+        reset_at="2026-11-30T16:00:00Z",
+    )
+    sql, values = gateway.employee_budget_query(query)
+    params = [values[int(match[1]) - 1] for match in re.finditer(r"\$(\d+)", sql)]
+    sql = re.sub(r"\$\d+", "%s", sql)
+    assert db.execute(sql, params).fetchone() == (10, 2, 30)
+    publication = query.model_copy(update={"publication_type": "chat_share"})
+    publication_sql, publication_values = gateway.employee_budget_query(publication)
+    publication_params = [publication_values[int(match[1]) - 1] for match in re.finditer(r"\$(\d+)", publication_sql)]
+    publication_sql = re.sub(r"\$\d+", "%s", publication_sql)
+    assert db.execute(publication_sql, publication_params).fetchone() == (6, 1, 15)
+    db.execute('INSERT INTO "LiteLLM_DeletedVerificationToken" SELECT * FROM "LiteLLM_VerificationToken"')
+    db.execute('DELETE FROM "LiteLLM_VerificationToken"')
+    assert db.execute(sql, params).fetchone() == (10, 2, 30)
+    db.execute(
+        'INSERT INTO "LiteLLM_UserTable" VALUES (%s,%s,%s,%s)',
+        ("employee", 12, "1mo", "2026-11-30 16:00:00"),
+    )
+    assert db.execute(sql, params).fetchone() == (12, 2, 30)
+    assert db.execute(publication_sql, publication_params).fetchone() == (6, 1, 15)
+    next_month = query.model_copy(
+        update={
+            "start_date": gateway.date(2026, 12, 1),
+            "end_date": gateway.date(2027, 1, 1),
+            "reset_at": gateway.datetime.fromisoformat("2026-12-31T16:00:00+00:00"),
+        }
+    )
+    next_sql, next_values = gateway.employee_budget_query(next_month)
+    next_params = tuple(next_values[int(match[1]) - 1] for match in re.finditer(r"\$(\d+)", next_sql))
+    assert db.execute(re.sub(r"\$\d+", "%s", next_sql), next_params).fetchone() == (0, 0, 0)
+
+
+@pytest.mark.asyncio
+async def test_employee_budget_route_rejects_non_master_keys_and_validates_scope(monkeypatch):
+    from types import ModuleType, SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    proxy = ModuleType("litellm.proxy.proxy_server")
+    execute = AsyncMock(return_value=[{"total_spend": 10, "total_api_requests": 2, "total_tokens": 30}])
+    proxy.__dict__.update(
+        master_key="test-master", prisma_client=SimpleNamespace(db=SimpleNamespace(query_raw=execute))
+    )
+    monkeypatch.setitem(sys.modules, "litellm.proxy.proxy_server", proxy)
+    app = FastAPI()
+    app.include_router(gateway.router)
+    body = dict(
+        user_ids=["employee"],
+        instance_ids=["instance"],
+        start_date="2026-11-01",
+        end_date="2026-12-01",
+        reset_at="2026-11-30T16:00:00Z",
+    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://gateway") as client:
+        for auth in (None, "Bearer virtual-key"):
+            response = await client.post(
+                "/agentos/usage/employee-budget", json=body, headers={"Authorization": auth} if auth else {}
+            )
+            assert response.status_code == 403
+        execute.assert_not_called()
+        response = await client.post(
+            "/agentos/usage/employee-budget", json=body, headers={"Authorization": "Bearer test-master"}
+        )
+        assert response.status_code == 200
+        assert response.json() == {"total_spend": 10, "total_api_requests": 2, "total_tokens": 30}
+        execute.assert_awaited_once()
+        for invalid in (
+            dict(body, user_ids=[]),
+            dict(body, publication_type="profile"),
+            dict(body, end_date="2027-01-01"),
+        ):
+            response = await client.post(
+                "/agentos/usage/employee-budget", json=invalid, headers={"Authorization": "Bearer test-master"}
+            )
+            assert response.status_code == 422
