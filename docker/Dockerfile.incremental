@@ -1,0 +1,7 @@
+ARG BASE_IMAGE=hqzyai/ai-gateway:native-6bd89af07b
+FROM ${BASE_IMAGE}
+ARG SOURCE_REVISION
+LABEL org.opencontainers.image.revision=${SOURCE_REVISION}
+COPY docker/install_incremental_source.py /tmp/install_incremental_source.py
+RUN --network=none --mount=type=bind,source=litellm,target=/tmp/litellm-source,readonly \
+    python /tmp/install_incremental_source.py && rm /tmp/install_incremental_source.py

@@ -98,3 +98,16 @@ This command should succeed (showing engine versions) even with `--network none`
 
 -   **`build_admin_ui.sh: not found`**: This error can occur if the Docker build context is not set correctly. Ensure that you are running the `docker-compose` command from the root of the project.
 -   **`Master key is not initialized`**: This error means the `LITELLM_MASTER_KEY` environment variable is not set. Make sure you have created a `.env` file in the project root with the `LITELLM_MASTER_KEY` defined.
+
+### Native Python source updates on an existing image
+
+For a Python-only change with unchanged dependencies, Prisma schema, Rust code and UI assets, build from the existing native image:
+
+```bash
+docker build --pull=false -f docker/Dockerfile.incremental \
+  --build-arg BASE_IMAGE=hqzyai/ai-gateway:native-6bd89af07b \
+  --build-arg SOURCE_REVISION="$(git rev-parse HEAD)" \
+  -t hqzyai/ai-gateway:native-"$(git rev-parse --short=10 HEAD)" .
+```
+
+This installs the repository's native Python package source while preserving the base image's dependencies, compiled Rust extension, generated Prisma client, management UI and entrypoint. It does not inject routes or modify source text. Changes to those preserved components require the standard root Dockerfile build.
