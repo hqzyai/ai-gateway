@@ -10,6 +10,7 @@ def preserve_runtime_assets(directory: str, names: list[str]) -> tuple[str, ...]
         if name == "__pycache__"
         or name.endswith((".pyc", ".so"))
         or (Path(directory).name == "_experimental" and name == "out")
+        or (Path(directory).name == "proxy" and name == "enterprise")
     )
 
 
